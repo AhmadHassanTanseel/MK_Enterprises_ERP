@@ -1,0 +1,163 @@
+import React, { useState } from 'react';
+import { useAppContext } from '../../app/context/AppContext';
+import { Plus, Search, Filter, Paperclip, CreditCard, Banknote, Building2 } from 'lucide-react';
+import { open } from '@tauri-apps/plugin-dialog';
+
+export const CashPaymentPanel: React.FC = () => {
+  const { accounts, postPayment } = useAppContext();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isAddMode, setIsAddMode] = useState(false);
+  
+  const [accountId, setAccountId] = useState<number | null>(null);
+  const [amount, setAmount] = useState<number>(0);
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [description, setDescription] = useState('');
+
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const supplierAccounts = accounts.filter(a => a.account_type_id === 2 || a.account_type_id === 5); // Suppliers, Expenses
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null); setSuccess(null);
+    
+    if (!accountId) { setError("Please select an account"); return; }
+    if (amount <= 0) { setError("Amount must be greater than zero"); return; }
+
+    setIsSubmitting(true);
+    try {
+      await postPayment(
+        new Date().toISOString().split('T')[0],
+        accountId,
+        'PAY',
+        amount,
+        `${paymentMethod} - ${description}`
+      );
+      setSuccess(`Payment of Rs. ${amount} saved successfully!`);
+      setIsAddMode(false);
+      setAmount(0);
+      setDescription('');
+    } catch (err: any) {
+      setError(err.toString());
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-6 h-full">
+      {/* Left Panel: Form */}
+      <div className={`w-1/3 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col ${isAddMode ? 'block' : 'hidden md:flex'}`}>
+        <h3 className="text-lg font-bold text-slate-800 mb-6">{isAddMode ? 'New Payment' : 'Make Payment'}</h3>
+        {error && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
+        {success && <div className="mb-4 p-3 bg-emerald-50 text-emerald-700 text-sm rounded-md border border-emerald-200">{success}</div>}
+        <form onSubmit={handleSave} className="space-y-4 flex-1 overflow-y-auto pr-2">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Account (Supplier/Expense) *</label>
+            <select 
+              required
+              className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+              value={accountId || ''}
+              onChange={e => setAccountId(Number(e.target.value))}
+            >
+              <option value="">-- Select Account --</option>
+              {supplierAccounts.map(acc => (
+                <option key={acc.id} value={acc.id}>{acc.name} (Bal: {acc.current_balance})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button type="button" onClick={() => setPaymentMethod('Cash')} className={`flex flex-col items-center justify-center p-3 rounded-lg border ${paymentMethod === 'Cash' ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                <Banknote className="h-5 w-5 mb-1" />
+                <span className="text-xs font-medium">Cash</span>
+              </button>
+              <button type="button" onClick={() => setPaymentMethod('Bank')} className={`flex flex-col items-center justify-center p-3 rounded-lg border ${paymentMethod === 'Bank' ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                <Building2 className="h-5 w-5 mb-1" />
+                <span className="text-xs font-medium">Bank</span>
+              </button>
+              <button type="button" onClick={() => setPaymentMethod('Cheque')} className={`flex flex-col items-center justify-center p-3 rounded-lg border ${paymentMethod === 'Cheque' ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                <CreditCard className="h-5 w-5 mb-1" />
+                <span className="text-xs font-medium">Cheque</span>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Amount *</label>
+            <input 
+              type="number" required min="1"
+              className="w-full text-xl font-bold border-b-2 border-slate-300 bg-slate-50 p-2 focus:border-rose-500 outline-none rounded-t"
+              value={amount || ''}
+              onChange={e => setAmount(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+            <textarea 
+              className="w-full border border-slate-300 rounded-md p-2 h-20 outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Payment reference..."
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+            />
+          </div>
+          <div>
+             <label className="block text-sm font-medium text-slate-700 mb-1">Attachment (ERP Feature)</label>
+             <button type="button" onClick={async () => {
+                 try {
+                   const file = await open({
+                     multiple: false,
+                     filters: [{ name: 'Images/PDF', extensions: ['png', 'jpeg', 'jpg', 'pdf'] }]
+                   });
+                   if (file) {
+                     alert(`File selected: ${file}`);
+                   }
+                 } catch (e) {
+                   console.error(e);
+                 }
+             }} className="w-full flex items-center justify-center gap-2 border border-dashed border-slate-400 rounded-md p-4 text-slate-500 hover:bg-slate-50 hover:border-slate-500 transition-colors">
+               <Paperclip className="h-5 w-5" />
+               <span className="text-sm">Click to attach file or image</span>
+             </button>
+          </div>
+          <button type="submit" disabled={isSubmitting} className="w-full bg-rose-600 text-white font-medium py-3 rounded-md hover:bg-rose-700 transition-colors mt-4 shadow-sm hover:shadow-md disabled:opacity-50">
+            {isSubmitting ? 'Saving...' : 'Save Payment'}
+          </button>
+        </form>
+      </div>
+
+      {/* Right Panel: List */}
+      <div className="flex-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-slate-800">Payments History</h3>
+          <button onClick={() => setIsAddMode(true)} className="md:hidden flex items-center gap-2 bg-rose-600 text-white px-3 py-1.5 rounded-md text-sm">
+            <Plus className="h-4 w-4" /> New
+          </button>
+        </div>
+        
+        <div className="flex gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search by account or payment no..." 
+              className="w-full border border-slate-300 rounded-md pl-10 pr-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button className="p-2 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">
+            <Filter className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 flex items-center justify-center text-slate-400 flex-col gap-3">
+          <Banknote className="h-12 w-12 text-slate-200" />
+          <p>No payments recorded yet.</p>
+        </div>
+      </div>
+    </div>
+  );
+};

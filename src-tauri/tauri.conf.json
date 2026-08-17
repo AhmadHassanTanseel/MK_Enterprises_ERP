@@ -1,0 +1,20 @@
+{
+  "productName": "M K Enterprises Business Management System By Tanseel",
+  "version": "1.0.0",
+  "identifier": "com.business-mgmt-system.dev",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "M K Enterprises Business Management System",
+        "width": 1200,
+        "height": 800
+      }
+    ]
+  }
+}
