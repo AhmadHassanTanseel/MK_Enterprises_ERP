@@ -1,9 +1,7 @@
-// use sqlx::SqlitePool;
-// use tauri::State;
-
 use sqlx::{SqlitePool, FromRow};
 use serde::{Serialize, Deserialize};
 use tauri::State;
+use crate::system_accounts::get_system_accounts;
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct CashTransaction {
@@ -31,6 +29,7 @@ pub async fn process_cash_transaction(
 ) -> Result<String, String> {
     // Persist a real cash receipt/payment into journal_entries
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    let accounts = get_system_accounts(&db).await?;
 
     // Prepare stable narration and entry_date to avoid moving description/trans_date when binding multiple times
     let narration_default = if trans_type == "RECEIVE" { "Cash Receipt".to_string() } else { "Cash Payment".to_string() };
@@ -39,8 +38,8 @@ pub async fn process_cash_transaction(
 
     if trans_type == "RECEIVE" {
         // Debit Cash Drawer [ID:1]
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (1, ?, 0.0, 'CASH_RECEIPT', ?, ?)")
-            .bind(amount).bind(&narration).bind(&entry_date)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, ?)")
+            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         // Credit the account (reduces receivable)
@@ -55,12 +54,21 @@ pub async fn process_cash_transaction(
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         // Credit Cash Drawer [ID:1]
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (1, 0.0, ?, 'CASH_PAYMENT', ?, ?)")
-            .bind(amount).bind(&narration).bind(&entry_date)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (?, 0.0, ?, 'CASH_PAYMENT', ?, ?)")
+            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
+
+    let audit_action = format!(
+        "{} of Rs. {:.2} posted for account #{}",
+        if trans_type == "RECEIVE" { "Cash receipt" } else { "Cash payment" },
+        amount,
+        account_id
+    );
+    let _ = crate::audit::log_audit(&db, &audit_action, "Operator").await;
+
     Ok(format!("{} of Rs. {} securely posted to ledger.", trans_type, amount))
 }
 
@@ -118,4 +126,60 @@ pub async fn process_journal_voucher(
 
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(format!("Journal Voucher perfectly balanced at Rs. {} and posted successfully!", dr_total))
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct CashHistoryRow {
+    pub id: i64,
+    pub trans_type: String,
+    pub account_id: i64,
+    pub account_name: String,
+    pub amount: f64,
+    pub trans_date: String,
+    pub description: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_cash_transaction_history(
+    trans_type: Option<String>,
+    db: State<'_, SqlitePool>,
+) -> Result<Vec<CashHistoryRow>, String> {
+    let accounts = get_system_accounts(&db).await?;
+    let cash_id = accounts.cash;
+
+    let type_filter = match trans_type.as_deref() {
+        Some("RECEIVE") | Some("RECEIPT") => " AND je.voucher_type = 'CASH_RECEIPT'",
+        Some("PAYMENT") | Some("PAY") => " AND je.voucher_type = 'CASH_PAYMENT'",
+        _ => " AND je.voucher_type IN ('CASH_RECEIPT', 'CASH_PAYMENT')",
+    };
+
+    let sql = format!(
+        r#"
+        SELECT
+            je.id,
+            CASE je.voucher_type
+                WHEN 'CASH_RECEIPT' THEN 'RECEIVE'
+                ELSE 'PAYMENT'
+            END as trans_type,
+            je.account_id,
+            a.name as account_name,
+            CASE
+                WHEN je.voucher_type = 'CASH_RECEIPT' THEN je.credit
+                ELSE je.debit
+            END as amount,
+            datetime(je.entry_date, 'localtime') as trans_date,
+            je.narration as description
+        FROM journal_entries je
+        JOIN accounts a ON je.account_id = a.id
+        WHERE je.account_id != ?{type_filter}
+        ORDER BY je.id DESC
+        LIMIT 500
+        "#
+    );
+
+    sqlx::query_as::<_, CashHistoryRow>(&sql)
+        .bind(cash_id)
+        .fetch_all(&*db)
+        .await
+        .map_err(|e| e.to_string())
 }

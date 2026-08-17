@@ -3,6 +3,7 @@ use tauri::State;
 
 use serde::Deserialize;
 use chrono::Local;
+use crate::system_accounts::get_system_accounts;
 
 // 1. Process a New Purchase Invoice (FULL Persistence)
 #[derive(Debug, Deserialize)]
@@ -12,7 +13,8 @@ pub struct InvoiceLine {
     pub unit_price: f64,
     pub discount_percent: Option<f64>,
 }
-#[tauri::command]
+
+#[tauri::command]
 pub async fn process_purchase(
     supplier_id: i64,
     salesman_id: Option<i64>,
@@ -25,6 +27,7 @@ pub async fn process_purchase(
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    let accounts = get_system_accounts(&db).await?;
 
     // Create an invoice header
     let inv_no = invoice_number.unwrap_or_else(|| format!("PUR-{}", Local::now().timestamp()));
@@ -76,7 +79,7 @@ pub async fn process_purchase(
 
     // Accounting: Credit Supplier (increase payable) and Debit Purchases (expense)
     sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'PURCHASE', ?, 'Purchase Invoice')")
-        .bind(4) // Purchases account (seeded id 4)
+        .bind(accounts.purchases)
         .bind(net_amount)
         .bind(invoice_id)
         .execute(&mut *tx)
@@ -103,9 +106,8 @@ pub async fn process_purchase(
             .map_err(|e| e.to_string())?;
 
         // Credit Cash Drawer (decrease cash)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (1, 0.0, ?, 'CASH_PAYMENT', ?, 'Paid Supplier at Purchase')")
-            .bind(amount_paid)
-            .bind(invoice_id)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'CASH_PAYMENT', ?, 'Paid Supplier at Purchase')")
+            .bind(accounts.cash).bind(amount_paid).bind(invoice_id)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -128,6 +130,7 @@ pub async fn process_return(
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    let accounts = get_system_accounts(&db).await?;
 
     let inv_no = invoice_number.unwrap_or_else(|| format!("PR-{}", Local::now().timestamp()));
 
@@ -179,14 +182,14 @@ pub async fn process_return(
         // RETURN (R): Debit Supplier, Credit Purchases (Supplier takes the hit)
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'PURCHASE_RETURN', ?, 'Returned to Supplier')")
             .bind(supplier_id).bind(net_amount).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (4, 0.0, ?, 'PURCHASE_RETURN', ?, 'Returned to Supplier')")
-            .bind(net_amount).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'PURCHASE_RETURN', ?, 'Returned to Supplier')")
+            .bind(accounts.purchases).bind(net_amount).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
     } else {
-        // DAMAGE (D): Debit Damage Loss [ID: 5], Credit Purchases (We take the hit)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (5, ?, 0.0, 'DAMAGE', ?, 'Damaged Goods Written Off')")
-            .bind(net_amount).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (4, 0.0, ?, 'DAMAGE', ?, 'Damaged Goods Written Off')")
-            .bind(net_amount).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        // DAMAGE (D): Debit Damage Loss, Credit Purchases (We take the hit)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'DAMAGE', ?, 'Damaged Goods Written Off')")
+            .bind(accounts.damage_loss).bind(net_amount).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'DAMAGE', ?, 'Damaged Goods Written Off')")
+            .bind(accounts.purchases).bind(net_amount).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;

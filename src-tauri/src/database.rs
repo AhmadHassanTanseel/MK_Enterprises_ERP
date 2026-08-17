@@ -22,6 +22,7 @@ pub async fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Sqlite
         .map_err(|e| e.to_string())?;
 
     create_full_schema(&pool).await?;
+    run_migrations(&pool).await?;
 
     Ok(pool)
 }
@@ -197,6 +198,143 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         .execute(pool)
         .await
         .map_err(|e| format!("Failed to create production schema: {}", e))?;
+
+    Ok(())
+}
+
+async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to create schema_migrations table: {}", e))?;
+
+    let current: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM schema_migrations")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if current < 1 {
+        migration_001_areas_columns(pool).await?;
+        record_migration(pool, 1).await?;
+    }
+
+    if current < 2 {
+        migration_002_backfill_opening_stock(pool).await?;
+        record_migration(pool, 2).await?;
+    }
+
+    if current < 3 {
+        migration_003_seed_system_account_config(pool).await?;
+        record_migration(pool, 3).await?;
+    }
+
+    if current < 4 {
+        migration_004_audit_logs(pool).await?;
+        record_migration(pool, 4).await?;
+    }
+
+    Ok(())
+}
+
+async fn record_migration(pool: &SqlitePool, version: i64) -> Result<(), String> {
+    sqlx::query("INSERT INTO schema_migrations (version) VALUES (?)")
+        .bind(version)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to record migration {}: {}", version, e))?;
+    Ok(())
+}
+
+async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, String> {
+    let pragma = format!("PRAGMA table_info({})", table);
+    let rows: Vec<(i64, String, String, i64, Option<String>, i64)> =
+        sqlx::query_as(&pragma)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    Ok(rows.iter().any(|(_, name, _, _, _, _)| name == column))
+}
+
+async fn migration_001_areas_columns(pool: &SqlitePool) -> Result<(), String> {
+    if !column_exists(pool, "areas", "salesman_id").await? {
+        sqlx::query("ALTER TABLE areas ADD COLUMN salesman_id INTEGER")
+            .execute(pool)
+            .await
+            .map_err(|e| format!("Failed to add areas.salesman_id: {}", e))?;
+    }
+
+    if !column_exists(pool, "areas", "remarks").await? {
+        sqlx::query("ALTER TABLE areas ADD COLUMN remarks TEXT")
+            .execute(pool)
+            .await
+            .map_err(|e| format!("Failed to add areas.remarks: {}", e))?;
+    }
+
+    Ok(())
+}
+
+async fn migration_002_backfill_opening_stock(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query(
+        r#"
+        INSERT INTO inventory_movements (product_id, quantity, movement_type, reference_id)
+        SELECT p.id, p.opening_stock, 'OPENING', p.id
+        FROM products p
+        WHERE p.opening_stock > 0
+          AND NOT EXISTS (
+              SELECT 1 FROM inventory_movements im
+              WHERE im.product_id = p.id AND im.movement_type = 'OPENING'
+          )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to backfill OPENING inventory movements: {}", e))?;
+
+    Ok(())
+}
+
+async fn migration_003_seed_system_account_config(pool: &SqlitePool) -> Result<(), String> {
+    let seeds = [
+        ("cash_account_id", "1"),
+        ("sales_revenue_account_id", "3"),
+        ("purchases_account_id", "4"),
+        ("damage_loss_account_id", "5"),
+    ];
+
+    for (key, value) in seeds {
+        sqlx::query(
+            "INSERT INTO system_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+        )
+        .bind(key)
+        .bind(value)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to seed system_config key '{}': {}", key, e))?;
+    }
+
+    Ok(())
+}
+
+async fn migration_004_audit_logs(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            user_name TEXT NOT NULL DEFAULT 'System',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to create audit_logs table: {}", e))?;
 
     Ok(())
 }

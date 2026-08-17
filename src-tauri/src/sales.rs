@@ -2,6 +2,7 @@ use sqlx::SqlitePool;
 use tauri::State;
 use serde::Deserialize;
 use chrono::Local;
+use crate::system_accounts::get_system_accounts;
 
 #[derive(Debug, Deserialize)]
 pub struct SaleLine {
@@ -24,6 +25,7 @@ pub async fn process_sale(
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    let accounts = get_system_accounts(&db).await?;
 
     // Create invoice header
     let inv_no = invoice_number.unwrap_or_else(|| format!("INV-{}", Local::now().timestamp()));
@@ -83,7 +85,7 @@ pub async fn process_sale(
         .map_err(|e| e.to_string())?;
 
     sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'INVOICE', ?, 'Sale Revenue')")
-        .bind(3) // Sales revenue account seeded with id 3
+        .bind(accounts.sales_revenue)
         .bind(net_amount)
         .bind(invoice_id)
         .execute(&mut *tx)
@@ -93,8 +95,8 @@ pub async fn process_sale(
     // Handle immediate payment (reduce AR)
     if amount_received > 0.0 {
         // Debit Cash Drawer (id 1)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (1, ?, 0.0, 'CASH_RECEIPT', ?, 'Payment Received at POS')")
-            .bind(amount_received).bind(invoice_id)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, 'Payment Received at POS')")
+            .bind(accounts.cash).bind(amount_received).bind(invoice_id)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -122,6 +124,7 @@ pub async fn process_sale_return(
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    let accounts = get_system_accounts(&db).await?;
 
     // Create invoice header
     let inv_no = invoice_number.unwrap_or_else(|| format!("SR-{}", Local::now().timestamp()));
@@ -171,7 +174,7 @@ pub async fn process_sale_return(
 
     // Accounting: Debit Sales Returns (use account ID 3) and Credit the customer/account
     sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'SALE_RETURN', ?, 'Sale Return')")
-        .bind(3) 
+        .bind(accounts.sales_revenue)
         .bind(net_amount)
         .bind(invoice_id)
         .execute(&mut *tx)

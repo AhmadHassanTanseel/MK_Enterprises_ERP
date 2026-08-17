@@ -1,5 +1,7 @@
 pub mod database;
 pub mod master_data;
+pub mod system_accounts;
+pub mod audit;
 pub mod drm;
 pub mod backup;
 pub mod reporting; // <-- Line 4ish
@@ -14,6 +16,7 @@ use sales::*;
 use treasury::*;
 use drm::*;
 use backup::*;
+use audit::*;
 use sqlx::SqlitePool;
 use tauri::Manager;
 use tauri::State;
@@ -32,6 +35,7 @@ pub fn run() {
             process_return,
             process_cash_transaction,
             process_journal_voucher,
+            get_cash_transaction_history,
 
             // Master data
             get_categories,

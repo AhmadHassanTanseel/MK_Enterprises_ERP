@@ -210,23 +210,327 @@ pub struct ReportFilters {
     pub salesman_id: Option<i64>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ReportTotal {
+    pub label: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReportResult {
+    pub title: String,
+    pub headers: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub totals: Vec<ReportTotal>,
+}
+
+fn date_filter_clause(from_date: &Option<String>, to_date: &Option<String>, column: &str) -> String {
+    match (from_date, to_date) {
+        (Some(from), Some(to)) => format!(" AND date({column}) BETWEEN date('{from}') AND date('{to}')"),
+        (Some(from), None) => format!(" AND date({column}) >= date('{from}')"),
+        (None, Some(to)) => format!(" AND date({column}) <= date('{to}')"),
+        (None, None) => String::new(),
+    }
+}
+
+async fn run_sales_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "i.invoice_date");
+    let account_clause = filters
+        .account_id
+        .map(|id| format!(" AND i.account_id = {id}"))
+        .unwrap_or_default();
+
+    let sql = format!(
+        r#"
+        SELECT
+            i.invoice_number,
+            datetime(i.invoice_date, 'localtime') as invoice_date,
+            a.name as account_name,
+            i.gross_amount,
+            i.discount_amount,
+            i.net_amount,
+            i.amount_received,
+            i.status
+        FROM invoices i
+        JOIN accounts a ON i.account_id = a.id
+        WHERE i.invoice_type = 'SALE'{date_clause}{account_clause}
+        ORDER BY i.id DESC
+        "#
+    );
+
+    let rows: Vec<(String, String, String, f64, f64, f64, f64, String)> =
+        sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let mut total_net = 0.0;
+    let mut total_received = 0.0;
+    let report_rows: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| {
+            total_net += r.5;
+            total_received += r.6;
+            vec![
+                r.0.clone(),
+                r.1.clone(),
+                r.2.clone(),
+                format!("{:.2}", r.3),
+                format!("{:.2}", r.4),
+                format!("{:.2}", r.5),
+                format!("{:.2}", r.6),
+                r.7.clone(),
+            ]
+        })
+        .collect();
+
+    Ok(ReportResult {
+        title: "Sales Report".into(),
+        headers: vec![
+            "Invoice #".into(),
+            "Date".into(),
+            "Customer".into(),
+            "Gross".into(),
+            "Discount".into(),
+            "Net".into(),
+            "Received".into(),
+            "Status".into(),
+        ],
+        rows: report_rows,
+        totals: vec![
+            ReportTotal { label: "Total Net Sales".into(), value: total_net },
+            ReportTotal { label: "Total Received".into(), value: total_received },
+        ],
+    })
+}
+
+async fn run_purchase_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "i.invoice_date");
+    let account_clause = filters
+        .account_id
+        .map(|id| format!(" AND i.account_id = {id}"))
+        .unwrap_or_default();
+
+    let sql = format!(
+        r#"
+        SELECT
+            i.invoice_number,
+            datetime(i.invoice_date, 'localtime') as invoice_date,
+            a.name as account_name,
+            i.gross_amount,
+            i.discount_amount,
+            i.net_amount,
+            i.amount_received as amount_paid,
+            i.status
+        FROM invoices i
+        JOIN accounts a ON i.account_id = a.id
+        WHERE i.invoice_type = 'PURCHASE'{date_clause}{account_clause}
+        ORDER BY i.id DESC
+        "#
+    );
+
+    let rows: Vec<(String, String, String, f64, f64, f64, f64, String)> =
+        sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let mut total_net = 0.0;
+    let mut total_paid = 0.0;
+    let report_rows: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| {
+            total_net += r.5;
+            total_paid += r.6;
+            vec![
+                r.0.clone(),
+                r.1.clone(),
+                r.2.clone(),
+                format!("{:.2}", r.3),
+                format!("{:.2}", r.4),
+                format!("{:.2}", r.5),
+                format!("{:.2}", r.6),
+                r.7.clone(),
+            ]
+        })
+        .collect();
+
+    Ok(ReportResult {
+        title: "Purchase Report".into(),
+        headers: vec![
+            "Invoice #".into(),
+            "Date".into(),
+            "Supplier".into(),
+            "Gross".into(),
+            "Discount".into(),
+            "Net".into(),
+            "Paid".into(),
+            "Status".into(),
+        ],
+        rows: report_rows,
+        totals: vec![
+            ReportTotal { label: "Total Purchases".into(), value: total_net },
+            ReportTotal { label: "Total Paid".into(), value: total_paid },
+        ],
+    })
+}
+
+async fn run_stock_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let category_clause = filters
+        .category_id
+        .map(|id| format!(" AND p.category_id = {id}"))
+        .unwrap_or_default();
+    let product_clause = filters
+        .product_id
+        .map(|id| format!(" AND p.id = {id}"))
+        .unwrap_or_default();
+
+    let sql = format!(
+        r#"
+        SELECT
+            p.code,
+            p.name,
+            c.name as category_name,
+            COALESCE(SUM(im.quantity), 0) as available_stock,
+            p.purchase_price,
+            COALESCE(SUM(im.quantity), 0) * p.purchase_price as stock_value,
+            p.reorder_level
+        FROM products p
+        LEFT JOIN inventory_movements im ON p.id = im.product_id
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE 1=1{category_clause}{product_clause}
+        GROUP BY p.id
+        ORDER BY p.name ASC
+        "#
+    );
+
+    let rows: Vec<(String, String, Option<String>, i64, f64, f64, i64)> =
+        sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let mut total_value = 0.0;
+    let mut total_units: i64 = 0;
+    let report_rows: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| {
+            total_value += r.5;
+            total_units += r.3;
+            vec![
+                r.0.clone(),
+                r.1.clone(),
+                r.2.clone().unwrap_or_else(|| "—".into()),
+                r.3.to_string(),
+                format!("{:.2}", r.4),
+                format!("{:.2}", r.5),
+                r.6.to_string(),
+            ]
+        })
+        .collect();
+
+    Ok(ReportResult {
+        title: "Stock Report".into(),
+        headers: vec![
+            "Code".into(),
+            "Product".into(),
+            "Category".into(),
+            "Qty".into(),
+            "Unit Cost".into(),
+            "Stock Value".into(),
+            "Reorder Level".into(),
+        ],
+        rows: report_rows,
+        totals: vec![
+            ReportTotal { label: "Total Units".into(), value: total_units as f64 },
+            ReportTotal { label: "Total Stock Value".into(), value: total_value },
+        ],
+    })
+}
+
+async fn run_profit_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "invoice_date");
+
+    let sql = format!(
+        r#"
+        SELECT
+            invoice_type,
+            COUNT(*) as txn_count,
+            COALESCE(SUM(net_amount), 0) as total_amount
+        FROM invoices
+        WHERE invoice_type IN ('SALE', 'SALE_RETURN', 'PURCHASE', 'PURCHASE_RETURN'){date_clause}
+        GROUP BY invoice_type
+        "#
+    );
+
+    let rows: Vec<(String, i64, f64)> =
+        sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let mut sales = 0.0;
+    let mut sale_returns = 0.0;
+    let mut purchases = 0.0;
+    let mut purchase_returns = 0.0;
+
+    for (invoice_type, count, amount) in &rows {
+        let label = match invoice_type.as_str() {
+            "SALE" => {
+                sales = *amount;
+                "Sales"
+            }
+            "SALE_RETURN" => {
+                sale_returns = *amount;
+                "Sale Returns"
+            }
+            "PURCHASE" => {
+                purchases = *amount;
+                "Purchases"
+            }
+            "PURCHASE_RETURN" => {
+                purchase_returns = *amount;
+                "Purchase Returns"
+            }
+            _ => "Other",
+        };
+        // rows built below
+        let _ = (label, count);
+    }
+
+    let net_sales = sales - sale_returns;
+    let net_purchases = purchases - purchase_returns;
+    let gross_profit = net_sales - net_purchases;
+
+    let report_rows: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| {
+            vec![
+                r.0.clone(),
+                r.1.to_string(),
+                format!("{:.2}", r.2),
+            ]
+        })
+        .collect();
+
+    Ok(ReportResult {
+        title: "Profit Report".into(),
+        headers: vec!["Type".into(), "Transactions".into(), "Amount".into()],
+        rows: report_rows,
+        totals: vec![
+            ReportTotal { label: "Net Sales".into(), value: net_sales },
+            ReportTotal { label: "Net Purchases".into(), value: net_purchases },
+            ReportTotal { label: "Gross Profit".into(), value: gross_profit },
+        ],
+    })
+}
+
 #[tauri::command]
 pub async fn generate_report(
     report_name: String,
     filters: ReportFilters,
-    db: State<'_, SqlitePool>
-) -> Result<String, String> {
-    // In a production system, this matches `report_name` and runs the specific complex SQL query.
-    // For now, we simulate a successful data pull.
-    
-    let message = format!(
-        "Successfully compiled data for '{}'. \nFilters applied: Dates {} to {}.", 
-        report_name, 
-        filters.from_date.unwrap_or_else(|| "ALL".into()), 
-        filters.to_date.unwrap_or_else(|| "ALL".into())
-    );
-    
-    Ok(message)
+    db: State<'_, SqlitePool>,
+) -> Result<ReportResult, String> {
+    let normalized = report_name.to_uppercase().replace(' ', "_");
+
+    match normalized.as_str() {
+        "SALES" | "SALES_REPORT" => run_sales_report(&db, &filters).await,
+        "PURCHASE" | "PURCHASES" | "PURCHASE_REPORT" => run_purchase_report(&db, &filters).await,
+        "STOCK" | "STOCK_REPORT" => run_stock_report(&db, &filters).await,
+        "PROFIT" | "PROFIT_REPORT" | "P&L" => run_profit_report(&db, &filters).await,
+        other => Err(format!(
+            "Unknown report type '{}'. Supported: Sales, Purchase, Stock, Profit.",
+            other
+        )),
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]

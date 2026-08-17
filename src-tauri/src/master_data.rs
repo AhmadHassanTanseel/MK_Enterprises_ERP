@@ -538,42 +538,52 @@ pub async fn delete_area(
 
 // --- SYSTEM SETTINGS & ADMIN ---
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AuditLog {
-    pub id: i64,
-    pub action: String,
-    pub user_name: String,
-    pub timestamp: String,
-}
-
 #[tauri::command]
-pub async fn create_system_backup() -> Result<String, String> {
-    // In production, this runs a SQLite .backup command or copies the .db file
-    Ok("Secure backup successfully created at /backups/MK_ERP_2026-08-17.db".into())
+pub async fn create_system_backup(
+    app_handle: tauri::AppHandle,
+    db: State<'_, SqlitePool>,
+) -> Result<String, String> {
+    let result = crate::backup::perform_backup(app_handle)?;
+    crate::audit::log_audit(&db, &format!("Database backup created"), "Admin").await?;
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn execute_factory_reset(
-    confirmation: String, 
-    db: State<'_, SqlitePool>
+    confirmation: String,
+    db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
-    // ERP Feature: Server-side validation of the safety string
     if confirmation != "DELETE" {
-        return Err("SECURITY BREACH: Invalid confirmation string.".into());
+        return Err("Invalid confirmation string. Type DELETE to confirm.".into());
     }
-    
-    // In production, you would run TRUNCATE/DELETE on transactional tables here.
-    Ok("SUCCESS: All transactional data wiped. Master records (Products/Accounts) safely preserved.".into())
-}
 
-#[tauri::command]
-pub async fn get_audit_logs() -> Result<Vec<AuditLog>, String> {
-    // Mocking an Audit Log fetch for the UI
-    Ok(vec![
-        AuditLog { id: 1, action: "User 'Admin' deleted invoice INV-1049".into(), user_name: "Admin".into(), timestamp: "2026-08-17 10:14:00".into() },
-        AuditLog { id: 2, action: "User 'Guest' posted Sale Return #SR-882".into(), user_name: "Guest".into(), timestamp: "2026-08-17 09:45:00".into() },
-        AuditLog { id: 3, action: "User 'Admin' altered System Settings".into(), user_name: "Admin".into(), timestamp: "2026-08-16 18:30:00".into() },
-    ])
+    let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM invoice_items")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM invoices")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM inventory_movements WHERE movement_type != 'OPENING'")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "DELETE FROM journal_entries WHERE NOT (voucher_type = 'JOURNAL_VOUCHER' AND narration = 'Opening Balance')",
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+
+    crate::audit::log_audit(&db, "Factory reset executed — all transactional data wiped", "Admin")
+        .await?;
+
+    Ok("SUCCESS: All transactional data wiped. Master records (Products/Accounts) preserved.".into())
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
