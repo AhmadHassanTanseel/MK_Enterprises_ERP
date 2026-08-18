@@ -1,7 +1,7 @@
 use sqlx::SqlitePool;
 use tauri::State;
 use serde::Deserialize;
-use chrono::Local;
+
 use crate::system_accounts::get_system_accounts;
 
 #[derive(Debug, Deserialize)]
@@ -17,6 +17,7 @@ pub async fn process_sale(
     account_id: i64,
     salesman_id: Option<i64>,
     invoice_number: Option<String>,
+    invoice_date: String,
     lines: Vec<SaleLine>,
     gross_amount: f64,
     discount_amount: f64,
@@ -28,12 +29,34 @@ pub async fn process_sale(
     let accounts = get_system_accounts(&db).await?;
 
     // Create invoice header
-    let inv_no = invoice_number.unwrap_or_else(|| format!("INV-{}", Local::now().timestamp()));
+    let inv_no = match invoice_number {
+        Some(no) => no,
+        None => {
+            let row: Option<(String,)> = sqlx::query_as(
+                "SELECT invoice_number FROM invoices WHERE invoice_type = 'SALE' ORDER BY id DESC LIMIT 1"
+            )
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let next_seq = if let Some((last_inv,)) = row {
+                if let Some(num_str) = last_inv.strip_prefix("INV-") {
+                    num_str.parse::<i64>().unwrap_or(0) + 1
+                } else {
+                    1
+                }
+            } else {
+                1
+            };
+            format!("INV-{:05}", next_seq)
+        }
+    };
 
     let res = sqlx::query(
-        "INSERT INTO invoices (invoice_number, invoice_type, account_id, salesman_id, gross_amount, discount_amount, net_amount, amount_received, bakaya, status) VALUES (?, 'SALE', ?, ?, ?, ?, ?, ?, ?, 'POSTED')"
+        "INSERT INTO invoices (invoice_number, invoice_type, invoice_date, account_id, salesman_id, gross_amount, discount_amount, net_amount, amount_received, bakaya, status) VALUES (?, 'SALE', ?, ?, ?, ?, ?, ?, ?, ?, 'POSTED')"
     )
     .bind(&inv_no)
+    .bind(&invoice_date)
     .bind(account_id)
     .bind(salesman_id)
     .bind(gross_amount)
@@ -49,6 +72,23 @@ pub async fn process_sale(
 
     // Insert lines and stock movements
     for line in &lines {
+        // Stock check
+        let stock_row: (i64,) = sqlx::query_as(
+            "SELECT COALESCE(SUM(quantity), 0) FROM inventory_movements WHERE product_id = ?"
+        )
+        .bind(line.product_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let current_stock = stock_row.0;
+        if current_stock - line.quantity < 0 {
+            return Err(format!(
+                "Insufficient stock for product {}. Available: {}, Requested: {}",
+                line.product_id, current_stock, line.quantity
+            ));
+        }
+
         let disc_pct = line.discount_percent.unwrap_or(0.0);
         let line_gross = (line.quantity as f64) * line.unit_price;
         let disc_amt = line_gross * (disc_pct / 100.0);
@@ -117,6 +157,7 @@ pub async fn process_sale(
 pub async fn process_sale_return(
     account_id: i64,
     invoice_number: Option<String>,
+    invoice_date: String,
     lines: Vec<SaleLine>,
     gross_amount: f64,
     discount_amount: f64,
@@ -127,12 +168,34 @@ pub async fn process_sale_return(
     let accounts = get_system_accounts(&db).await?;
 
     // Create invoice header
-    let inv_no = invoice_number.unwrap_or_else(|| format!("SR-{}", Local::now().timestamp()));
+    let inv_no = match invoice_number {
+        Some(no) => no,
+        None => {
+            let row: Option<(String,)> = sqlx::query_as(
+                "SELECT invoice_number FROM invoices WHERE invoice_type = 'SALE_RETURN' ORDER BY id DESC LIMIT 1"
+            )
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let next_seq = if let Some((last_inv,)) = row {
+                if let Some(num_str) = last_inv.strip_prefix("SR-") {
+                    num_str.parse::<i64>().unwrap_or(0) + 1
+                } else {
+                    1
+                }
+            } else {
+                1
+            };
+            format!("SR-{:05}", next_seq)
+        }
+    };
 
     let res = sqlx::query(
-        "INSERT INTO invoices (invoice_number, invoice_type, account_id, gross_amount, discount_amount, net_amount, amount_received, bakaya, status) VALUES (?, 'SALE_RETURN', ?, ?, ?, ?, 0.0, ?, 'POSTED')"
+        "INSERT INTO invoices (invoice_number, invoice_type, invoice_date, account_id, gross_amount, discount_amount, net_amount, amount_received, bakaya, status) VALUES (?, 'SALE_RETURN', ?, ?, ?, ?, ?, 0.0, ?, 'POSTED')"
     )
     .bind(&inv_no)
+    .bind(&invoice_date)
     .bind(account_id)
     .bind(gross_amount)
     .bind(discount_amount)

@@ -281,6 +281,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (invoiceData.type === 'SALE') {
         await invoke('process_sale', {
           accountId: invoiceData.account_id,
+          invoiceDate: invoiceData.date,
           salesmanId: null,
           invoiceNumber: invoiceData.ref_no,
           lines: invoiceData.lines.map(l => ({
@@ -297,6 +298,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else if (invoiceData.type === 'PURCHASE') {
         await invoke('process_purchase', {
           supplierId: invoiceData.account_id,
+          invoiceDate: invoiceData.date,
           salesmanId: null,
           invoiceNumber: invoiceData.ref_no,
           lines: invoiceData.lines.map(l => ({
@@ -313,6 +315,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else if (invoiceData.type === 'SALE_RETURN') {
         await invoke('process_sale_return', {
           accountId: invoiceData.account_id,
+          invoiceDate: invoiceData.date,
           invoiceNumber: invoiceData.ref_no || null,
           lines: invoiceData.lines.map(l => ({
             product_id: l.product_id,
@@ -327,6 +330,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else if (invoiceData.type === 'PURCHASE_RETURN') {
         await invoke('process_return', {
           supplierId: invoiceData.account_id,
+          invoiceDate: invoiceData.date,
           invoiceNumber: invoiceData.ref_no || null,
           lines: invoiceData.lines.map(l => ({
             product_id: l.product_id,

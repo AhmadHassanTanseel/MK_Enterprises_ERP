@@ -11,32 +11,48 @@ export const Dashboard: React.FC = () => {
   const { invoices, accounts, products } = useAppContext();
 
   const kpis = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    
-    // 1. Today's Sales
-    const todaysSales = invoices
-      .filter(i => i.type === 'SALE' && i.date.startsWith(today))
+    // 1. Total Sales
+    const totalSales = invoices
+      .filter(i => i.type === 'SALE')
       .reduce((sum, i) => sum + i.net_amount, 0);
 
-    // 2. Outstanding Receivables
-    // Accounts with type Customer (assuming type 2 is customer, or just any debit balance)
-    // Actually we can sum up 'bakaya' from invoices or current_balance of customers.
-    // For now we sum current_balance of all Customer accounts (assuming account_type_id == 2)
-    const receivables = accounts
+    // 2. Total Purchases
+    const totalPurchases = invoices
+      .filter(i => i.type === 'PURCHASE')
+      .reduce((sum, i) => sum + i.net_amount, 0);
+
+    // 3. Total Receivable
+    const totalReceivable = accounts
       .filter(a => a.account_type_id === 2)
       .reduce((sum, a) => sum + (a.current_balance || 0), 0);
 
-    // 3. Low Stock Items
-    const lowStock = products.filter(p => p.opening_stock <= (p.reorder_level || 0)).length;
+    // 4. Total Payable
+    const totalPayable = accounts
+      .filter(a => a.account_type_id === 4)
+      .reduce((sum, a) => sum + Math.abs(a.current_balance || 0), 0);
 
-    // 4. Pending Invoices (Not fully paid)
-    const pendingInvoices = invoices.filter(i => i.net_amount > i.amount_paid).length;
+    // 5. Cash Balance
+    const cashAccount = accounts.find(a => a.id === 1);
+    const cashBalance = cashAccount ? (cashAccount.current_balance || 0) : 0;
+
+    // 6. Total Products
+    const totalProducts = products.length;
+
+    // 7. Total Customers
+    const totalCustomers = accounts.filter(a => a.account_type_id === 2).length;
+
+    // 8. Total Suppliers
+    const totalSuppliers = accounts.filter(a => a.account_type_id === 4).length;
 
     return [
-      { title: "Today's Sales", value: `Rs. ${todaysSales.toLocaleString()}`, icon: DollarSign, trend: "Live" },
-      { title: "Outstanding Receivables", value: `Rs. ${receivables.toLocaleString()}`, icon: Users, trend: "Live" },
-      { title: "Low Stock Items", value: lowStock.toString(), icon: Package, trend: "Live" },
-      { title: "Pending Invoices", value: pendingInvoices.toString(), icon: Activity, trend: "Live" },
+      { title: "Total Sales", value: `Rs. ${totalSales.toLocaleString()}`, icon: DollarSign, trend: "Overall" },
+      { title: "Total Purchases", value: `Rs. ${totalPurchases.toLocaleString()}`, icon: ShoppingCart, trend: "Overall" },
+      { title: "Total Receivable", value: `Rs. ${totalReceivable.toLocaleString()}`, icon: Activity, trend: "Overall" },
+      { title: "Total Payable", value: `Rs. ${totalPayable.toLocaleString()}`, icon: FileText, trend: "Overall" },
+      { title: "Cash Balance", value: `Rs. ${cashBalance.toLocaleString()}`, icon: DollarSign, trend: "Current" },
+      { title: "Total Products", value: totalProducts.toString(), icon: Package, trend: "Overall" },
+      { title: "Total Customers", value: totalCustomers.toString(), icon: Users, trend: "Overall" },
+      { title: "Total Suppliers", value: totalSuppliers.toString(), icon: Users, trend: "Overall" },
     ];
   }, [invoices, accounts, products]);
 

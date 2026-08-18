@@ -4,6 +4,7 @@ import { useAppContext } from '../../app/context/AppContext';
 import { FileText, Printer, Download, RefreshCw } from 'lucide-react';
 import { generateReportPDF } from '../../utils/pdfGenerator';
 import { generateReportExcel } from '../../utils/excelGenerator';
+import { printContent } from '../../utils/printHelper';
 
 interface ReportTotal {
   label: string;
@@ -131,7 +132,45 @@ export const ReportPanel: React.FC = () => {
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
               </button>
             )}
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200">
+            <button onClick={() => {
+              let html = '';
+              if (isBackendReport && backendReport) {
+                html += `
+                  <table>
+                    <thead>
+                      <tr>${backendReport.headers.map(h => `<th>${h}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>
+                      ${backendReport.rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}
+                    </tbody>
+                  </table>
+                  <div class="totals">
+                    ${backendReport.totals.map(t => `<div>${t.label}: ${t.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>`).join('')}
+                  </div>
+                `;
+              } else {
+                html += `
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Account</th>
+                        <th>Description</th>
+                        <th class="text-right">Debit</th>
+                        <th class="text-right">Credit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${filteredEntries.map(e => {
+                        const acc = accounts.find(a => a.id === e.account_id);
+                        return '<tr><td>' + e.date + '</td><td>' + (acc ? acc.name : '') + '</td><td>' + e.description + '</td><td class="text-right">' + (e.dr_amount > 0 ? e.dr_amount.toLocaleString() : '-') + '</td><td class="text-right">' + (e.cr_amount > 0 ? e.cr_amount.toLocaleString() : '-') + '</td></tr>';
+                      }).join('')}
+                    </tbody>
+                  </table>
+                `;
+              }
+              printContent(reportTitle, html);
+            }} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200">
               <Printer className="h-4 w-4" /> Print
             </button>
             {!isBackendReport && (

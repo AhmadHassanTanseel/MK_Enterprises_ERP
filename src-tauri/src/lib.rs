@@ -4,9 +4,9 @@ pub mod system_accounts;
 pub mod audit;
 pub mod drm;
 pub mod backup;
-pub mod reporting; // <-- Line 4ish
-pub mod treasury; // <-- NEW
-pub mod procurement; // <-- NEW
+pub mod reporting;
+pub mod treasury;
+pub mod procurement;
 pub mod sales;
 
 use master_data::*;
@@ -17,9 +17,7 @@ use treasury::*;
 use drm::*;
 use backup::*;
 use audit::*;
-use sqlx::SqlitePool;
 use tauri::Manager;
-use tauri::State;
 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

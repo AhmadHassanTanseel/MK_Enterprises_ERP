@@ -23,8 +23,8 @@ pub async fn process_cash_transaction(
     amount: f64,
     trans_date: String,
     description: Option<String>,
-    payment_method: Option<String>,
-    ref_no: Option<String>,
+    _payment_method: Option<String>,
+    _ref_no: Option<String>,
     db: State<'_, SqlitePool>
 ) -> Result<String, String> {
     // Persist a real cash receipt/payment into journal_entries
@@ -87,7 +87,7 @@ pub struct JvLine {
 #[tauri::command]
 pub async fn process_journal_voucher(
     trans_date: String,
-    ref_no: Option<String>,
+    _ref_no: Option<String>,
     lines: Vec<JvLine>,
     db: State<'_, SqlitePool>
 ) -> Result<String, String> {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAppContext, Product, Account } from '../../app/context/AppContext';
 import { Plus, Trash2, Printer, Save, FileText } from 'lucide-react';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
+import { printContent } from '../../utils/printHelper';
 
 interface InvoiceLine {
   id: string;
@@ -23,6 +24,7 @@ export const SaleInvoicePanel: React.FC = () => {
   ]);
   const [amountReceived, setAmountReceived] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>('');
+  const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -66,8 +68,12 @@ export const SaleInvoicePanel: React.FC = () => {
   const handleSave = async () => {
     setError(null); setSuccess(null);
     if (!customer_id) { setError("Please select a customer."); return; }
-    const validLines = lines.filter(l => l.product_id !== null && l.qty > 0);
-    if (validLines.length === 0) { setError("Please add at least one valid product line."); return; }
+    if (lines.length === 0) { setError("Please add at least one line."); return; }
+    for (const line of lines) {
+      if (!line.product_id) { setError("Please select a valid product for all lines."); return; }
+      if (line.qty <= 0) { setError("Quantity must be greater than 0 for all lines."); return; }
+      if (line.rate < 0) { setError("Rate cannot be negative for all lines."); return; }
+    }
 
     setIsSubmitting(true);
     try {
@@ -75,8 +81,8 @@ export const SaleInvoicePanel: React.FC = () => {
         type: 'SALE',
         ref_no: `INV-${Date.now()}`,
         account_id: customer_id,
-        date: new Date().toISOString().split('T')[0],
-        lines: validLines as any,
+        date: invoiceDate,
+        lines: lines as any,
         gross_amount: totalGross,
         discount_amount: totalDiscount,
         net_amount: totalNet,
@@ -103,7 +109,36 @@ export const SaleInvoicePanel: React.FC = () => {
         <div className="flex justify-between items-center pb-4 border-b border-slate-100">
           <h2 className="text-xl font-bold text-slate-800">Sale Invoice</h2>
           <div className="flex gap-2">
-            <button className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
+            <button onClick={() => {
+              const acc = accounts.find(a => a.id === customer_id);
+              const accName = acc ? acc.name : 'Walk-in Customer';
+              const date = new Date().toISOString().split('T')[0];
+              const html = `
+                <div class="header-info">
+                  <span><strong>Customer:</strong> ${accName}</span>
+                  <span><strong>Date:</strong> ${date}</span>
+                </div>
+                <table>
+                  <thead>
+                    <tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Gross</th><th class="text-right">Disc %</th><th class="text-right">Net</th></tr>
+                  </thead>
+                  <tbody>
+                    ${lines.map(l => {
+                      const p = products.find(prod => prod.id === l.product_id);
+                      return '<tr><td>' + (p ? p.name : '') + '</td><td class="text-right">' + l.qty + '</td><td class="text-right">' + l.rate + '</td><td class="text-right">' + (l.qty * l.rate) + '</td><td class="text-right">' + l.discount_pct + '</td><td class="text-right">' + calculateLineTotal(l) + '</td></tr>';
+                    }).join('')}
+                  </tbody>
+                </table>
+                <div class="totals">
+                  <div>Gross: Rs. ${totalGross.toLocaleString()}</div>
+                  <div>Discount: Rs. ${totalDiscount.toLocaleString()}</div>
+                  <div>Net Total: Rs. ${totalNet.toLocaleString()}</div>
+                  <div>Amount Received: Rs. ${amountReceived.toLocaleString()}</div>
+                  <div>Balance: Rs. ${balance.toLocaleString()}</div>
+                </div>
+              `;
+              printContent('Sale Invoice', html);
+            }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
               <Printer className="h-4 w-4" /> Print
             </button>
             <button onClick={() => {
@@ -134,7 +169,7 @@ export const SaleInvoicePanel: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-            <input type="date" className="w-full border border-slate-300 rounded-md p-2" defaultValue={new Date().toISOString().split('T')[0]} />
+            <input type="date" className="w-full border border-slate-300 rounded-md p-2" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Bill No (Auto)</label>

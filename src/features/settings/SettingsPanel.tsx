@@ -48,9 +48,9 @@ export const SettingsPanel: React.FC = () => {
     try {
       setBackupMessage(null);
       const result: string = await invoke('create_system_backup');
-      setBackupMessage(result);
+      alert(`Success: ${result}`);
     } catch (e: any) {
-      setBackupMessage(`Backup failed: ${e}`);
+      alert(`Backup failed: ${e}`);
     }
   };
 
@@ -62,6 +62,10 @@ export const SettingsPanel: React.FC = () => {
       console.error('Failed to load audit logs:', e);
     }
   }, []);
+
+  useEffect(() => {
+    loadAuditLogs();
+  }, [loadAuditLogs]);
 
   const handleOpenAuditLog = async () => {
     setShowAuditLog(true);

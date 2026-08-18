@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
-import { Package, AlertTriangle } from 'lucide-react';
+import { Package, AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface StockRow {
   product_id: number;
@@ -17,23 +17,23 @@ export const InventoryPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadStock = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const rows: StockRow[] = await invoke('get_live_stock');
-        setStockRows(rows);
-      } catch (e) {
-        console.error('Failed to load live stock:', e);
-        setError('Unable to load stock levels. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const loadStock = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const rows: StockRow[] = await invoke('get_live_stock');
+      setStockRows(rows);
+    } catch (e) {
+      console.error('Failed to load live stock:', e);
+      setError('Unable to load stock levels. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
+  useEffect(() => {
     loadStock();
-  }, [products]);
+  }, [loadStock, products]);
 
   const productMeta = new Map(products.map(p => [p.id, p]));
 
@@ -50,11 +50,21 @@ export const InventoryPanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full gap-6">
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-          <Package className="h-6 w-6 text-indigo-500" /> Stock Dashboard
-        </h2>
-        <p className="text-sm text-slate-500 mt-1">Real-time inventory levels from movement ledger</p>
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <Package className="h-6 w-6 text-indigo-500" /> Stock Dashboard
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">Real-time inventory levels from movement ledger</p>
+        </div>
+        <button
+          onClick={loadStock}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
 
       <div className="flex-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
