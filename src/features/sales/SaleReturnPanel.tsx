@@ -13,7 +13,7 @@ export const SaleReturnPanel: React.FC = () => {
   ]);
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  const customerAccounts = accounts.filter(a => a.account_type_id === 1 || a.name.toLowerCase() === 'cash');
+  const customerAccounts = accounts.filter(a => a.account_type_id === 2 || a.account_type_id === 1);
 
   const addLine = () => setLines([...lines, { id: Math.random().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
   const removeLine = (id: string) => lines.length > 1 && setLines(lines.filter(l => l.id !== id));

@@ -14,7 +14,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
   const [amountPaid, setAmountPaid] = useState<number>(0);
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  const supplierAccounts = accounts.filter(a => a.account_type_id === 2); // Suppliers
+  const supplierAccounts = accounts.filter(a => a.account_type_id === 4 || a.account_type_id === 1); // Suppliers & Cash
 
   const addLine = () => {
     setLines([...lines, { id: Math.random().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);

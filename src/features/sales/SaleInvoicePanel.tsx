@@ -28,7 +28,7 @@ export const SaleInvoicePanel: React.FC = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const customerAccounts = accounts.filter(a => a.account_type_id === 1 || a.name.toLowerCase() === 'cash');
+  const customerAccounts = accounts.filter(a => a.account_type_id === 2 || a.account_type_id === 1);
 
   const addLine = () => {
     setLines([...lines, { id: Math.random().toString(), product_id: null, qty: 1, rate: 0, discount_pct: 0 }]);

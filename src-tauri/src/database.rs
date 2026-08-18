@@ -238,6 +238,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
         record_migration(pool, 4).await?;
     }
 
+    if current < 5 {
+        migration_005_legacy_lazy_columns(pool).await?;
+        record_migration(pool, 5).await?;
+    }
+
     Ok(())
 }
 
@@ -335,6 +340,51 @@ async fn migration_004_audit_logs(pool: &SqlitePool) -> Result<(), String> {
     .execute(pool)
     .await
     .map_err(|e| format!("Failed to create audit_logs table: {}", e))?;
+
+    Ok(())
+}
+
+async fn migration_005_legacy_lazy_columns(pool: &SqlitePool) -> Result<(), String> {
+    // Accounts missing columns
+    if !column_exists(pool, "accounts", "salesman_id").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN salesman_id INTEGER").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "accounts", "opening_balance_type").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN opening_balance_type TEXT DEFAULT 'DEBIT'").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+
+    // Categories missing columns
+    if !column_exists(pool, "categories", "description").await? {
+        sqlx::query("ALTER TABLE categories ADD COLUMN description TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "categories", "margin_target").await? {
+        sqlx::query("ALTER TABLE categories ADD COLUMN margin_target REAL").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "categories", "flavor").await? {
+        sqlx::query("ALTER TABLE categories ADD COLUMN flavor TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+
+    // Products missing columns
+    if !column_exists(pool, "products", "real_barcode").await? {
+        sqlx::query("ALTER TABLE products ADD COLUMN real_barcode TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "products", "uom").await? {
+        sqlx::query("ALTER TABLE products ADD COLUMN uom TEXT DEFAULT 'Piece'").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "products", "sale_account_id").await? {
+        sqlx::query("ALTER TABLE products ADD COLUMN sale_account_id INTEGER").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+
+    // Journal Entries missing columns
+    if !column_exists(pool, "journal_entries", "payment_method").await? {
+        sqlx::query("ALTER TABLE journal_entries ADD COLUMN payment_method TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "journal_entries", "ref_no").await? {
+        sqlx::query("ALTER TABLE journal_entries ADD COLUMN ref_no TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "journal_entries", "attachment_path").await? {
+        sqlx::query("ALTER TABLE journal_entries ADD COLUMN attachment_path TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }

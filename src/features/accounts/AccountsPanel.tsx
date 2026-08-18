@@ -3,7 +3,7 @@ import { useAppContext, Account } from '../../app/context/AppContext';
 import { Plus, Edit2, Search, Filter, Trash2, X } from 'lucide-react';
 
 export const AccountsPanel: React.FC = () => {
-  const { accounts, createAccount, updateAccount, deleteAccount } = useAppContext();
+  const { accounts, accountTypes, createAccount, updateAccount, deleteAccount } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
   
   const [isAddMode, setIsAddMode] = useState(false);
@@ -121,12 +121,10 @@ export const AccountsPanel: React.FC = () => {
               value={formData.account_type_id || ''}
               onChange={e => setFormData({...formData, account_type_id: Number(e.target.value)})}
             >
-              <option value="1">Customer</option>
-              <option value="2">Supplier</option>
-              <option value="3">Cash</option>
-              <option value="4">Bank</option>
-              <option value="5">Expense</option>
-              <option value="6">Income</option>
+              <option value="" disabled>Select Account Type</option>
+              {accountTypes.map(type => (
+                <option key={type.id} value={type.id}>{type.name}</option>
+              ))}
             </select>
           </div>
           <div>

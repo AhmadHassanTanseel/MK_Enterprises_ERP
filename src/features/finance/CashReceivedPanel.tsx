@@ -29,7 +29,7 @@ export const CashReceivedPanel: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const customerAccounts = accounts.filter(a => a.account_type_id === 1 || a.account_type_id === 3 || a.account_type_id === 4);
+  const customerAccounts = accounts.filter(a => a.account_type_id !== 1); // Anyone except Cash itself
 
   const loadHistory = useCallback(async () => {
     try {
