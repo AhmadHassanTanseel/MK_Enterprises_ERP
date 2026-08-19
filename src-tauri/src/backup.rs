@@ -54,5 +54,4 @@ pub async fn restore_database(
 #[tauri::command]
 pub async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     app_handle.restart();
-    Ok(())
 }

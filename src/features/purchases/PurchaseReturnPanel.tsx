@@ -4,6 +4,7 @@ import { Plus, Trash2, Save, CornerUpRight, Printer, FileText } from 'lucide-rea
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
 import { printContent } from '../../utils/printHelper';
 import toast from 'react-hot-toast';
+import { EntitySelect } from '../../shared/components/EntitySelect';
 
 export const PurchaseReturnPanel: React.FC = () => {
   const { products, accounts, postInvoice } = useAppContext();
@@ -162,11 +163,15 @@ export const PurchaseReturnPanel: React.FC = () => {
               {lines.map((line, index) => (
                 <tr key={line.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2 text-center">{index + 1}</td>
-                  <td className="px-4 py-2">
-                    <select className="w-full border-none bg-transparent outline-none p-1" value={line.product_id || ''} onChange={e => updateLine(line.id, 'product_id', Number(e.target.value))}>
-                      <option value="">-- Select Product --</option>
-                      {products.map(p => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
-                    </select>
+                  <td className="px-4 py-2 w-48">
+                        <EntitySelect 
+                          type="category" 
+                          value={line.category_id || 0} 
+                          onChange={v => updateLine(line.id, 'category_id', v)} 
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                    <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} filter={p => line.category_id ? p.category_id === line.category_id : true} className="w-full" />
                   </td>
                   <td className="px-4 py-2 text-right">
                     <input type="number" min="1" className="w-full text-right border border-slate-200 rounded p-1" value={line.qty} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />

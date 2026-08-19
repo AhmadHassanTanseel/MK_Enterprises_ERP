@@ -25,7 +25,7 @@ pub async fn process_cash_transaction(
     description: Option<String>,
     _payment_method: Option<String>,
     _ref_no: Option<String>,
-    attachment_path: Option<String>,
+    _attachment_path: Option<String>,
     db: State<'_, SqlitePool>
 ) -> Result<String, String> {
     // Persist a real cash receipt/payment into journal_entries
@@ -41,24 +41,24 @@ pub async fn process_cash_transaction(
 
     if trans_type == "RECEIVE" {
         // Debit Cash Drawer [ID:1]
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, attachment_path) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, ?, ?, ?)")
-            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&attachment_path)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, ?, ?, ?)")
+            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         // Credit the account (reduces receivable)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, attachment_path) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, ?, ?, ?)")
-            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&attachment_path)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, ?, ?, ?)")
+            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
     } else {
         // PAYMENT: Debit the account (expense / supplier reduction)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, attachment_path) VALUES (?, ?, 0.0, 'CASH_PAYMENT', ?, ?, ?, ?)")
-            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&attachment_path)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'CASH_PAYMENT', ?, ?, ?, ?)")
+            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         // Credit Cash Drawer [ID:1]
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, attachment_path) VALUES (?, 0.0, ?, 'CASH_PAYMENT', ?, ?, ?, ?)")
-            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&attachment_path)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'CASH_PAYMENT', ?, ?, ?, ?)")
+            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
 
@@ -138,6 +138,7 @@ pub async fn process_journal_voucher(
 pub struct CashHistoryRow {
     pub id: i64,
     pub trans_type: String,
+    pub ref_no: Option<String>,
     pub account_id: i64,
     pub account_name: String,
     pub amount: f64,
@@ -163,6 +164,7 @@ pub async fn get_cash_transaction_history(
         r#"
         SELECT
             je.id,
+            je.ref_no,
             CASE je.voucher_type
                 WHEN 'CASH_RECEIPT' THEN 'RECEIVE'
                 ELSE 'PAYMENT'
@@ -190,36 +192,6 @@ pub async fn get_cash_transaction_history(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn save_attachment(
-    source_path: String,
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
-    use std::fs;
-    use std::path::PathBuf;
-    use uuid::Uuid;
-    use tauri::Manager;
-
-    let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
-    let attachments_dir = app_dir.join("attachments");
-    
-    if !attachments_dir.exists() {
-        fs::create_dir_all(&attachments_dir).map_err(|e| e.to_string())?;
-    }
-
-    let ext = PathBuf::from(&source_path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("bin")
-        .to_string();
-
-    let new_filename = format!("{}.{}", Uuid::new_v4().to_string(), ext);
-    let dest_path = attachments_dir.join(&new_filename);
-
-    fs::copy(&source_path, &dest_path).map_err(|e| format!("Failed to copy file: {}", e))?;
-
-    Ok(format!("attachments/{}", new_filename))
-}
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct JournalVoucherHeader {
@@ -252,4 +224,41 @@ pub async fn get_journal_vouchers(
         .fetch_all(&*db)
         .await
         .map_err(|e| e.to_string())
+}
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct LedgerEntryDetail {
+    pub id: i64,
+    pub account_id: i64,
+    pub account_name: String,
+    pub debit: f64,
+    pub credit: f64,
+    pub remarks: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_ledger_entries_by_ref(
+    ref_no: String,
+    db: State<'_, SqlitePool>
+) -> Result<Vec<LedgerEntryDetail>, String> {
+    let sql = r#"
+        SELECT 
+            l.id,
+            l.account_id,
+            a.name as account_name,
+            l.debit,
+            l.credit,
+            l.remarks
+        FROM ledger l
+        JOIN accounts a ON l.account_id = a.id
+        WHERE l.ref_no = ?
+        ORDER BY l.id ASC
+    "#;
+    
+    let entries: Vec<LedgerEntryDetail> = sqlx::query_as(sql)
+        .bind(ref_no)
+        .fetch_all(&*db)
+        .await
+        .map_err(|e| e.to_string())?;
+        
+    Ok(entries)
 }

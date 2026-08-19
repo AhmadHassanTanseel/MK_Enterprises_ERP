@@ -161,6 +161,16 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         );
 
         -- 9. SYSTEM ADMINISTRATION, DRM & SECURITY
+        CREATE TABLE IF NOT EXISTS attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_ref TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            stored_filename TEXT NOT NULL,
+            mime_type TEXT,
+            size_bytes INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,

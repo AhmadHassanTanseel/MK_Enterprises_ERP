@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { EntitySelect } from '../../shared/components/EntitySelect';
 import { useAppContext } from '../../app/context/AppContext';
 import { Plus, Search, Filter, Paperclip, CreditCard, Banknote, Building2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -8,6 +9,7 @@ import toast from 'react-hot-toast';
 interface CashHistoryRow {
   id: number;
   trans_type: string;
+  ref_no: string | null;
   account_id: number;
   account_name: string;
   amount: number;
@@ -34,6 +36,33 @@ export const CashPaymentPanel: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const supplierAccounts = accounts.filter(a => a.account_type_id !== 1);
+
+
+  const [viewingRecord, setViewingRecord] = useState<CashHistoryRow | null>(null);
+  const [recordAttachments, setRecordAttachments] = useState<any[]>([]);
+
+  const handleView = async (row: CashHistoryRow) => {
+    setViewingRecord(row);
+    if (row.ref_no) {
+      try {
+        const atts = await invoke<any[]>('get_attachments', { transactionRef: row.ref_no });
+        setRecordAttachments(atts);
+      } catch (e) {
+        console.error("Failed to load attachments", e);
+      }
+    } else {
+      setRecordAttachments([]);
+    }
+  };
+
+  const handleOpenAttachment = async (storedFilename: string) => {
+    try {
+      const path = await invoke<string>('get_attachment_path', { storedFilename });
+      await openShell(path);
+    } catch (e: any) {
+      toast.error(`Could not open file: ${e.toString()}`);
+    }
+  };
 
   const loadHistory = useCallback(async () => {
     try {
@@ -85,19 +114,25 @@ export const CashPaymentPanel: React.FC = () => {
 
     setIsSubmitting(true);
         try {
-      let finalAttachmentPath = undefined;
-      if (attachment) {
-        finalAttachmentPath = await invoke<string>('save_attachment', { sourcePath: attachment });
-      }
-
+      const refNo = `CP-${Date.now()}`;
       await postPayment(
         transDate,
         accountId,
         'PAY',
         amount,
         `${paymentMethod} - ${description}`,
-        finalAttachmentPath
+        refNo
       );
+
+      if (attachment) {
+        const originalFilename = attachment.split('\\\\').pop()?.split('/').pop() || 'attached_file';
+        await invoke('save_attachment', {
+          transactionRef: refNo,
+          sourcePath: attachment,
+          originalFilename,
+          mimeType: null
+        });
+      }
       toast.success(`Payment of Rs. ${amount} saved successfully!`);
       setIsAddMode(false);
       setAmount(0);
@@ -120,17 +155,12 @@ export const CashPaymentPanel: React.FC = () => {
         <form onSubmit={handleSave} className="space-y-4 flex-1 overflow-y-auto pr-2">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Account (Supplier/Expense) *</label>
-            <select
-              required
-              className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              value={accountId || ''}
-              onChange={e => setAccountId(Number(e.target.value))}
-            >
-              <option value="">-- Select Account --</option>
-              {supplierAccounts.map(acc => (
-                <option key={acc.id} value={acc.id}>{acc.name} (Bal: {acc.current_balance})</option>
-              ))}
-            </select>
+            <EntitySelect 
+              type="account" 
+              value={accountId || 0} 
+              onChange={setAccountId}
+              filter={a => a.account_type_id !== 1}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
@@ -180,11 +210,17 @@ export const CashPaymentPanel: React.FC = () => {
             <label className="block text-sm font-medium text-slate-700 mb-1">Attachment (ERP Feature)</label>
                         <button type="button" onClick={handleAttach} className="w-full flex items-center justify-center gap-2 border border-dashed border-slate-400 rounded-md p-4 text-slate-500 hover:bg-slate-50 hover:border-slate-500 transition-colors">
               <Paperclip className="h-5 w-5" />
-              <span className="text-sm">
-                {attachment ? attachment.split('\\\\').pop()?.split('/').pop() : 'Click to attach file or image'}
-              </span>
-            </button>
-          </div>
+              
+                <span className="text-sm">
+                  {attachment ? attachment.split('\\\\').pop()?.split('/').pop() : 'Click to attach file or image'}
+                </span>
+              </button>
+              {attachment && (
+                <button type="button" onClick={() => setAttachment(null)} className="mt-2 text-sm text-rose-600 hover:text-rose-800">
+                  Remove attachment
+                </button>
+              )}
+            </div>
           <button type="submit" disabled={isSubmitting} className="w-full bg-rose-600 text-white font-medium py-3 rounded-md hover:bg-rose-700 transition-colors mt-4 shadow-sm hover:shadow-md disabled:opacity-50">
             {isSubmitting ? 'Saving...' : 'Save Payment'}
           </button>
@@ -247,6 +283,64 @@ export const CashPaymentPanel: React.FC = () => {
           </div>
         )}
       </div>
+
+      {viewingRecord && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="font-bold text-lg text-slate-800">Transaction Details</h3>
+              <button onClick={() => setViewingRecord(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                <X className="h-5 w-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Date</p>
+                  <p className="font-medium text-slate-800">{viewingRecord.trans_date}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold">Ref No</p>
+                  <p className="font-medium text-slate-800">{viewingRecord.ref_no || `ID-${viewingRecord.id}`}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-slate-500 uppercase font-bold">Account</p>
+                  <p className="font-medium text-slate-800">{viewingRecord.account_name}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-slate-500 uppercase font-bold">Amount</p>
+                  <p className="font-bold text-lg text-emerald-600">Rs. {viewingRecord.amount.toLocaleString()}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-slate-500 uppercase font-bold">Description / Remarks</p>
+                  <p className="text-slate-700 bg-slate-50 p-3 rounded border border-slate-100">{viewingRecord.description || '-'}</p>
+                </div>
+              </div>
+              
+              <div>
+                <p className="text-xs text-slate-500 uppercase font-bold mb-2">Attachments</p>
+                {recordAttachments.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    {recordAttachments.map(att => (
+                      <button 
+                        key={att.id}
+                        onClick={() => handleOpenAttachment(att.stored_filename)}
+                        className="flex items-center gap-2 text-left w-full p-2 rounded border border-slate-200 hover:bg-slate-50 transition-colors"
+                      >
+                        <Paperclip className="h-4 w-4 text-blue-500" />
+                        <span className="text-sm font-medium text-slate-700">{att.original_filename}</span>
+                        {att.size_bytes && <span className="text-xs text-slate-400 ml-auto">{(att.size_bytes / 1024).toFixed(1)} KB</span>}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">No attachments for this transaction.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

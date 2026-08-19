@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAppContext } from '../../app/context/AppContext';
 import { Plus, Trash2, Save, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { EntitySelect } from '../../shared/components/EntitySelect';
 
 interface JVLine { id: string; accountId: number | null; dr: number; cr: number; }
 
@@ -113,14 +114,11 @@ export const JournalVoucherPanel: React.FC = () => {
                 <tr key={line.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2 text-center text-slate-400">{index + 1}</td>
                   <td className="px-4 py-2">
-                    <select 
-                      className="w-full border-none bg-transparent focus:ring-2 focus:ring-blue-500 outline-none p-1"
-                      value={line.accountId || ''}
-                      onChange={e => updateLine(line.id, 'accountId', Number(e.target.value))}
-                    >
-                      <option value="">-- Select Account --</option>
-                      {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                    </select>
+                    <EntitySelect 
+                          type="account" 
+                          value={line.accountId} 
+                          onChange={(val) => updateLine(index, 'accountId', val)}
+                        />
                   </td>
                   <td className="px-4 py-2 text-right">
                     <input type="number" className="w-full text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.dr || ''} onChange={e => updateLine(line.id, 'dr', Number(e.target.value))} />

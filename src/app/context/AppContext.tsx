@@ -29,7 +29,7 @@ interface AppContextType {
 
   postInvoice: (invoice: Omit<Invoice, 'id'>) => Promise<void>;
   postJournalEntry: (date: string, lines: { accountId: number; entryType: 'DR' | 'CR'; amount: number; description?: string }[], description: string) => Promise<void>;
-  postPayment: (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, attachmentPath?: string) => Promise<void>;
+  postPayment: (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, refNo?: string) => Promise<void>;
   fetchData: () => Promise<void>;
 
   createCategory: (name: string, description?: string, parent_id?: number, margin_target?: number, flavor?: string) => Promise<void>;
@@ -258,7 +258,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const postPayment = async (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, attachmentPath?: string) => {
+  const postPayment = async (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, refNo?: string) => {
     try {
       await invoke('process_cash_transaction', {
         transType: type === 'RECEIVE' ? 'RECEIVE' : 'PAYMENT',
@@ -267,8 +267,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         transDate: date,
         description: description,
         paymentMethod: null,
-        refNo: null,
-        attachmentPath: attachmentPath || null
+        refNo: refNo || null,
+        attachmentPath: null
       });
       await fetchData();
     } catch (error) {

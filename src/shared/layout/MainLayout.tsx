@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { GlobalSearch } from './GlobalSearch';
 import { 
   LayoutDashboard, Wallet, Receipt, FileText, 
   Package, List, Users, Settings, Search, Bell, User
@@ -91,16 +92,7 @@ export const MainLayout: React.FC = () => {
           </div>
 
           {/* Center: Global Search (ERP Enhancement) */}
-          <div className="flex-1 max-w-lg mx-8">
-            <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-500" />
-              <input 
-                type="text" 
-                placeholder="Global Search (Ctrl+K)..." 
-                className="w-full bg-slate-100 border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-              />
-            </div>
-          </div>
+          <GlobalSearch />
 
           {/* Right: Notifications & Avatar */}
           <div className="flex items-center gap-4">

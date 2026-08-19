@@ -4,6 +4,7 @@ import { Plus, Trash2, Printer, Save, FileText } from 'lucide-react';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
 import { printContent } from '../../utils/printHelper';
 import toast from 'react-hot-toast';
+import { EntitySelect } from '../../shared/components/EntitySelect';
 
 export const PurchaseInvoicePanel: React.FC = () => {
   const { products, categories, accounts, postInvoice } = useAppContext();
@@ -190,15 +191,15 @@ export const PurchaseInvoicePanel: React.FC = () => {
               {lines.map((line, index) => (
                 <tr key={line.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2 text-center text-slate-400">{index + 1}</td>
-                  <td className="px-4 py-2">
-                    <select 
-                      className="w-full border-none bg-transparent focus:ring-2 focus:ring-blue-500 outline-none p-1"
-                      value={line.product_id || ''}
-                      onChange={e => updateLine(line.id, 'product_id', Number(e.target.value))}
-                    >
-                      <option value="">-- Select Product --</option>
-                      {products.map(p => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
-                    </select>
+                  <td className="px-4 py-2 w-48">
+                        <EntitySelect 
+                          type="category" 
+                          value={line.category_id || 0} 
+                          onChange={v => updateLine(line.id, 'category_id', v)} 
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                    <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} filter={p => line.category_id ? p.category_id === line.category_id : true} className="w-full" />
                   </td>
                   <td className="px-4 py-2 text-right">
                     <input type="number" min="1" className="w-full text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.qty} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />

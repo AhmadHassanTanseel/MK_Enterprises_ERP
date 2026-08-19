@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAppContext, Area } from '../../app/context/AppContext';
 import { MapPin, Plus, Edit2, Search, Trash2, Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { EntitySelect } from '../../shared/components/EntitySelect';
 
 export const AreasPanel: React.FC = () => {
   const { areas, accounts, createArea, updateArea, deleteArea } = useAppContext();
@@ -123,10 +124,7 @@ export const AreasPanel: React.FC = () => {
                         <input type="text" className="w-full border border-slate-300 rounded px-2 py-1 outline-none focus:border-teal-500" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
                       </td>
                       <td className="px-4 py-3">
-                        <select className="w-full border border-slate-300 rounded px-2 py-1 outline-none focus:border-teal-500" value={editData.salesman_id || ''} onChange={e => setEditData({...editData, salesman_id: Number(e.target.value) || null})}>
-                          <option value="">-- Unassigned --</option>
-                          {salesmen.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
+                        <EntitySelect type="salesman" value={editData.salesman_id || 0} onChange={v => setEditData({...editData, salesman_id: v})} />
                       </td>
                       <td className="px-4 py-3 text-center text-slate-400">—</td>
                       <td className="px-4 py-3 text-center">

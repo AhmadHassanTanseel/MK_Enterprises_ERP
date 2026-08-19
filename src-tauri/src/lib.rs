@@ -9,12 +9,14 @@ pub mod reporting;
 pub mod treasury;
 pub mod procurement;
 pub mod sales;
+pub mod attachments;
 
 use master_data::*;
 use reporting::*;
 use procurement::*;
 use sales::*;
-use treasury::*;
+use treasury::{process_cash_transaction, process_journal_voucher, get_cash_transaction_history, get_journal_vouchers, get_ledger_entries_by_ref};
+use attachments::{save_attachment, get_attachments, get_attachment_path};
 use drm::*;
 use backup::*;
 use audit::*;
@@ -38,7 +40,10 @@ pub fn run() {
             process_journal_voucher,
             get_cash_transaction_history,
             save_attachment,
+            get_attachments,
+            get_attachment_path,
             get_journal_vouchers,
+            get_ledger_entries_by_ref,
 
             // Master data
             get_categories,

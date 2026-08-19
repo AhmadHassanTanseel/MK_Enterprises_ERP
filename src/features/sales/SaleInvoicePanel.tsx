@@ -4,6 +4,7 @@ import { Plus, Trash2, Printer, Save, FileText } from 'lucide-react';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
 import { printContent } from '../../utils/printHelper';
 import toast from 'react-hot-toast';
+import { EntitySelect } from '../../shared/components/EntitySelect';
 
 interface InvoiceLine {
   id: string;
@@ -162,16 +163,7 @@ export const SaleInvoicePanel: React.FC = () => {
         <div className="grid grid-cols-4 gap-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Customer / Walk-in *</label>
-            <select 
-              className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              value={customer_id || ''}
-              onChange={e => setCustomerId(Number(e.target.value))}
-            >
-              <option value="">-- Select Customer --</option>
-              {customerAccounts.map(acc => (
-                <option key={acc.id} value={acc.id}>{acc.name}</option>
-              ))}
-            </select>
+            <EntitySelect type="account" value={customer_id || 0} onChange={setCustomerId} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
@@ -183,10 +175,7 @@ export const SaleInvoicePanel: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Salesman</label>
-            <select className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none" value={salesman_id || ''} onChange={e => setSalesmanId(Number(e.target.value) || null)}>
-              <option value="">-- Optional --</option>
-              {salesmen.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <EntitySelect type="salesman" value={salesman_id || 0} onChange={setSalesmanId} />
           </div>
         </div>
       </div>
@@ -216,15 +205,15 @@ export const SaleInvoicePanel: React.FC = () => {
                 return (
                   <tr key={line.id} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-center text-slate-400">{index + 1}</td>
-                    <td className="px-4 py-2">
-                      <select 
-                        className="w-full border-none bg-transparent focus:ring-2 focus:ring-blue-500 outline-none p-1"
-                        value={line.product_id || ''}
-                        onChange={e => updateLine(line.id, 'product_id', Number(e.target.value))}
-                      >
-                        <option value="">-- Select Product --</option>
-                        {products.map(p => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
-                      </select>
+                    <td className="px-4 py-2 w-48">
+                        <EntitySelect 
+                          type="category" 
+                          value={line.category_id || 0} 
+                          onChange={v => updateLine(line.id, 'category_id', v)} 
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                      <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} filter={p => line.category_id ? p.category_id === line.category_id : true} className="w-full" />
                     </td>
                     <td className="px-4 py-2 text-right">
                       <span className={`px-2 py-1 rounded text-xs ${stock > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
