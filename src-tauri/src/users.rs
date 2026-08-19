@@ -107,3 +107,19 @@ pub async fn delete_user(id: i64, db: State<'_, SqlitePool>) -> Result<(), Strin
     let _ = log_audit(&*db, &format!("Deleted user ID {}", id), "System").await;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn verify_password(username: String, password_plain: String, db: State<'_, SqlitePool>) -> Result<bool, String> {
+    let user: Option<(String,)> = sqlx::query_as("SELECT password_hash FROM users WHERE username = ?")
+        .bind(&username)
+        .fetch_optional(&*db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some((hash,)) = user {
+        let parsed_hash = PasswordHash::new(&hash).map_err(|e| e.to_string())?;
+        let argon2 = Argon2::default();
+        return Ok(argon2.verify_password(password_plain.as_bytes(), &parsed_hash).is_ok());
+    }
+    Ok(false)
+}

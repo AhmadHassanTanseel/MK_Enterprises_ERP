@@ -25,10 +25,9 @@ export const AreasPanel: React.FC = () => {
     setIsSubmitting(true);
     try {
       await createArea(newAreaName);
-      setNewAreaName('');
-    } catch (err: any) {
-      toast.error(err.toString());
-    } finally {
+        toast.success(`Area '${newAreaName}' saved successfully`);
+        setNewAreaName('');
+    } catch (err: any) { toast.error(`Could not save Area: ${err.toString()}`); } finally {
       setIsSubmitting(false);
     }
   };
@@ -47,10 +46,9 @@ export const AreasPanel: React.FC = () => {
     try {
       // Assuming salesman_id is kept unchanged for now
       await updateArea(id, editData.name, editData.salesman_id || undefined, editData.remarks, editData.active);
-      setEditingId(null);
-    } catch (err: any) {
-      alert(err.toString());
-    } finally {
+        toast.success(`Area '${editData.name}' updated successfully`);
+        setEditingId(null);
+    } catch (err: any) { toast.error(`Could not save Area: ${err.toString()}`); } finally {
       setIsSubmitting(false);
     }
   };
@@ -58,11 +56,7 @@ export const AreasPanel: React.FC = () => {
   const handleDelete = async (id: number) => {
     if(confirm('Are you sure you want to delete this area?')) {
       setIsSubmitting(true);
-      try {
-        await deleteArea(id);
-      } catch (err: any) {
-        alert(err.toString());
-      } finally {
+      try { await deleteArea(id); toast.success(`Area deleted`); } catch (err: any) { toast.error(`Could not delete Area: ${err.toString()}`); } finally {
         setIsSubmitting(false);
       }
     }
@@ -88,8 +82,8 @@ export const AreasPanel: React.FC = () => {
             onChange={e => setNewAreaName(e.target.value)}
           />
           <button type="submit" disabled={isSubmitting} className="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 transition-colors flex items-center gap-2 font-medium disabled:opacity-50">
-            <Plus className="h-4 w-4" /> Add
-          </button>
+            <Plus className="h-4 w-4" /> {isSubmitting ? "Adding..." : "Add"}
+            </button>
         </form>
       </div>
       

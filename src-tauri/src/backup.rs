@@ -49,7 +49,10 @@ pub async fn restore_database(
     fs::copy(&file_path, &db_path).map_err(|e| format!("Failed to restore: {}", e))?;
 
     // We successfully replaced it. For safety, the app should be restarted.
+    Ok("Database restored successfully. Please restart the application.".into())
+}
+#[tauri::command]
+pub async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     app_handle.restart();
-
-    Ok("Database restored successfully. Restarting application...".into())
+    Ok(())
 }

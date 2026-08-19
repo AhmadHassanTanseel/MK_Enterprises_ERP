@@ -23,10 +23,9 @@ export const CategoriesPanel: React.FC = () => {
     setIsSubmitting(true);
     try {
       await createCategory(newCatName);
-      setNewCatName('');
-    } catch (err: any) {
-      toast.error(err.toString());
-    } finally {
+        toast.success(`Category '${newCatName}' saved successfully`);
+        setNewCatName('');
+    } catch (err: any) { toast.error(`Could not save Category: ${err.toString()}`); } finally {
       setIsSubmitting(false);
     }
   };
@@ -44,10 +43,9 @@ export const CategoriesPanel: React.FC = () => {
     setIsSubmitting(true);
     try {
       await updateCategory(id, editData.name, editData.description);
-      setEditingId(null);
-    } catch (err: any) {
-      alert(err.toString());
-    } finally {
+        toast.success(`Category '${editData.name}' updated successfully`);
+        setEditingId(null);
+    } catch (err: any) { toast.error(`Could not save Category: ${err.toString()}`); } finally {
       setIsSubmitting(false);
     }
   };
@@ -55,11 +53,7 @@ export const CategoriesPanel: React.FC = () => {
   const handleDelete = async (id: number) => {
     if(confirm('Are you sure you want to delete this category?')) {
       setIsSubmitting(true);
-      try {
-        await deleteCategory(id);
-      } catch (err: any) {
-        alert(err.toString());
-      } finally {
+      try { await deleteCategory(id); toast.success(`Category deleted`); } catch (err: any) { toast.error(`Could not delete Category: ${err.toString()}`); } finally {
         setIsSubmitting(false);
       }
     }
@@ -85,8 +79,8 @@ export const CategoriesPanel: React.FC = () => {
             onChange={e => setNewCatName(e.target.value)}
           />
           <button type="submit" disabled={isSubmitting} className="bg-rose-600 text-white px-4 py-2 rounded-md hover:bg-rose-700 transition-colors flex items-center gap-2 font-medium disabled:opacity-50">
-            <Plus className="h-4 w-4" /> Add
-          </button>
+            <Plus className="h-4 w-4" /> {isSubmitting ? "Adding..." : "Add"}
+            </button>
         </form>
       </div>
       

@@ -39,7 +39,7 @@ export const ProductsPanel: React.FC = () => {
           formData.reorder_level || undefined, 
           formData.sale_account_id || undefined
         );
-        toast.success("Product updated successfully!");
+        
       } else {
         await createProduct(
           formData.code, 
@@ -54,14 +54,12 @@ export const ProductsPanel: React.FC = () => {
           formData.reorder_level || undefined, 
           formData.sale_account_id || undefined
         );
-        toast.success("Product created successfully!");
+        
       }
 
       setIsAddMode(false);
       setFormData({});
-    } catch (err: any) {
-      toast.error(err.toString());
-    } finally {
+    } catch (err: any) { toast.error(`Could not save Product: ${err.toString()}`); } finally {
       setIsSubmitting(false);
     }
   };
@@ -92,14 +90,12 @@ export const ProductsPanel: React.FC = () => {
       setIsSubmitting(true);
       try {
         await deleteProduct(id);
-        toast.success("Product deleted successfully!");
+        
         if (formData.id === id) {
           setFormData({});
           setIsAddMode(false);
         }
-      } catch (err: any) {
-        alert(err.toString());
-      } finally {
+      } catch (err: any) { toast.error(`Could not save Product: ${err.toString()}`); } finally {
         setIsSubmitting(false);
       }
     }

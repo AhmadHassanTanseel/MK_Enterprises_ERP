@@ -2,7 +2,10 @@ import toast from 'react-hot-toast';
 
 export function printContent(title: string, contentHtml: string) {
   const printWindow = window.open('', '_blank', 'width=800,height=600');
-  if (!printWindow) return;
+  if (!printWindow) {
+    toast.error(`Could not prepare ${title} for printing: Browser blocked popup window.`);
+    return;
+  }
   
   printWindow.document.write(`
     <html>
@@ -33,6 +36,6 @@ export function printContent(title: string, contentHtml: string) {
   setTimeout(() => { 
     printWindow.print(); 
     printWindow.close(); 
-    toast.success('Document printed successfully');
+    toast.success(`Sending ${title} to printer...`);
   }, 250);
 }

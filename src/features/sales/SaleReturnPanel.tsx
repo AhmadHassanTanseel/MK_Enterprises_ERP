@@ -69,12 +69,10 @@ export const SaleReturnPanel: React.FC = () => {
         net_amount: totalNet,
         amount_paid: 0
       });
-      toast.success("Sale Return Processed Successfully!");
+      toast.success(`Sale Return saved successfully`);
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
       setAccountId(null);
-    } catch (err: any) {
-      toast.error(err.toString());
-    } finally {
+    } catch (err) { toast.error(`Could not save Sale Return: ${err instanceof Error ? err.message : String(err)}`); } finally {
       setIsSubmitting(false);
     }
   };

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { stat } from '@tauri-apps/plugin-fs';
+import { open as openShell } from '@tauri-apps/plugin-shell';
 import { useNavigate } from 'react-router-dom';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppContext } from '../../app/context/AppContext';
@@ -25,6 +27,9 @@ export const SettingsPanel: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<{path: string, size: number, date: Date} | null>(null);
+  const [restoreConfirmText, setRestoreConfirmText] = useState("");
 
   useEffect(() => {
     const nameSetting = settings.find(s => s.key === 'company_name');
@@ -51,29 +56,79 @@ export const SettingsPanel: React.FC = () => {
     const handleBackup = async () => {
     try {
       setBackupMessage(null);
-      const result: string = await invoke('create_system_backup');
-      toast.success(`Success: ${result}`);
+      const result: { filepath: string, size_bytes: number } = await invoke('create_system_backup');
+      const sizeMb = (result.size_bytes / (1024 * 1024)).toFixed(2);
+      toast((t) => (
+        <div className="flex flex-col gap-2">
+          <span>Backup created: {result.filepath.split('\\').pop()?.split('/').pop()}, {sizeMb} MB</span>
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={() => { openShell(result.filepath.substring(0, result.filepath.lastIndexOf('\\'))); toast.dismiss(t.id); }}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+            >
+              Open Folder
+            </button>
+            <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1 bg-slate-200 text-slate-800 rounded text-xs hover:bg-slate-300">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ), { duration: 8000 });
     } catch (e: any) {
       toast.error(`Backup failed: ${e}`);
     }
   };
 
-  const handleRestore = async () => {
-    if (confirm("Are you sure you want to restore the database? The current database will be backed up automatically before restoring.")) {
-      try {
-        const file = await open({
-          multiple: false,
-          filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }]
+  const handleRestoreClick = async () => {
+    try {
+      const file = await open({
+        multiple: false,
+        filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }]
+      });
+      if (file) {
+        const metadata = await stat(file as string);
+        setRestoreFile({
+          path: file as string,
+          size: metadata.size,
+          date: metadata.mtime || new Date()
         });
-        if (file) {
-          toast.loading("Restoring database...");
-          await invoke('restore_database', { filePath: file as string });
-          toast.success("Database restored successfully. Application will restart.");
-        }
-      } catch (e: any) {
-        toast.dismiss();
-        toast.error(`Restore failed: ${e}`);
+        setRestoreConfirmText("");
+        setShowRestoreConfirm(true);
       }
+    } catch (e: any) {
+      toast.error(`Restore failed: ${e.toString()}`);
+    }
+  };
+
+  const executeRestore = async () => {
+    if (restoreConfirmText !== 'RESTORE') {
+      toast.error("You must type RESTORE to confirm.");
+      return;
+    }
+    if (!restoreFile) return;
+    
+    setIsSubmitting(true);
+    toast.loading("Restoring database...", { id: 'restoreToast' });
+    try {
+      const result: string = await invoke('restore_database', { filePath: restoreFile.path });
+      toast.success((t) => (
+        <div className="flex flex-col gap-2">
+          <span className="font-bold">Database restored successfully!</span>
+          <span className="text-sm">A backup of your previous data was saved automatically.</span>
+          <button 
+            onClick={() => invoke('restart_app')}
+            className="mt-2 bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700"
+          >
+            Restart Now
+          </button>
+        </div>
+      ), { id: 'restoreToast', duration: 15000 });
+      setShowRestoreConfirm(false);
+      setRestoreFile(null);
+    } catch (e: any) {
+      toast.error(`Restore failed, current data is untouched: ${e.toString()}`, { id: 'restoreToast', duration: 8000 });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -244,6 +299,62 @@ export const SettingsPanel: React.FC = () => {
                   </tbody>
                 </table>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      
+      {showRestoreConfirm && restoreFile && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="bg-orange-50 p-6 text-center border-b border-orange-100">
+              <div className="h-12 w-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800">Restore Database?</h3>
+              <p className="text-sm text-slate-600 mt-2">
+                You are about to restore the database from a backup file. Your current data will be automatically backed up before this action.
+              </p>
+            </div>
+            
+            <div className="p-6">
+              <div className="bg-slate-50 border border-slate-200 rounded-md p-3 mb-6 text-sm text-slate-700">
+                <p><strong>File:</strong> {restoreFile.path.split('\\').pop()?.split('/').pop()}</p>
+                <p><strong>Size:</strong> {(restoreFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                <p><strong>Date modified:</strong> {restoreFile.date.toLocaleString()}</p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Type <strong>RESTORE</strong> to confirm
+                </label>
+                <input 
+                  type="text" 
+                  value={restoreConfirmText}
+                  onChange={e => setRestoreConfirmText(e.target.value)}
+                  className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-orange-500 outline-none font-mono"
+                  placeholder="RESTORE"
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowRestoreConfirm(false)}
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={executeRestore}
+                  disabled={restoreConfirmText !== 'RESTORE' || isSubmitting}
+                  className="flex-1 px-4 py-2 bg-orange-600 text-white font-medium rounded-md hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> : null}
+                  {isSubmitting ? "Restoring..." : "Restore Now"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

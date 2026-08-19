@@ -33,7 +33,7 @@ export const AccountsPanel: React.FC = () => {
           formData.opening_balance || 0,
           formData.opening_balance_type || 'DEBIT'
         );
-        toast.success("Account updated successfully!");
+        
       } else {
         await createAccount(
           formData.account_type_id || 1,
@@ -44,13 +44,11 @@ export const AccountsPanel: React.FC = () => {
           formData.opening_balance || 0,
           formData.opening_balance_type || 'DEBIT'
         );
-        toast.success("Account created successfully!");
+        
       }
       setIsAddMode(false);
       setFormData({});
-    } catch (err: any) {
-      toast.error(err.toString());
-    } finally {
+    } catch (err: any) { toast.error(`Could not save Account: ${err.toString()}`); } finally {
       setIsSubmitting(false);
     }
   };
@@ -74,14 +72,12 @@ export const AccountsPanel: React.FC = () => {
       setIsSubmitting(true);
       try {
         await deleteAccount(id);
-        toast.success("Account deleted successfully!");
+        
         if (formData.id === id) {
           setFormData({});
           setIsAddMode(false);
         }
-      } catch (err: any) {
-        alert(err.toString());
-      } finally {
+      } catch (err: any) { toast.error(`Could not save Account: ${err.toString()}`); } finally {
         setIsSubmitting(false);
       }
     }

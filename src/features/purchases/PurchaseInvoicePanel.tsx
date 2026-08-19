@@ -82,13 +82,11 @@ export const PurchaseInvoicePanel: React.FC = () => {
         net_amount: totalNet,
         amount_paid: amountPaid
       });
-      toast.success("Purchase Invoice Saved Successfully!");
+      toast.success(`Purchase Invoice saved successfully`);
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
       setAmountPaid(0);
       setAccountId(null);
-    } catch (err: any) {
-      toast.error(err.toString());
-    } finally {
+    } catch (err) { toast.error(`Could not save Purchase Invoice: ${err instanceof Error ? err.message : String(err)}`); } finally {
       setIsSubmitting(false);
     }
   };

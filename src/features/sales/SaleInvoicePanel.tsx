@@ -96,14 +96,12 @@ export const SaleInvoicePanel: React.FC = () => {
         net_amount: totalNet,
         amount_paid: amountReceived
       });
-      toast.success("Sale Invoice saved successfully!");
+      toast.success(`Sale Invoice saved successfully`);
       setCustomerId(null);
       setLines([{ id: '1', category_id: null, product_id: null, qty: 1, rate: 0, discount_pct: 0 }]);
       setAmountReceived(0);
       setRemarks('');
-    } catch (err: any) {
-      toast.error(err.toString());
-    } finally {
+    } catch (err) { toast.error(`Could not save Sale Invoice: ${err instanceof Error ? err.message : String(err)}`); } finally {
       setIsSubmitting(false);
     }
   };

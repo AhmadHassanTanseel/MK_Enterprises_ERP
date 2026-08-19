@@ -26,9 +26,7 @@ export const AccountTypesPanel: React.FC = () => {
       await createAccountType(formData.name, formData.nature, formData.trial_bal_type, formData.trial_order);
       setIsAddMode(false);
       setFormData({ name: '', nature: 'DR', trial_bal_type: 'BS', trial_order: 99 });
-    } catch (err: any) {
-      toast.error(err.toString());
-    } finally {
+    } catch (err: any) { toast.error(`Could not save Account Type: ${err.toString()}`); } finally {
       setIsSubmitting(false);
     }
   };

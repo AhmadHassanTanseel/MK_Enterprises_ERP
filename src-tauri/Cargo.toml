@@ -34,3 +34,4 @@ password-hash = "0.5.0"
 uuid = { version = "1.20.0", features = ["v4"] }
 tauri-plugin-process = "2.3.1"
 rand_core = { version = "0.6", features = ["getrandom"] }
+tauri-plugin-fs = "2.5.1"

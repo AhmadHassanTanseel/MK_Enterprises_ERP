@@ -1,8 +1,46 @@
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
+import { open } from '@tauri-apps/plugin-shell';
+import React from 'react';
 import { LedgerEntry, Account } from '../app/context/AppContext';
 
-export const generateReportExcel = (
+
+async function saveExcel(wb: XLSX.WorkBook, defaultFileName: string, documentName: string) {
+  try {
+    const filePath = await save({
+      defaultPath: defaultFileName,
+      filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }]
+    });
+
+    if (!filePath) {
+      return; // User cancelled
+    }
+
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    await writeFile(filePath, new Uint8Array(excelBuffer));
+    
+    toast((t) => React.createElement('div', { className: 'flex flex-col gap-2' },
+      React.createElement('span', null, `${documentName} exported to Excel`),
+      React.createElement('span', { className: 'text-xs text-slate-500 break-all' }, filePath),
+      React.createElement('div', { className: 'flex gap-2 mt-2' },
+        React.createElement('button', {
+          onClick: () => { open(filePath); toast.dismiss(t.id); },
+          className: 'px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700'
+        }, 'Open File'),
+        React.createElement('button', {
+          onClick: () => toast.dismiss(t.id),
+          className: 'px-3 py-1 bg-slate-200 text-slate-800 rounded text-xs hover:bg-slate-300'
+        }, 'Dismiss')
+      )
+    ), { duration: 8000 });
+  } catch (err: any) {
+    toast.error(`Excel export failed: ${err.message || err.toString()}`);
+  }
+}
+
+export const generateReportExcel = async (
   reportType: string,
   entries: LedgerEntry[], 
   accounts: Account[], 
@@ -45,7 +83,7 @@ export const generateReportExcel = (
   toast.success('Exported to Excel');
 };
 
-export const generateGenericReportExcel = (
+export const generateGenericReportExcel = async (
   report: any,
   fromDate: string,
   toDate: string

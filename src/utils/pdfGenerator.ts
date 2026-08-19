@@ -1,9 +1,47 @@
 import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
+import { open } from '@tauri-apps/plugin-shell';
+import React from 'react';
 import { InvoiceLine, Product, Account } from '../app/context/AppContext';
 
-export const generateInvoicePDF = (
+
+async function savePdf(doc: jsPDF, defaultFileName: string, documentName: string) {
+  try {
+    const filePath = await save({
+      defaultPath: defaultFileName,
+      filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
+    });
+
+    if (!filePath) {
+      return; // User cancelled
+    }
+
+    const arrayBuffer = doc.output('arraybuffer');
+    await writeFile(filePath, new Uint8Array(arrayBuffer));
+    
+    toast((t) => React.createElement('div', { className: 'flex flex-col gap-2' },
+      React.createElement('span', null, `${documentName} exported to PDF`),
+      React.createElement('span', { className: 'text-xs text-slate-500 break-all' }, filePath),
+      React.createElement('div', { className: 'flex gap-2 mt-2' },
+        React.createElement('button', {
+          onClick: () => { open(filePath); toast.dismiss(t.id); },
+          className: 'px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700'
+        }, 'Open File'),
+        React.createElement('button', {
+          onClick: () => toast.dismiss(t.id),
+          className: 'px-3 py-1 bg-slate-200 text-slate-800 rounded text-xs hover:bg-slate-300'
+        }, 'Dismiss')
+      )
+    ), { duration: 8000 });
+  } catch (err: any) {
+    toast.error(`PDF export failed: ${err.message || err.toString()}`);
+  }
+}
+
+export const generateInvoicePDF = async (
   invoiceType: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN',
   refNo: string,
   date: string,
@@ -89,11 +127,10 @@ export const generateInvoicePDF = (
   doc.setTextColor(150);
   doc.text('System Generated Document', 14, doc.internal.pageSize.getHeight() - 10);
 
-  doc.save(`${refNo}.pdf`);
-  toast.success('Exported to PDF');
+  await savePdf(doc, `${refNo}.pdf`, 'Document');
 };
 
-export const generateReportPDF = (
+export const generateReportPDF = async (
   reportType: string,
   entries: any[],
   accounts: Account[],
@@ -143,12 +180,11 @@ export const generateReportPDF = (
     headStyles: { fillColor: [66, 139, 202] },
   });
 
-  doc.save(`${reportType}_Report_${fromDate}_to_${toDate}.pdf`);
-  toast.success('Exported to PDF');
+  await savePdf(doc, `${reportType}_Report_${fromDate}_to_${toDate}.pdf`, 'Document');
 };
 
 
-export const generateVoucherPDF = (
+export const generateVoucherPDF = async (
   voucherType: 'CASH_RECEIPT' | 'CASH_PAYMENT' | 'JOURNAL_VOUCHER',
   refNo: string,
   date: string,
@@ -207,11 +243,10 @@ export const generateVoucherPDF = (
   doc.text('_______________________', 145, 120);
   doc.text('Received / Authorized By', 145, 126);
   
-  doc.save(`${voucherType}_${refNo}.pdf`);
-  toast.success('Exported Voucher to PDF');
+  await savePdf(doc, `${voucherType}_${refNo}.pdf`, 'Document');
 };
 
-export const generateGenericReportPDF = (
+export const generateGenericReportPDF = async (
   report: any,
   fromDate: string,
   toDate: string
@@ -247,6 +282,5 @@ export const generateGenericReportPDF = (
     headStyles: { fillColor: [66, 139, 202] },
   });
 
-  doc.save(`${report.title.replace(/ /g, '_')}_${fromDate}_to_${toDate}.pdf`);
-  toast.success('Exported to PDF');
+  await savePdf(doc, `${report.title.replace(/ /g, '_')}_${fromDate}_to_${toDate}.pdf`, 'Document');
 };
