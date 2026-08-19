@@ -23,6 +23,8 @@ pub struct Area {
     pub name: String,
     pub salesman_id: Option<i64>,
     pub remarks: Option<String>,
+    pub active: Option<i64>,
+    pub account_count: Option<i64>,
 }
 
 
@@ -467,7 +469,7 @@ pub async fn create_account_type(
 #[tauri::command]
 pub async fn get_areas(db: State<'_, SqlitePool>) -> Result<Vec<Area>, String> {
     sqlx::query_as::<_, Area>(
-        "SELECT id, name, salesman_id, remarks FROM areas ORDER BY id DESC"
+        "SELECT a.id, a.name, a.salesman_id, a.remarks, a.active, (SELECT COUNT(id) FROM accounts WHERE area_id = a.id) as account_count FROM areas a ORDER BY a.id DESC"
     )
     .fetch_all(&*db)
     .await

@@ -1,3 +1,4 @@
+import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { InvoiceLine, Product, Account } from '../app/context/AppContext';
@@ -89,6 +90,7 @@ export const generateInvoicePDF = (
   doc.text('System Generated Document', 14, doc.internal.pageSize.getHeight() - 10);
 
   doc.save(`${refNo}.pdf`);
+  toast.success('Exported to PDF');
 };
 
 export const generateReportPDF = (
@@ -142,4 +144,109 @@ export const generateReportPDF = (
   });
 
   doc.save(`${reportType}_Report_${fromDate}_to_${toDate}.pdf`);
+  toast.success('Exported to PDF');
+};
+
+
+export const generateVoucherPDF = (
+  voucherType: 'CASH_RECEIPT' | 'CASH_PAYMENT' | 'JOURNAL_VOUCHER',
+  refNo: string,
+  date: string,
+  accountName: string,
+  amount: number,
+  description: string
+) => {
+  const doc = new jsPDF();
+  
+  // Header
+  doc.setFontSize(20);
+  doc.text('MK Enterprises', 14, 22);
+  
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text('Business Accounting & Inventory System', 14, 30);
+  
+  // Voucher Title
+  doc.setFontSize(16);
+  doc.setTextColor(0);
+  const title = voucherType === 'CASH_RECEIPT' ? 'Cash Receipt Voucher' :
+                voucherType === 'CASH_PAYMENT' ? 'Cash Payment Voucher' : 'Journal Voucher';
+  doc.text(title, 140, 22);
+  
+  // Metadata
+  doc.setFontSize(10);
+  doc.text(`Voucher #: ${refNo}`, 140, 30);
+  doc.text(`Date: ${date}`, 140, 36);
+
+  // Body
+  doc.setFontSize(12);
+  doc.text('Account:', 14, 50);
+  doc.setFont('helvetica', 'bold');
+  doc.text(accountName, 40, 50);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.text('Amount:', 14, 60);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Rs. ${amount.toLocaleString()}`, 40, 60);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.text('Description:', 14, 70);
+  doc.setFont('helvetica', 'italic');
+  const splitDescription = doc.splitTextToSize(description || 'N/A', 150);
+  doc.text(splitDescription, 40, 70);
+  
+  // Signatures
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('_______________________', 14, 120);
+  doc.text('Prepared By', 20, 126);
+  
+  doc.text('_______________________', 80, 120);
+  doc.text('Checked By', 86, 126);
+  
+  doc.text('_______________________', 145, 120);
+  doc.text('Received / Authorized By', 145, 126);
+  
+  doc.save(`${voucherType}_${refNo}.pdf`);
+  toast.success('Exported Voucher to PDF');
+};
+
+export const generateGenericReportPDF = (
+  report: any,
+  fromDate: string,
+  toDate: string
+) => {
+  const doc = new jsPDF('landscape');
+  
+  doc.setFontSize(20);
+  doc.text('MK Enterprises', 14, 22);
+  
+  doc.setFontSize(14);
+  doc.text(report.title, 14, 30);
+  
+  doc.setFontSize(10);
+  doc.text(`Period: ${fromDate} to ${toDate}`, 14, 36);
+
+  const tableData = [...report.rows];
+
+  if (report.totals && report.totals.length > 0) {
+    const totalsRow = new Array(report.headers.length).fill('');
+    totalsRow[0] = 'TOTALS';
+    // Append totals text to the last column or distribute them
+    const totalsText = report.totals.map((t: any) => `${t.label}: ${t.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`).join(' | ');
+    totalsRow[totalsRow.length - 1] = totalsText;
+    tableData.push(totalsRow);
+  }
+
+  autoTable(doc, {
+    startY: 45,
+    head: [report.headers],
+    body: tableData,
+    theme: 'grid',
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [66, 139, 202] },
+  });
+
+  doc.save(`${report.title.replace(/ /g, '_')}_${fromDate}_to_${toDate}.pdf`);
+  toast.success('Exported to PDF');
 };

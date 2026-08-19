@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
 import { FileText, Printer, Download, RefreshCw } from 'lucide-react';
-import { generateReportPDF } from '../../utils/pdfGenerator';
-import { generateReportExcel } from '../../utils/excelGenerator';
+import { generateReportPDF, generateGenericReportPDF } from '../../utils/pdfGenerator';
+import { generateReportExcel, generateGenericReportExcel } from '../../utils/excelGenerator';
 import { printContent } from '../../utils/printHelper';
+import toast from 'react-hot-toast';
 
 interface ReportTotal {
   label: string;
@@ -18,7 +19,7 @@ interface ReportResult {
   totals: ReportTotal[];
 }
 
-const BACKEND_REPORT_TYPES = ['SALES', 'PURCHASE', 'STOCK', 'PROFIT'];
+const BACKEND_REPORT_TYPES = ['LEDGER', 'CASHBOOK', 'TRIAL', 'SALES', 'PURCHASE', 'STOCK', 'PROFIT'];
 
 export const ReportPanel: React.FC = () => {
   const { ledgerEntries, accounts } = useAppContext();
@@ -30,7 +31,7 @@ export const ReportPanel: React.FC = () => {
 
   const [backendReport, setBackendReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  
 
   const isBackendReport = BACKEND_REPORT_TYPES.includes(reportType);
 
@@ -38,7 +39,7 @@ export const ReportPanel: React.FC = () => {
     if (!isBackendReport) return;
     try {
       setLoading(true);
-      setError(null);
+      
       const result: ReportResult = await invoke('generate_report', {
         reportName: reportType,
         filters: {
@@ -53,7 +54,7 @@ export const ReportPanel: React.FC = () => {
       });
       setBackendReport(result);
     } catch (e: any) {
-      setError(e.toString());
+      toast.error(e.toString());
       setBackendReport(null);
     } finally {
       setLoading(false);
@@ -65,7 +66,7 @@ export const ReportPanel: React.FC = () => {
       loadBackendReport();
     } else {
       setBackendReport(null);
-      setError(null);
+      
     }
   }, [isBackendReport, loadBackendReport]);
 
@@ -173,16 +174,16 @@ export const ReportPanel: React.FC = () => {
             }} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200">
               <Printer className="h-4 w-4" /> Print
             </button>
-            {!isBackendReport && (
+                        {isBackendReport && backendReport && (
               <>
                 <button
-                  onClick={() => generateReportExcel(reportType, filteredEntries, accounts, fromDate, toDate)}
+                  onClick={() => generateGenericReportExcel(backendReport, fromDate, toDate)}
                   className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700"
                 >
                   <Download className="h-4 w-4" /> Export Excel
                 </button>
                 <button
-                  onClick={() => generateReportPDF(reportType, filteredEntries, accounts, fromDate, toDate)}
+                  onClick={() => generateGenericReportPDF(backendReport, fromDate, toDate)}
                   className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700"
                 >
                   <Download className="h-4 w-4" /> Export PDF
@@ -192,9 +193,7 @@ export const ReportPanel: React.FC = () => {
           </div>
         </div>
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>
-        )}
+
 
         {loading && isBackendReport && (
           <div className="flex-1 flex items-center justify-center text-slate-400">Generating report...</div>

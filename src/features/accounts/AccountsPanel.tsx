@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext, Account } from '../../app/context/AppContext';
 import { Plus, Edit2, Search, Filter, Trash2, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export const AccountsPanel: React.FC = () => {
   const { accounts, accountTypes, createAccount, updateAccount, deleteAccount } = useAppContext();
@@ -8,15 +9,15 @@ export const AccountsPanel: React.FC = () => {
   
   const [isAddMode, setIsAddMode] = useState(false);
   const [formData, setFormData] = useState<Partial<Account> & { opening_balance_type?: string }>({});
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null); setSuccess(null);
+    
     if (!formData.name) {
-      setError("Account Name is required.");
+      toast.error("Account Name is required.");
       return;
     }
     setIsSubmitting(true);
@@ -32,7 +33,7 @@ export const AccountsPanel: React.FC = () => {
           formData.opening_balance || 0,
           formData.opening_balance_type || 'DEBIT'
         );
-        setSuccess("Account updated successfully!");
+        toast.success("Account updated successfully!");
       } else {
         await createAccount(
           formData.account_type_id || 1,
@@ -43,12 +44,12 @@ export const AccountsPanel: React.FC = () => {
           formData.opening_balance || 0,
           formData.opening_balance_type || 'DEBIT'
         );
-        setSuccess("Account created successfully!");
+        toast.success("Account created successfully!");
       }
       setIsAddMode(false);
       setFormData({});
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
@@ -64,8 +65,8 @@ export const AccountsPanel: React.FC = () => {
       opening_balance_type: 'DEBIT'
     });
     setIsAddMode(true);
-    setError(null);
-    setSuccess(null);
+    
+    
   };
 
   const handleDelete = async (id: number) => {
@@ -73,7 +74,7 @@ export const AccountsPanel: React.FC = () => {
       setIsSubmitting(true);
       try {
         await deleteAccount(id);
-        setSuccess("Account deleted successfully!");
+        toast.success("Account deleted successfully!");
         if (formData.id === id) {
           setFormData({});
           setIsAddMode(false);
@@ -102,8 +103,8 @@ export const AccountsPanel: React.FC = () => {
             </button>
           )}
         </div>
-        {error && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
-        {success && <div className="mb-4 p-3 bg-emerald-50 text-emerald-700 text-sm rounded-md border border-emerald-200">{success}</div>}
+        
+        
         <form onSubmit={handleSave} className="space-y-4 flex-1 overflow-y-auto pr-2">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Account Name *</label>

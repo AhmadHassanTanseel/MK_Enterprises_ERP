@@ -3,6 +3,7 @@ import { useAppContext, InvoiceLine } from '../../app/context/AppContext';
 import { Plus, Trash2, Save, CornerDownLeft, Printer, FileText } from 'lucide-react';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
 import { printContent } from '../../utils/printHelper';
+import toast from 'react-hot-toast';
 
 export const SaleReturnPanel: React.FC = () => {
   const { products, accounts, postInvoice } = useAppContext();
@@ -41,18 +42,18 @@ export const SaleReturnPanel: React.FC = () => {
   const totalDiscount = lines.reduce((sum, line) => sum + ((line.qty * line.rate) * (line.discount_pct / 100)), 0);
   const totalNet = totalGross - totalDiscount;
 
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSave = async () => {
-    setError(null); setSuccess(null);
-    if (!accountId) { setError("Please select a customer"); return; }
-    if (lines.length === 0) { setError("Please add at least one line."); return; }
+    
+    if (!accountId) { toast.error("Please select a customer"); return; }
+    if (lines.length === 0) { toast.error("Please add at least one line."); return; }
     for (const line of lines) {
-      if (!line.product_id) { setError("Please select a valid product for all lines."); return; }
-      if (line.qty <= 0) { setError("Quantity must be greater than 0 for all lines."); return; }
-      if (line.rate < 0) { setError("Rate cannot be negative for all lines."); return; }
+      if (!line.product_id) { toast.error("Please select a valid product for all lines."); return; }
+      if (line.qty <= 0) { toast.error("Quantity must be greater than 0 for all lines."); return; }
+      if (line.rate < 0) { toast.error("Rate cannot be negative for all lines."); return; }
     }
 
     setIsSubmitting(true);
@@ -68,11 +69,11 @@ export const SaleReturnPanel: React.FC = () => {
         net_amount: totalNet,
         amount_paid: 0
       });
-      setSuccess("Sale Return Processed Successfully!");
+      toast.success("Sale Return Processed Successfully!");
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
       setAccountId(null);
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
@@ -80,8 +81,8 @@ export const SaleReturnPanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {error && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
-      {success && <div className="p-3 bg-emerald-50 text-emerald-700 text-sm rounded-md border border-emerald-200">{success}</div>}
+      
+      
       {/* Header */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
         <div className="flex justify-between items-center pb-4 border-b border-slate-100">

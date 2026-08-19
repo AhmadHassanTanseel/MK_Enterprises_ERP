@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
 import { Package, AlertTriangle, RefreshCw } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface StockRow {
   product_id: number;
@@ -14,18 +15,20 @@ interface StockRow {
 export const InventoryPanel: React.FC = () => {
   const { products } = useAppContext();
   const [stockRows, setStockRows] = useState<StockRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
 
   const loadStock = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      
       const rows: StockRow[] = await invoke('get_live_stock');
       setStockRows(rows);
     } catch (e) {
       console.error('Failed to load live stock:', e);
-      setError('Unable to load stock levels. Please try again.');
+      toast.error('Unable to load stock levels. Please try again.');
     } finally {
       setLoading(false);
     }

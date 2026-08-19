@@ -1,3 +1,4 @@
+import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { LedgerEntry, Account } from '../app/context/AppContext';
 
@@ -41,4 +42,37 @@ export const generateReportExcel = (
 
   // Generate Excel file and trigger download
   XLSX.writeFile(workbook, `${reportType}_Report_${fromDate}_to_${toDate}.xlsx`);
+  toast.success('Exported to Excel');
+};
+
+export const generateGenericReportExcel = (
+  report: any,
+  fromDate: string,
+  toDate: string
+) => {
+  const data = report.rows.map((row: any[]) => {
+    const obj: any = {};
+    report.headers.forEach((h: string, i: number) => {
+      obj[h] = row[i];
+    });
+    return obj;
+  });
+
+  const totalsObj: any = {};
+  if (report.totals && report.totals.length > 0) {
+    report.headers.forEach((h: string, i: number) => {
+      totalsObj[h] = i === 0 ? 'TOTALS' : '';
+    });
+    report.totals.forEach((t: any) => {
+      totalsObj[t.label] = t.value;
+    });
+    data.push(totalsObj);
+  }
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, report.title);
+
+  XLSX.writeFile(workbook, `${report.title.replace(/ /g, '_')}_${fromDate}_to_${toDate}.xlsx`);
+  toast.success('Exported to Excel');
 };

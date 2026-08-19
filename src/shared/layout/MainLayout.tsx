@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Wallet, Receipt, FileText, 
   Package, List, Users, Settings, Search, Bell, User
@@ -7,6 +7,7 @@ import {
 
 export const MainLayout: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -22,6 +23,7 @@ export const MainLayout: React.FC = () => {
     { id: 'cash-receive', label: 'Cash Receipt', icon: Wallet },
     { id: 'cash-payment', label: 'Cash Payment', icon: Wallet },
     { id: 'general-voucher', label: 'Journal Voucher', icon: FileText },
+    { id: 'journal-history', label: 'JV Register', icon: FileText },
     
     // Master Data
     { id: 'products', label: 'Products Master', icon: Package },
@@ -104,10 +106,9 @@ export const MainLayout: React.FC = () => {
           <div className="flex items-center gap-4">
             <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
               <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1 h-2 w-2 bg-rose-500 rounded-full border border-white"></span>
             </button>
             <div className="h-8 w-px bg-slate-200 mx-1"></div>
-            <div className="flex items-center gap-3 cursor-pointer">
+            <div className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-2 rounded" onClick={() => navigate('/settings')}>
               <div className="flex flex-col items-end">
                 <span className="text-sm font-bold text-slate-700">Guest</span>
                 <span className="text-xs text-slate-500">Administrator</span>

@@ -3,9 +3,11 @@ import { useAppContext, Product, Account } from '../../app/context/AppContext';
 import { Plus, Trash2, Printer, Save, FileText } from 'lucide-react';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
 import { printContent } from '../../utils/printHelper';
+import toast from 'react-hot-toast';
 
 interface InvoiceLine {
   id: string;
+  category_id: number | null;
   product_id: number | null;
   qty: number;
   rate: number;
@@ -13,14 +15,15 @@ interface InvoiceLine {
 }
 
 export const SaleInvoicePanel: React.FC = () => {
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  
+  
 
-  const { products, accounts, postInvoice } = useAppContext();
+  const { products, categories, accounts, postInvoice } = useAppContext();
   
   const [customer_id, setCustomerId] = useState<number | null>(null);
+  const [salesman_id, setSalesmanId] = useState<number | null>(null);
   const [lines, setLines] = useState<InvoiceLine[]>([
-    { id: '1', product_id: null, qty: 1, rate: 0, discount_pct: 0 }
+    { id: '1', category_id: null, product_id: null, qty: 1, rate: 0, discount_pct: 0 }
   ]);
   const [amountReceived, setAmountReceived] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>('');
@@ -29,9 +32,10 @@ export const SaleInvoicePanel: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const customerAccounts = accounts.filter(a => a.account_type_id === 2 || a.account_type_id === 1);
+  const salesmen = accounts.filter(a => a.account_type_id === 14);
 
   const addLine = () => {
-    setLines([...lines, { id: Math.random().toString(), product_id: null, qty: 1, rate: 0, discount_pct: 0 }]);
+    setLines([...lines, { id: Math.random().toString(), category_id: null, product_id: null, qty: 1, rate: 0, discount_pct: 0 }]);
   };
 
   const removeLine = (id: string) => {
@@ -44,6 +48,10 @@ export const SaleInvoicePanel: React.FC = () => {
     setLines(lines.map(l => {
       if (l.id === id) {
         const newLine = { ...l, [field]: value };
+        if (field === 'category_id') {
+          newLine.product_id = null;
+          newLine.rate = 0;
+        }
         if (field === 'product_id' && value) {
           const product = products.find(p => p.id === value);
           if (product) newLine.rate = product.sale_price;
@@ -66,13 +74,13 @@ export const SaleInvoicePanel: React.FC = () => {
   const balance = totalNet - amountReceived;
 
   const handleSave = async () => {
-    setError(null); setSuccess(null);
-    if (!customer_id) { setError("Please select a customer."); return; }
-    if (lines.length === 0) { setError("Please add at least one line."); return; }
+    
+    if (!customer_id) { toast.error("Please select a customer."); return; }
+    if (lines.length === 0) { toast.error("Please add at least one line."); return; }
     for (const line of lines) {
-      if (!line.product_id) { setError("Please select a valid product for all lines."); return; }
-      if (line.qty <= 0) { setError("Quantity must be greater than 0 for all lines."); return; }
-      if (line.rate < 0) { setError("Rate cannot be negative for all lines."); return; }
+      if (!line.product_id) { toast.error("Please select a valid product for all lines."); return; }
+      if (line.qty <= 0) { toast.error("Quantity must be greater than 0 for all lines."); return; }
+      if (line.rate < 0) { toast.error("Rate cannot be negative for all lines."); return; }
     }
 
     setIsSubmitting(true);
@@ -88,13 +96,13 @@ export const SaleInvoicePanel: React.FC = () => {
         net_amount: totalNet,
         amount_paid: amountReceived
       });
-      setSuccess("Sale Invoice saved successfully!");
+      toast.success("Sale Invoice saved successfully!");
       setCustomerId(null);
-      setLines([{ id: '1', product_id: null, qty: 1, rate: 0, discount_pct: 0 }]);
+      setLines([{ id: '1', category_id: null, product_id: null, qty: 1, rate: 0, discount_pct: 0 }]);
       setAmountReceived(0);
       setRemarks('');
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
@@ -102,8 +110,8 @@ export const SaleInvoicePanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {error && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
-      {success && <div className="p-3 bg-emerald-50 text-emerald-700 text-sm rounded-md border border-emerald-200">{success}</div>}
+      
+      
       
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
         <div className="flex justify-between items-center pb-4 border-b border-slate-100">
@@ -177,8 +185,9 @@ export const SaleInvoicePanel: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Salesman</label>
-            <select className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none">
+            <select className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none" value={salesman_id || ''} onChange={e => setSalesmanId(Number(e.target.value) || null)}>
               <option value="">-- Optional --</option>
+              {salesmen.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
         </div>

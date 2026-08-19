@@ -1,3 +1,5 @@
+import toast from 'react-hot-toast';
+
 export function printContent(title: string, contentHtml: string) {
   const printWindow = window.open('', '_blank', 'width=800,height=600');
   if (!printWindow) return;
@@ -28,5 +30,9 @@ export function printContent(title: string, contentHtml: string) {
   `);
   printWindow.document.close();
   printWindow.focus();
-  setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
+  setTimeout(() => { 
+    printWindow.print(); 
+    printWindow.close(); 
+    toast.success('Document printed successfully');
+  }, 250);
 }

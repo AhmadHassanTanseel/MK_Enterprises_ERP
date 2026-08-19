@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
 import { useAppContext, Area } from '../../app/context/AppContext';
 import { MapPin, Plus, Edit2, Search, Trash2, Check, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export const AreasPanel: React.FC = () => {
-  const { areas, createArea, updateArea, deleteArea } = useAppContext();
+  const { areas, accounts, createArea, updateArea, deleteArea } = useAppContext();
+  const salesmen = accounts.filter(a => a.account_type_id === 14);
   const [searchTerm, setSearchTerm] = useState('');
   
   const [newAreaName, setNewAreaName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  
   
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editData, setEditData] = useState<{name: string, remarks: string}>({ name: '', remarks: '' });
+  const [editData, setEditData] = useState<{name: string, remarks: string, salesman_id: number | null, active: number}>({ name: '', remarks: '', salesman_id: null, active: 1 });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    
     if (!newAreaName) {
-      setError("Area name is required.");
+      toast.error("Area name is required.");
       return;
     }
     setIsSubmitting(true);
@@ -25,7 +27,7 @@ export const AreasPanel: React.FC = () => {
       await createArea(newAreaName);
       setNewAreaName('');
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
@@ -33,7 +35,7 @@ export const AreasPanel: React.FC = () => {
 
   const startEdit = (area: Area) => {
     setEditingId(area.id);
-    setEditData({ name: area.name, remarks: area.remarks || '' });
+    setEditData({ name: area.name, remarks: area.remarks || '', salesman_id: area.salesman_id, active: area.active || 1 });
   };
 
   const cancelEdit = () => {
@@ -44,7 +46,7 @@ export const AreasPanel: React.FC = () => {
     setIsSubmitting(true);
     try {
       // Assuming salesman_id is kept unchanged for now
-      await updateArea(id, editData.name, undefined, editData.remarks);
+      await updateArea(id, editData.name, editData.salesman_id || undefined, editData.remarks, editData.active);
       setEditingId(null);
     } catch (err: any) {
       alert(err.toString());
@@ -90,7 +92,7 @@ export const AreasPanel: React.FC = () => {
           </button>
         </form>
       </div>
-      {error && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
+      
 
       <div className="flex-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
         <div className="relative mb-4 max-w-md">
@@ -110,8 +112,10 @@ export const AreasPanel: React.FC = () => {
               <tr>
                 <th className="px-4 py-3 font-medium w-16">ID</th>
                 <th className="px-4 py-3 font-medium">Territory Name</th>
-                <th className="px-4 py-3 font-medium w-1/4">Salesman</th>
-                <th className="px-4 py-3 font-medium w-1/4">Remarks</th>
+                <th className="px-4 py-3 font-medium">Salesman</th>
+                <th className="px-4 py-3 font-medium text-center">Accounts</th>
+                <th className="px-4 py-3 font-medium text-center">Status</th>
+                <th className="px-4 py-3 font-medium">Remarks</th>
                 <th className="px-4 py-3 font-medium text-center w-32">Action</th>
               </tr>
             </thead>
@@ -125,8 +129,16 @@ export const AreasPanel: React.FC = () => {
                         <input type="text" className="w-full border border-slate-300 rounded px-2 py-1 outline-none focus:border-teal-500" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
                       </td>
                       <td className="px-4 py-3">
-                        <select className="w-full border border-slate-300 rounded px-2 py-1 outline-none focus:border-teal-500">
+                        <select className="w-full border border-slate-300 rounded px-2 py-1 outline-none focus:border-teal-500" value={editData.salesman_id || ''} onChange={e => setEditData({...editData, salesman_id: Number(e.target.value) || null})}>
                           <option value="">-- Unassigned --</option>
+                          {salesmen.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-4 py-3 text-center text-slate-400">—</td>
+                      <td className="px-4 py-3 text-center">
+                        <select className="border border-slate-300 rounded px-2 py-1" value={editData.active} onChange={e => setEditData({...editData, active: Number(e.target.value)})}>
+                          <option value={1}>Active</option>
+                          <option value={0}>Inactive</option>
                         </select>
                       </td>
                       <td className="px-4 py-3">
@@ -140,12 +152,14 @@ export const AreasPanel: React.FC = () => {
                   ) : (
                     <>
                       <td className="px-4 py-3 font-medium text-slate-800">{area.name}</td>
-                      <td className="px-4 py-3">
-                        <select className="w-full bg-transparent border border-slate-200 rounded p-1 text-sm outline-none focus:border-teal-500">
-                          <option value="">-- Unassigned --</option>
-                        </select>
+                      <td className="px-4 py-3 text-slate-700">
+                        {salesmen.find(s => s.id === area.salesman_id)?.name || <span className="text-slate-400">Unassigned</span>}
                       </td>
-                      <td className="px-4 py-3">{area.remarks || '-'}</td>
+                      <td className="px-4 py-3 text-center font-medium text-slate-700">{area.account_count || 0}</td>
+                      <td className="px-4 py-3 text-center">
+                        {area.active === 1 ? <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full">Active</span> : <span className="text-xs bg-rose-100 text-rose-800 px-2 py-1 rounded-full">Inactive</span>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{area.remarks || '-'}</td>
                       <td className="px-4 py-3 text-center flex justify-center gap-2">
                         <button onClick={() => startEdit(area)} className="text-teal-600 hover:text-teal-800 p-1 rounded-md hover:bg-teal-50 transition-colors">
                           <Edit2 className="h-4 w-4" />

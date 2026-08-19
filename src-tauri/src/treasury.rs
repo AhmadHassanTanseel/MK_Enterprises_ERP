@@ -25,6 +25,7 @@ pub async fn process_cash_transaction(
     description: Option<String>,
     _payment_method: Option<String>,
     _ref_no: Option<String>,
+    attachment_path: Option<String>,
     db: State<'_, SqlitePool>
 ) -> Result<String, String> {
     // Persist a real cash receipt/payment into journal_entries
@@ -36,26 +37,28 @@ pub async fn process_cash_transaction(
     let narration = description.clone().unwrap_or(narration_default);
     let entry_date = trans_date.clone();
 
+    let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
     if trans_type == "RECEIVE" {
         // Debit Cash Drawer [ID:1]
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, ?)")
-            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, attachment_path) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, ?, ?, ?)")
+            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&attachment_path)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         // Credit the account (reduces receivable)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, ?)")
-            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, attachment_path) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, ?, ?, ?)")
+            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&attachment_path)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
     } else {
         // PAYMENT: Debit the account (expense / supplier reduction)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (?, ?, 0.0, 'CASH_PAYMENT', ?, ?)")
-            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, attachment_path) VALUES (?, ?, 0.0, 'CASH_PAYMENT', ?, ?, ?, ?)")
+            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&attachment_path)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         // Credit Cash Drawer [ID:1]
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (?, 0.0, ?, 'CASH_PAYMENT', ?, ?)")
-            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, attachment_path) VALUES (?, 0.0, ?, 'CASH_PAYMENT', ?, ?, ?, ?)")
+            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&attachment_path)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
 
@@ -111,15 +114,18 @@ pub async fn process_journal_voucher(
     // Persist lines inside a transaction
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
 
+    let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let internal_ref = _ref_no.unwrap_or_else(|| format!("JV-{}", chrono::Local::now().format("%y%m%d%H%M%S")));
+
     // Create a simple reference record by inserting a small JV header into system_config (or could be a JV table). We'll just insert lines with a common ref
     for line in &lines {
         if line.entry_type == "DR" {
-            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (?, ?, 0.0, 'JOURNAL_VOUCHER', ?, ?)")
-                .bind(line.account_id).bind(line.amount).bind(line.description.clone().unwrap_or_else(|| "JV Entry".into())).bind(trans_date.clone())
+            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'JOURNAL_VOUCHER', ?, ?, ?, ?)")
+                .bind(line.account_id).bind(line.amount).bind(line.description.clone().unwrap_or_else(|| "JV Entry".into())).bind(trans_date.clone()).bind(&created_at).bind(&internal_ref)
                 .execute(&mut *tx).await.map_err(|e| e.to_string())?;
         } else {
-            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date) VALUES (?, 0.0, ?, 'JOURNAL_VOUCHER', ?, ?)")
-                .bind(line.account_id).bind(line.amount).bind(line.description.clone().unwrap_or_else(|| "JV Entry".into())).bind(trans_date.clone())
+            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'JOURNAL_VOUCHER', ?, ?, ?, ?)")
+                .bind(line.account_id).bind(line.amount).bind(line.description.clone().unwrap_or_else(|| "JV Entry".into())).bind(trans_date.clone()).bind(&created_at).bind(&internal_ref)
                 .execute(&mut *tx).await.map_err(|e| e.to_string())?;
         }
     }
@@ -179,6 +185,70 @@ pub async fn get_cash_transaction_history(
 
     sqlx::query_as::<_, CashHistoryRow>(&sql)
         .bind(cash_id)
+        .fetch_all(&*db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_attachment(
+    source_path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    use std::fs;
+    use std::path::PathBuf;
+    use uuid::Uuid;
+    use tauri::Manager;
+
+    let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
+    let attachments_dir = app_dir.join("attachments");
+    
+    if !attachments_dir.exists() {
+        fs::create_dir_all(&attachments_dir).map_err(|e| e.to_string())?;
+    }
+
+    let ext = PathBuf::from(&source_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("bin")
+        .to_string();
+
+    let new_filename = format!("{}.{}", Uuid::new_v4().to_string(), ext);
+    let dest_path = attachments_dir.join(&new_filename);
+
+    fs::copy(&source_path, &dest_path).map_err(|e| format!("Failed to copy file: {}", e))?;
+
+    Ok(format!("attachments/{}", new_filename))
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct JournalVoucherHeader {
+    pub ref_no: Option<String>,
+    pub trans_date: String,
+    pub created_at: Option<String>,
+    pub total_amount: f64,
+    pub line_count: i64,
+}
+
+#[tauri::command]
+pub async fn get_journal_vouchers(
+    db: State<'_, SqlitePool>
+) -> Result<Vec<JournalVoucherHeader>, String> {
+    let sql = r#"
+        SELECT 
+            ref_no,
+            date(entry_date) as trans_date,
+            MIN(created_at) as created_at,
+            SUM(debit) as total_amount,
+            COUNT(id) as line_count
+        FROM journal_entries
+        WHERE voucher_type = 'JOURNAL_VOUCHER'
+        GROUP BY ref_no, date(entry_date)
+        ORDER BY MAX(id) DESC
+        LIMIT 500
+    "#;
+
+    sqlx::query_as::<_, JournalVoucherHeader>(sql)
         .fetch_all(&*db)
         .await
         .map_err(|e| e.to_string())

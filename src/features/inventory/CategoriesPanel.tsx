@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useAppContext, Category } from '../../app/context/AppContext';
 import { Bookmark, Plus, Edit2, Search, Trash2, Check, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export const CategoriesPanel: React.FC = () => {
   const { categories, createCategory, updateCategory, deleteCategory } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [newCatName, setNewCatName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  
   
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editData, setEditData] = useState<{name: string, description: string}>({ name: '', description: '' });
@@ -14,9 +15,9 @@ export const CategoriesPanel: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    
     if (!newCatName) {
-      setError("Category name is required.");
+      toast.error("Category name is required.");
       return;
     }
     setIsSubmitting(true);
@@ -24,7 +25,7 @@ export const CategoriesPanel: React.FC = () => {
       await createCategory(newCatName);
       setNewCatName('');
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
@@ -88,7 +89,7 @@ export const CategoriesPanel: React.FC = () => {
           </button>
         </form>
       </div>
-      {error && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
+      
 
       <div className="flex-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
         <div className="relative mb-4 max-w-md">

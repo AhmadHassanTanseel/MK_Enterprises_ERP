@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useNavigate } from 'react-router-dom';
+import { open } from '@tauri-apps/plugin-dialog';
 import { useAppContext } from '../../app/context/AppContext';
 import { Settings, Shield, Database, Users, Download, Trash2, AlertTriangle, Building, Save, X } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { exit } from '@tauri-apps/plugin-process';
 
 interface AuditLog {
   id: number;
@@ -44,16 +48,36 @@ export const SettingsPanel: React.FC = () => {
     }
   };
 
-  const handleBackup = async () => {
+    const handleBackup = async () => {
     try {
       setBackupMessage(null);
       const result: string = await invoke('create_system_backup');
-      alert(`Success: ${result}`);
+      toast.success(`Success: ${result}`);
     } catch (e: any) {
-      alert(`Backup failed: ${e}`);
+      toast.error(`Backup failed: ${e}`);
     }
   };
 
+  const handleRestore = async () => {
+    if (confirm("Are you sure you want to restore the database? The current database will be backed up automatically before restoring.")) {
+      try {
+        const file = await open({
+          multiple: false,
+          filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }]
+        });
+        if (file) {
+          toast.loading("Restoring database...");
+          await invoke('restore_database', { filePath: file as string });
+          toast.success("Database restored successfully. Application will restart.");
+        }
+      } catch (e: any) {
+        toast.dismiss();
+        toast.error(`Restore failed: ${e}`);
+      }
+    }
+  };
+
+  const navigate = useNavigate();
   const loadAuditLogs = useCallback(async () => {
     try {
       const logs: AuditLog[] = await invoke('get_audit_logs');
@@ -73,16 +97,15 @@ export const SettingsPanel: React.FC = () => {
   };
 
   const handleFactoryReset = async () => {
-    setResetError(null);
     try {
       const result: string = await invoke('execute_factory_reset', { confirmation: resetConfirmText });
-      alert(result);
+      toast.success(result);
       setShowResetConfirm(false);
       setResetConfirmText('');
       await fetchData();
       await loadAuditLogs();
     } catch (e: any) {
-      setResetError(e.toString());
+      toast.error(e.toString());
     }
   };
 
@@ -176,7 +199,7 @@ export const SettingsPanel: React.FC = () => {
             </button>
             <div className="pt-2 border-t border-slate-100 mt-4">
               <button
-                onClick={() => { setShowResetConfirm(true); setResetConfirmText(''); setResetError(null); }}
+                onClick={() => { setShowResetConfirm(true); setResetConfirmText(''); }}
                 className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 rounded border border-rose-200 flex justify-between items-center"
               >
                 <span>Delete All Data</span> <Trash2 className="h-4 w-4 text-rose-400" />

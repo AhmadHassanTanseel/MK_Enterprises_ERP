@@ -4,6 +4,7 @@ pub mod system_accounts;
 pub mod audit;
 pub mod drm;
 pub mod backup;
+pub mod users;
 pub mod reporting;
 pub mod treasury;
 pub mod procurement;
@@ -25,6 +26,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             // Core transaction and master-data commands
             process_sale,
@@ -34,6 +36,8 @@ pub fn run() {
             process_cash_transaction,
             process_journal_voucher,
             get_cash_transaction_history,
+            save_attachment,
+            get_journal_vouchers,
 
             // Master data
             get_categories,
@@ -67,8 +71,10 @@ pub fn run() {
             get_all_ledger_entries,
 
             // Admin & utilities
+            // Backup
             get_hardware_id,
             perform_backup,
+            restore_database,
             create_system_backup,
             execute_factory_reset,
             get_audit_logs,

@@ -3,9 +3,10 @@ import { useAppContext, InvoiceLine } from '../../app/context/AppContext';
 import { Plus, Trash2, Printer, Save, FileText } from 'lucide-react';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
 import { printContent } from '../../utils/printHelper';
+import toast from 'react-hot-toast';
 
 export const PurchaseInvoicePanel: React.FC = () => {
-  const { products, accounts, postInvoice } = useAppContext();
+  const { products, categories, accounts, postInvoice } = useAppContext();
   
   const [accountId, setAccountId] = useState<number | null>(null);
   const [lines, setLines] = useState<(InvoiceLine & { id: string })[]>([
@@ -26,10 +27,14 @@ export const PurchaseInvoicePanel: React.FC = () => {
     }
   };
 
-  const updateLine = (id: string, field: keyof InvoiceLine, value: any) => {
+  const updateLine = (id: string, field: keyof InvoiceLine | 'category_id', value: any) => {
     setLines(lines.map(l => {
       if (l.id === id) {
         const newLine = { ...l, [field]: value };
+        if (field === 'category_id') {
+          newLine.product_id = 0;
+          newLine.rate = 0;
+        }
         if (field === 'product_id' && value) {
           const product = products.find(p => p.id === value);
           if (product) newLine.rate = product.purchase_price;
@@ -50,18 +55,18 @@ export const PurchaseInvoicePanel: React.FC = () => {
   const totalNet = totalGross - totalDiscount;
   const balance = totalNet - amountPaid;
 
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSave = async () => {
-    setError(null); setSuccess(null);
-    if (!accountId) { setError("Please select a supplier"); return; }
-    if (lines.length === 0) { setError("Please add at least one line."); return; }
+    
+    if (!accountId) { toast.error("Please select a supplier"); return; }
+    if (lines.length === 0) { toast.error("Please add at least one line."); return; }
     for (const line of lines) {
-      if (!line.product_id) { setError("Please select a valid product for all lines."); return; }
-      if (line.qty <= 0) { setError("Quantity must be greater than 0 for all lines."); return; }
-      if (line.rate < 0) { setError("Rate cannot be negative for all lines."); return; }
+      if (!line.product_id) { toast.error("Please select a valid product for all lines."); return; }
+      if (line.qty <= 0) { toast.error("Quantity must be greater than 0 for all lines."); return; }
+      if (line.rate < 0) { toast.error("Rate cannot be negative for all lines."); return; }
     }
 
     setIsSubmitting(true);
@@ -77,12 +82,12 @@ export const PurchaseInvoicePanel: React.FC = () => {
         net_amount: totalNet,
         amount_paid: amountPaid
       });
-      setSuccess("Purchase Invoice Saved Successfully!");
+      toast.success("Purchase Invoice Saved Successfully!");
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
       setAmountPaid(0);
       setAccountId(null);
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
@@ -90,8 +95,8 @@ export const PurchaseInvoicePanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {error && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
-      {success && <div className="p-3 bg-emerald-50 text-emerald-700 text-sm rounded-md border border-emerald-200">{success}</div>}
+      
+      
 
       {/* Header Panel */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">

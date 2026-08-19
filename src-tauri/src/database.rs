@@ -183,7 +183,8 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         (5, 'Sales Revenue', 'INCOME', 'CREDIT', 5),
         (6, 'Purchases Account', 'EXPENSE', 'DEBIT', 6),
         (7, 'Operating Expense', 'EXPENSE', 'DEBIT', 7),
-        (8, 'Damaged Goods Expense', 'EXPENSE', 'DEBIT', 8);
+        (8, 'Damaged Goods Expense', 'EXPENSE', 'DEBIT', 8),
+        (14, 'Salesman', 'ASSET', 'DEBIT', 14);
 
         -- SEED DEFAULT SYSTEM ACCOUNTS
         INSERT OR IGNORE INTO accounts (id, account_type_id, name) VALUES 
@@ -359,6 +360,12 @@ async fn migration_005_legacy_lazy_columns(pool: &SqlitePool) -> Result<(), Stri
     }
     if !column_exists(pool, "categories", "margin_target").await? {
         sqlx::query("ALTER TABLE categories ADD COLUMN margin_target REAL").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    
+    // Journal Entries created_at
+    if !column_exists(pool, "journal_entries", "created_at").await? {
+        sqlx::query("ALTER TABLE journal_entries ADD COLUMN created_at DATETIME").execute(pool).await.map_err(|e| e.to_string())?;
+        sqlx::query("UPDATE journal_entries SET created_at = entry_date").execute(pool).await.map_err(|e| e.to_string())?;
     }
     if !column_exists(pool, "categories", "flavor").await? {
         sqlx::query("ALTER TABLE categories ADD COLUMN flavor TEXT").execute(pool).await.map_err(|e| e.to_string())?;

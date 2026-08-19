@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../../app/context/AppContext';
 import { Plus, Trash2, Save, FileText } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface JVLine { id: string; accountId: number | null; dr: number; cr: number; }
 
@@ -15,7 +16,11 @@ export const JournalVoucherPanel: React.FC = () => {
   ]);
 
   const addLine = () => setLines([...lines, { id: Math.random().toString(), accountId: null, dr: 0, cr: 0 }]);
-  const removeLine = (id: string) => lines.length > 2 && setLines(lines.filter(l => l.id !== id));
+  const removeLine = (id: string) => {
+    if (lines.length > 2) {
+      setLines(lines.filter(l => l.id !== id));
+    }
+  };
   
   const updateLine = (id: string, field: keyof JVLine, value: any) => {
     setLines(lines.map(l => {
@@ -33,14 +38,14 @@ export const JournalVoucherPanel: React.FC = () => {
   const totalCr = lines.reduce((sum, l) => sum + l.cr, 0);
   const isBalanced = totalDr > 0 && totalDr === totalCr;
 
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSave = async () => {
-    setError(null); setSuccess(null);
-    if (!isBalanced) { setError("Debits must equal Credits to save the voucher."); return; }
-    if (lines.some(l => !l.accountId)) { setError("Please select an account for all lines."); return; }
+    
+    if (!isBalanced) { toast.error("Debits must equal Credits to save the voucher."); return; }
+    if (lines.some(l => !l.accountId)) { toast.error("Please select an account for all lines."); return; }
 
     const apiLines = lines.map(l => ({
       accountId: l.accountId!,
@@ -51,11 +56,11 @@ export const JournalVoucherPanel: React.FC = () => {
     setIsSubmitting(true);
     try {
       await postJournalEntry(date, apiLines, description);
-      setSuccess("Journal Voucher Posted Successfully!");
+      toast.success("Journal Voucher Posted Successfully!");
       setLines([{ id: '1', accountId: null, dr: 0, cr: 0 }, { id: '2', accountId: null, dr: 0, cr: 0 }]);
       setDescription('');
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
@@ -63,8 +68,8 @@ export const JournalVoucherPanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {error && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
-      {success && <div className="p-3 bg-emerald-50 text-emerald-700 text-sm rounded-md border border-emerald-200">{success}</div>}
+      
+      
       
       {/* Header Panel */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
@@ -124,7 +129,7 @@ export const JournalVoucherPanel: React.FC = () => {
                     <input type="number" className="w-full text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.cr || ''} onChange={e => updateLine(line.id, 'cr', Number(e.target.value))} />
                   </td>
                   <td className="px-4 py-2 text-center">
-                    <button onClick={() => removeLine(line.id)} className="text-rose-500 hover:bg-rose-50 p-1 rounded transition-colors" disabled={lines.length <= 2}>
+                    <button type="button" onClick={() => removeLine(line.id)} className="text-rose-500 hover:bg-rose-50 p-1 rounded transition-colors" disabled={lines.length <= 2}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </td>
@@ -134,7 +139,7 @@ export const JournalVoucherPanel: React.FC = () => {
           </table>
         </div>
         <div className="bg-slate-50 border-t border-slate-200 p-4 flex justify-between items-center">
-          <button onClick={addLine} className="flex items-center gap-1 text-sm font-medium text-orange-600 hover:text-orange-800 transition-colors px-2 py-1">
+          <button type="button" onClick={addLine} className="flex items-center gap-1 text-sm font-medium text-orange-600 hover:text-orange-800 transition-colors px-2 py-1">
             <Plus className="h-4 w-4" /> Add Line
           </button>
           

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Search, Filter, History, Eye, Printer, RefreshCw } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface SalesHistoryRow {
   id: number;
@@ -18,16 +19,16 @@ export const SalesHistoryPanel: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [salesHistory, setSalesHistory] = useState<SalesHistoryRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  
 
   const fetchHistory = async () => {
     setLoading(true);
-    setError(null);
+    
     try {
       const data: SalesHistoryRow[] = await invoke('get_sales_history');
       setSalesHistory(data);
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setLoading(false);
     }
@@ -73,7 +74,7 @@ export const SalesHistoryPanel: React.FC = () => {
       </div>
 
       <div className="flex-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-        {error && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
+        
         <div className="flex-1 overflow-auto">
           <table className="w-full text-left text-sm text-slate-600">
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-200 shadow-sm">

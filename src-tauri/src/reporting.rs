@@ -439,6 +439,164 @@ async fn run_stock_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<
     })
 }
 
+
+async fn run_ledger_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "je.entry_date");
+    let account_clause = filters.account_id.map(|id| format!(" AND je.account_id = {id}")).unwrap_or_default();
+    
+    let sql = format!(
+        r#"
+        SELECT 
+            datetime(je.entry_date, 'localtime') as entry_date, 
+            a.name as account_name,
+            je.voucher_type, 
+            je.ref_no,
+            je.narration, 
+            je.debit, 
+            je.credit 
+        FROM journal_entries je
+        JOIN accounts a ON je.account_id = a.id
+        WHERE 1=1 {date_clause}{account_clause}
+        ORDER BY je.id ASC
+        "#
+    );
+    
+    let raw_rows: Vec<(String, String, String, Option<String>, Option<String>, f64, f64)> = sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    
+    let mut rows = Vec::new();
+    let mut tot_dr = 0.0;
+    let mut tot_cr = 0.0;
+    
+    for (dt, acc, vt, ref_no, nar, dr, cr) in raw_rows {
+        tot_dr += dr;
+        tot_cr += cr;
+        rows.push(vec![
+            dt,
+            acc,
+            ref_no.unwrap_or_default(),
+            vt,
+            nar.unwrap_or_default(),
+            format!("{:.2}", dr),
+            format!("{:.2}", cr)
+        ]);
+    }
+    
+    Ok(ReportResult {
+        title: "Account Ledger".to_string(),
+        headers: vec!["Date".into(), "Account".into(), "Ref No".into(), "Voucher Type".into(), "Description".into(), "Debit".into(), "Credit".into()],
+        rows,
+        totals: vec![
+            ReportTotal { label: "Total Debit".into(), value: tot_dr },
+            ReportTotal { label: "Total Credit".into(), value: tot_cr },
+            ReportTotal { label: "Net Balance".into(), value: (tot_dr - tot_cr).abs() }
+        ]
+    })
+}
+
+async fn run_cashbook_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "je.entry_date");
+    
+    let sql = format!(
+        r#"
+        SELECT 
+            datetime(je.entry_date, 'localtime') as entry_date, 
+            je.voucher_type, 
+            je.ref_no,
+            je.narration, 
+            je.debit, 
+            je.credit 
+        FROM journal_entries je
+        WHERE je.account_id = 1 {date_clause}
+        ORDER BY je.id ASC
+        "#
+    );
+    
+    let raw_rows: Vec<(String, String, Option<String>, Option<String>, f64, f64)> = sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    
+    let mut rows = Vec::new();
+    let mut tot_dr = 0.0;
+    let mut tot_cr = 0.0;
+    
+    for (dt, vt, ref_no, nar, dr, cr) in raw_rows {
+        tot_dr += dr;
+        tot_cr += cr;
+        rows.push(vec![
+            dt,
+            ref_no.unwrap_or_default(),
+            vt,
+            nar.unwrap_or_default(),
+            format!("{:.2}", dr),
+            format!("{:.2}", cr)
+        ]);
+    }
+    
+    Ok(ReportResult {
+        title: "Cash Book".to_string(),
+        headers: vec!["Date".into(), "Ref No".into(), "Voucher Type".into(), "Description".into(), "Receipts (Dr)".into(), "Payments (Cr)".into()],
+        rows,
+        totals: vec![
+            ReportTotal { label: "Total Receipts".into(), value: tot_dr },
+            ReportTotal { label: "Total Payments".into(), value: tot_cr },
+            ReportTotal { label: "Closing Balance".into(), value: tot_dr - tot_cr }
+        ]
+    })
+}
+
+async fn run_trial_balance_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "je.entry_date");
+    
+    let sql = format!(
+        r#"
+        SELECT 
+            a.name,
+            t.name as type_name,
+            SUM(je.debit) as total_dr,
+            SUM(je.credit) as total_cr
+        FROM accounts a
+        JOIN account_types t ON a.account_type_id = t.id
+        LEFT JOIN journal_entries je ON a.id = je.account_id {date_clause}
+        GROUP BY a.id
+        HAVING total_dr > 0 OR total_cr > 0
+        ORDER BY t.trial_order ASC, a.name ASC
+        "#
+    );
+    
+    let raw_rows: Vec<(String, String, f64, f64)> = sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    
+    let mut rows = Vec::new();
+    let mut final_dr = 0.0;
+    let mut final_cr = 0.0;
+    
+    for (name, type_name, dr, cr) in raw_rows {
+        let mut net_dr = 0.0;
+        let mut net_cr = 0.0;
+        
+        if dr > cr { net_dr = dr - cr; }
+        else { net_cr = cr - dr; }
+        
+        final_dr += net_dr;
+        final_cr += net_cr;
+        
+        rows.push(vec![
+            name,
+            type_name,
+            if net_dr > 0.0 { format!("{:.2}", net_dr) } else { "-".into() },
+            if net_cr > 0.0 { format!("{:.2}", net_cr) } else { "-".into() },
+        ]);
+    }
+    
+    Ok(ReportResult {
+        title: "Trial Balance".to_string(),
+        headers: vec!["Account Name".into(), "Account Type".into(), "Debit Balance".into(), "Credit Balance".into()],
+        rows,
+        totals: vec![
+            ReportTotal { label: "Total Debit".into(), value: final_dr },
+            ReportTotal { label: "Total Credit".into(), value: final_cr }
+        ]
+    })
+}
+
+
 async fn run_profit_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
     let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "invoice_date");
 
@@ -522,12 +680,15 @@ pub async fn generate_report(
     let normalized = report_name.to_uppercase().replace(' ', "_");
 
     match normalized.as_str() {
+        "LEDGER" | "LEDGER_REPORT" => run_ledger_report(&db, &filters).await,
+        "CASHBOOK" | "CASH_BOOK" => run_cashbook_report(&db, &filters).await,
+        "TRIAL" | "TRIAL_BALANCE" => run_trial_balance_report(&db, &filters).await,
         "SALES" | "SALES_REPORT" => run_sales_report(&db, &filters).await,
         "PURCHASE" | "PURCHASES" | "PURCHASE_REPORT" => run_purchase_report(&db, &filters).await,
         "STOCK" | "STOCK_REPORT" => run_stock_report(&db, &filters).await,
         "PROFIT" | "PROFIT_REPORT" | "P&L" => run_profit_report(&db, &filters).await,
         other => Err(format!(
-            "Unknown report type '{}'. Supported: Sales, Purchase, Stock, Profit.",
+            "Unknown report type '{}'. Supported: Ledger, CashBook, Trial, Sales, Purchase, Stock, Profit.",
             other
         )),
     }

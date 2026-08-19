@@ -5,12 +5,12 @@ import { invoke } from '@tauri-apps/api/core';
 export interface Product { id: number; code: string; name: string; packing: string | null; purchase_price: number; sale_price: number; opening_stock: number; category_id: number | null; real_barcode: string | null; uom: string | null; reorder_level: number | null; sale_account_id: number | null; }
 export interface Account { id: number; name: string; account_type_id: number; contact: string | null; opening_balance: number; current_balance: number; }
 export interface Category { id: number; name: string; description: string | null; parent_id: number | null; }
-export interface Area { id: number; name: string; salesman_id: number | null; remarks: string | null; }
+export interface Area { id: number; name: string; salesman_id: number | null; remarks: string | null; active: number; account_count: number; }
 export interface AccountType { id: number; name: string; nature: 'DR' | 'CR'; trial_bal_type: 'BS' | 'IS'; trial_order: number; }
 
 // Transaction Data
-export interface InvoiceLine { product_id: number; qty: number; rate: number; discount_pct: number; amount: number; }
-export interface Invoice { id: number; type: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN'; ref_no: string; account_id: number; date: string; lines: InvoiceLine[]; gross_amount: number; discount_amount: number; net_amount: number; amount_paid: number; }
+export interface InvoiceLine { category_id?: number | null; product_id: number; qty: number; rate: number; discount_pct: number; amount: number; }
+export interface Invoice { id: number; type: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN'; ref_no: string; account_id: number; salesman_id?: number; date: string; lines: InvoiceLine[]; gross_amount: number; discount_amount: number; net_amount: number; amount_paid: number; }
 export interface LedgerEntry { id: number; date: string; account_id: number; dr_amount: number; cr_amount: number; description: string; ref_id?: number; ref_type?: string; }
 export interface InventoryMovement { id: number; date: string; product_id: number; qty_in: number; qty_out: number; type: string; ref_id?: number; }
 export interface AppSetting { key: string; value: string; }
@@ -29,7 +29,7 @@ interface AppContextType {
 
   postInvoice: (invoice: Omit<Invoice, 'id'>) => Promise<void>;
   postJournalEntry: (date: string, lines: { accountId: number; entryType: 'DR' | 'CR'; amount: number; description?: string }[], description: string) => Promise<void>;
-  postPayment: (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string) => Promise<void>;
+  postPayment: (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, attachmentPath?: string) => Promise<void>;
   fetchData: () => Promise<void>;
 
   createCategory: (name: string, description?: string, parent_id?: number, margin_target?: number, flavor?: string) => Promise<void>;
@@ -45,7 +45,7 @@ interface AppContextType {
   deleteAccount: (id: number) => Promise<void>;
 
   createArea: (name: string, salesman_id?: number, remarks?: string) => Promise<void>;
-  updateArea: (id: number, name: string, salesman_id?: number, remarks?: string) => Promise<void>;
+  updateArea: (id: number, name: string, salesman_id?: number, remarks?: string, active?: number) => Promise<void>;
   deleteArea: (id: number) => Promise<void>;
 
   createAccountType: (name: string, nature: string, trial_bal_type: string, trial_order: number) => Promise<void>;
@@ -207,9 +207,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const updateArea = async (id: number, name: string, salesman_id?: number, remarks?: string) => {
+  const updateArea = async (id: number, name: string, salesman_id?: number, remarks?: string, active?: number) => {
     try {
-      await invoke('update_area', { id, name, salesmanId: salesman_id, remarks });
+      await invoke('update_area', { id, name, salesmanId: salesman_id, remarks, active });
       await fetchData();
     } catch (e) { console.error(e); throw e; }
   };
@@ -258,7 +258,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const postPayment = async (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string) => {
+  const postPayment = async (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, attachmentPath?: string) => {
     try {
       await invoke('process_cash_transaction', {
         transType: type === 'RECEIVE' ? 'RECEIVE' : 'PAYMENT',
@@ -267,7 +267,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         transDate: date,
         description: description,
         paymentMethod: null,
-        refNo: null
+        refNo: null,
+        attachmentPath: attachmentPath || null
       });
       await fetchData();
     } catch (error) {

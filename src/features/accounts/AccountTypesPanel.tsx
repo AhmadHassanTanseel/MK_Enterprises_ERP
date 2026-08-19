@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../../app/context/AppContext';
 import { Network, Plus, Settings, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export const AccountTypesPanel: React.FC = () => {
   const { accountTypes, createAccountType } = useAppContext();
@@ -8,7 +9,7 @@ export const AccountTypesPanel: React.FC = () => {
   const [isAddMode, setIsAddMode] = useState(false);
   const [formData, setFormData] = useState({ name: '', nature: 'DR', trial_bal_type: 'BS', trial_order: 99 });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  
 
   // ERP Enhancement: Tree view grouping by Trial Balance Type (BS/IS) and Nature
   const groupedTypes = {
@@ -18,7 +19,7 @@ export const AccountTypesPanel: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    
     if (!formData.name) return;
     setIsSubmitting(true);
     try {
@@ -26,7 +27,7 @@ export const AccountTypesPanel: React.FC = () => {
       setIsAddMode(false);
       setFormData({ name: '', nature: 'DR', trial_bal_type: 'BS', trial_order: 99 });
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
@@ -42,7 +43,7 @@ export const AccountTypesPanel: React.FC = () => {
             <X className="h-5 w-5" />
           </button>
         </div>
-        {error && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
+        
         <form onSubmit={handleSave} className="space-y-4 flex-1 overflow-y-auto pr-2">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>

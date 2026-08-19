@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
 import { Plus, Search, Filter, Paperclip, CreditCard, Banknote, Building2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
+import toast from 'react-hot-toast';
 
 interface CashHistoryRow {
   id: number;
@@ -25,9 +26,11 @@ export const CashPaymentPanel: React.FC = () => {
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [description, setDescription] = useState('');
+  const [transDate, setTransDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [attachment, setAttachment] = useState<string | null>(null);
 
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const supplierAccounts = accounts.filter(a => a.account_type_id !== 1);
@@ -58,29 +61,51 @@ export const CashPaymentPanel: React.FC = () => {
     );
   });
 
+  
+  const handleAttach = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'Documents', extensions: ['pdf', 'png', 'jpg', 'jpeg'] }]
+      });
+      if (selected && !Array.isArray(selected)) {
+        setAttachment(selected);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null); setSuccess(null);
+    
 
-    if (!accountId) { setError("Please select an account"); return; }
-    if (amount <= 0) { setError("Amount must be greater than zero"); return; }
+    if (!accountId) { toast.error("Please select an account"); return; }
+    if (amount <= 0) { toast.error("Amount must be greater than zero"); return; }
 
     setIsSubmitting(true);
-    try {
+        try {
+      let finalAttachmentPath = undefined;
+      if (attachment) {
+        finalAttachmentPath = await invoke<string>('save_attachment', { sourcePath: attachment });
+      }
+
       await postPayment(
-        new Date().toISOString().split('T')[0],
+        transDate,
         accountId,
         'PAY',
         amount,
-        `${paymentMethod} - ${description}`
+        `${paymentMethod} - ${description}`,
+        finalAttachmentPath
       );
-      setSuccess(`Payment of Rs. ${amount} saved successfully!`);
+      toast.success(`Payment of Rs. ${amount} saved successfully!`);
       setIsAddMode(false);
       setAmount(0);
       setDescription('');
+      setAttachment(null);
       await loadHistory();
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
@@ -90,8 +115,8 @@ export const CashPaymentPanel: React.FC = () => {
     <div className="flex gap-6 h-full">
       <div className={`w-1/3 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col ${isAddMode ? 'block' : 'hidden md:flex'}`}>
         <h3 className="text-lg font-bold text-slate-800 mb-6">{isAddMode ? 'New Payment' : 'Make Payment'}</h3>
-        {error && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
-        {success && <div className="mb-4 p-3 bg-emerald-50 text-emerald-700 text-sm rounded-md border border-emerald-200">{success}</div>}
+        
+        
         <form onSubmit={handleSave} className="space-y-4 flex-1 overflow-y-auto pr-2">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Account (Supplier/Expense) *</label>
@@ -134,6 +159,15 @@ export const CashPaymentPanel: React.FC = () => {
             />
           </div>
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Date *</label>
+            <input
+              type="date" required
+              className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+              value={transDate}
+              onChange={e => setTransDate(e.target.value)}
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
             <textarea
               className="w-full border border-slate-300 rounded-md p-2 h-20 outline-none focus:ring-2 focus:ring-blue-500"
@@ -144,19 +178,11 @@ export const CashPaymentPanel: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Attachment (ERP Feature)</label>
-            <button type="button" onClick={async () => {
-              try {
-                const file = await open({
-                  multiple: false,
-                  filters: [{ name: 'Images/PDF', extensions: ['png', 'jpeg', 'jpg', 'pdf'] }]
-                });
-                if (file) alert(`File selected: ${file}`);
-              } catch (e) {
-                console.error(e);
-              }
-            }} className="w-full flex items-center justify-center gap-2 border border-dashed border-slate-400 rounded-md p-4 text-slate-500 hover:bg-slate-50 hover:border-slate-500 transition-colors">
+                        <button type="button" onClick={handleAttach} className="w-full flex items-center justify-center gap-2 border border-dashed border-slate-400 rounded-md p-4 text-slate-500 hover:bg-slate-50 hover:border-slate-500 transition-colors">
               <Paperclip className="h-5 w-5" />
-              <span className="text-sm">Click to attach file or image</span>
+              <span className="text-sm">
+                {attachment ? attachment.split('\\\\').pop()?.split('/').pop() : 'Click to attach file or image'}
+              </span>
             </button>
           </div>
           <button type="submit" disabled={isSubmitting} className="w-full bg-rose-600 text-white font-medium py-3 rounded-md hover:bg-rose-700 transition-colors mt-4 shadow-sm hover:shadow-md disabled:opacity-50">

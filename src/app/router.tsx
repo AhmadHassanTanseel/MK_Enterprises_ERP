@@ -14,8 +14,10 @@ import { PurchaseReturnPanel } from '../features/purchases/PurchaseReturnPanel';
 import { CashReceivedPanel } from '../features/finance/CashReceivedPanel';
 import { CashPaymentPanel } from '../features/finance/CashPaymentPanel';
 import { JournalVoucherPanel } from '../features/finance/JournalVoucherPanel';
+import { JournalVoucherRegisterPanel } from '../features/finance/JournalVoucherRegisterPanel';
 import { ReportPanel } from '../features/reports/ReportPanel';
 import { SettingsPanel } from '../features/settings/SettingsPanel';
+import { UsersPanel } from '../features/settings/UsersPanel';
 import { AreasPanel } from '../features/settings/AreasPanel';
 
 export const router = createHashRouter([
@@ -43,10 +45,12 @@ export const router = createHashRouter([
       { path: 'cash-receive', element: <CashReceivedPanel /> },
       { path: 'cash-payment', element: <CashPaymentPanel /> },
       { path: 'general-voucher', element: <JournalVoucherPanel /> },
+      { path: 'journal-history', element: <JournalVoucherRegisterPanel /> },
       
       { path: 'reports', element: <ReportPanel /> },
       
       { path: 'settings', element: <SettingsPanel /> },
+      { path: 'users', element: <UsersPanel /> },
       { path: 'areas', element: <AreasPanel /> },
     ]
   }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext, Product } from '../../app/context/AppContext';
-import { Plus, Edit2, Search, Filter, Trash2, X } from 'lucide-react';
+import { Plus, Edit2, Search, Filter, Trash2, X, Copy } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export const ProductsPanel: React.FC = () => {
   const { products, createProduct, updateProduct, deleteProduct } = useAppContext();
@@ -8,17 +9,17 @@ export const ProductsPanel: React.FC = () => {
   
   const [isAddMode, setIsAddMode] = useState(false);
   const [formData, setFormData] = useState<Partial<Product>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
+    
+    
     try {
       if (!formData.name || !formData.code) {
-         setError("Product Name and Code are required");
+         toast.error("Product Name and Code are required");
          return;
       }
       setIsSubmitting(true);
@@ -38,7 +39,7 @@ export const ProductsPanel: React.FC = () => {
           formData.reorder_level || undefined, 
           formData.sale_account_id || undefined
         );
-        setSuccess("Product updated successfully!");
+        toast.success("Product updated successfully!");
       } else {
         await createProduct(
           formData.code, 
@@ -53,23 +54,37 @@ export const ProductsPanel: React.FC = () => {
           formData.reorder_level || undefined, 
           formData.sale_account_id || undefined
         );
-        setSuccess("Product created successfully!");
+        toast.success("Product created successfully!");
       }
 
       setIsAddMode(false);
       setFormData({});
     } catch (err: any) {
-      setError(err.toString());
+      toast.error(err.toString());
     } finally {
       setIsSubmitting(false);
     }
   };
 
+    const handleDuplicate = (prod: Product) => {
+    setFormData({
+      code: prod.code + '-COPY',
+      name: prod.name + ' (Copy)',
+      category_id: prod.category_id || undefined,
+      packing: prod.packing || '',
+      purchase_price: prod.purchase_price,
+      sale_price: prod.sale_price,
+      reorder_level: prod.reorder_level || 0,
+      opening_stock: prod.opening_stock || 0
+    });
+    setIsAddMode(true);
+  };
+
   const handleEdit = (prod: Product) => {
     setFormData(prod);
     setIsAddMode(true);
-    setError(null);
-    setSuccess(null);
+    
+    
   };
 
   const handleDelete = async (id: number) => {
@@ -77,7 +92,7 @@ export const ProductsPanel: React.FC = () => {
       setIsSubmitting(true);
       try {
         await deleteProduct(id);
-        setSuccess("Product deleted successfully!");
+        toast.success("Product deleted successfully!");
         if (formData.id === id) {
           setFormData({});
           setIsAddMode(false);
@@ -107,8 +122,8 @@ export const ProductsPanel: React.FC = () => {
             </button>
           )}
         </div>
-        {error && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-200">{error}</div>}
-        {success && <div className="mb-4 p-3 bg-emerald-50 text-emerald-700 text-sm rounded-md border border-emerald-200">{success}</div>}
+        
+        
         <form onSubmit={handleSave} className="space-y-4 flex-1 overflow-y-auto pr-2">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Product Code *</label>
@@ -240,7 +255,10 @@ export const ProductsPanel: React.FC = () => {
                     <span className="bg-slate-100 px-2 py-1 rounded-md text-slate-600">{prod.uom}</span>
                   </td>
                   <td className="px-4 py-3 text-center flex justify-center gap-2">
-                    <button onClick={() => handleEdit(prod)} className="text-blue-600 hover:text-blue-800 p-1 rounded-md hover:bg-blue-50 transition-colors">
+                    <button onClick={() => handleDuplicate(prod)} className="text-teal-600 hover:text-teal-800 p-1 rounded-md hover:bg-teal-50 transition-colors" title="Duplicate">
+                        <Copy className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => handleEdit(prod)} className="text-blue-600 hover:text-blue-800 p-1 rounded-md hover:bg-blue-50 transition-colors">
                       <Edit2 className="h-4 w-4" />
                     </button>
                     <button onClick={() => handleDelete(prod.id)} disabled={isSubmitting} className="text-slate-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition-colors">
