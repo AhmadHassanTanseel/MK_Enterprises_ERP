@@ -20,6 +20,7 @@ export const SettingsPanel: React.FC = () => {
   const { settings, saveSetting, fetchData } = useAppContext();
   const [companyName, setCompanyName] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [showAuditLog, setShowAuditLog] = useState(false);
@@ -180,7 +181,7 @@ export const SettingsPanel: React.FC = () => {
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <Building className="h-5 w-5 text-emerald-500" />
-            <h3 className="font-bold text-slate-800">General Configuration</h3>
+            <h3 className="font-bold text-slate-800">Setup</h3>
           </div>
           <div className="space-y-4">
             <div>
@@ -193,6 +194,20 @@ export const SettingsPanel: React.FC = () => {
                 placeholder="Enter Company Name"
               />
             </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Company Logo</label>
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 bg-slate-100 border border-slate-200 rounded overflow-hidden flex items-center justify-center">
+                    {logoUrl ? <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" /> : <span className="text-xs text-slate-400">No Logo</span>}
+                  </div>
+                  <input type="file" accept="image/*" className="text-sm text-slate-500" onChange={e => {
+                    if (e.target.files && e.target.files[0]) {
+                      setLogoUrl(URL.createObjectURL(e.target.files[0]));
+                    }
+                  }} />
+                </div>
+              </div>
+
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Company Address</label>
               <input
@@ -240,12 +255,43 @@ export const SettingsPanel: React.FC = () => {
             <h3 className="font-bold text-slate-800">Data Management</h3>
           </div>
           <div className="space-y-3">
-            <button
-              onClick={handleBackup}
-              className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded border border-slate-200 flex justify-between items-center"
-            >
-              <span>Backup Database</span> <Download className="h-4 w-4 text-slate-400" />
-            </button>
+            
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Backup</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleBackup}
+                  className="flex-1 text-center px-2 py-2 text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 rounded border border-slate-200"
+                >
+                  Local
+                </button>
+                <button
+                  onClick={() => toast.error('Cloud backup isn\'t connected yet')}
+                  className="flex-1 text-center px-2 py-2 text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 rounded border border-blue-200"
+                >
+                  Drive
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex flex-col gap-2 mt-4">
+              <label className="text-xs font-bold text-slate-500 uppercase">Restore</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRestoreClick}
+                  className="flex-1 text-center px-2 py-2 text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 rounded border border-slate-200"
+                >
+                  Local
+                </button>
+                <button
+                  onClick={() => toast.error('Cloud backup isn\'t connected yet')}
+                  className="flex-1 text-center px-2 py-2 text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 rounded border border-blue-200"
+                >
+                  Drive
+                </button>
+              </div>
+            </div>
+
             {backupMessage && (
               <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded border border-slate-200">{backupMessage}</p>
             )}

@@ -1,111 +1,125 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   FileText, ShoppingCart, PlusCircle, Users, 
   Tags, Bookmark, CornerDownLeft, CornerUpRight,
-  MapPin, Activity, DollarSign, Package
+  MapPin, Activity, DollarSign, Package, TrendingUp, Users as UsersIcon, Box
 } from 'lucide-react';
 import { useAppContext } from '../../app/context/AppContext';
 
 export const Dashboard: React.FC = () => {
   const { invoices, accounts, products } = useAppContext();
 
-  const kpis = useMemo(() => {
-    // 1. Total Sales
-    const totalSales = invoices
-      .filter(i => i.type === 'SALE')
-      .reduce((sum, i) => sum + i.net_amount, 0);
-
-    // 2. Total Purchases
-    const totalPurchases = invoices
-      .filter(i => i.type === 'PURCHASE')
-      .reduce((sum, i) => sum + i.net_amount, 0);
-
-    // 3. Total Receivable
-    const totalReceivable = accounts
-      .filter(a => a.account_type_id === 2)
-      .reduce((sum, a) => sum + (a.current_balance || 0), 0);
-
-    // 4. Total Payable
-    const totalPayable = accounts
-      .filter(a => a.account_type_id === 4)
-      .reduce((sum, a) => sum + Math.abs(a.current_balance || 0), 0);
-
-    // 5. Cash Balance
-    const cashAccount = accounts.find(a => a.id === 1);
-    const cashBalance = cashAccount ? (cashAccount.current_balance || 0) : 0;
-
-    // 6. Total Products
-    const totalProducts = products.length;
-
-    // 7. Total Customers
-    const totalCustomers = accounts.filter(a => a.account_type_id === 2).length;
-
-    // 8. Total Suppliers
-    const totalSuppliers = accounts.filter(a => a.account_type_id === 4).length;
-
-    return [
-      { title: "Total Sales", value: `Rs. ${totalSales.toLocaleString()}`, icon: DollarSign, trend: "Overall" },
-      { title: "Total Purchases", value: `Rs. ${totalPurchases.toLocaleString()}`, icon: ShoppingCart, trend: "Overall" },
-      { title: "Total Receivable", value: `Rs. ${totalReceivable.toLocaleString()}`, icon: Activity, trend: "Overall" },
-      { title: "Total Payable", value: `Rs. ${totalPayable.toLocaleString()}`, icon: FileText, trend: "Overall" },
-      { title: "Cash Balance", value: `Rs. ${cashBalance.toLocaleString()}`, icon: DollarSign, trend: "Current" },
-      { title: "Total Products", value: totalProducts.toString(), icon: Package, trend: "Overall" },
-      { title: "Total Customers", value: totalCustomers.toString(), icon: Users, trend: "Overall" },
-      { title: "Total Suppliers", value: totalSuppliers.toString(), icon: Users, trend: "Overall" },
-    ];
-  }, [invoices, accounts, products]);
-
-  const quickLinks = [
-    { name: 'Sale Invoice', to: '/sales', icon: ShoppingCart, color: 'bg-emerald-500' },
-    { name: 'Purchase Invoice', to: '/purchases', icon: FileText, color: 'bg-blue-500' },
-    { name: 'New Product', to: '/products', icon: PlusCircle, color: 'bg-indigo-500' },
-    { name: 'Add Account', to: '/accounts', icon: Users, color: 'bg-purple-500' },
-    { name: 'Accounts Type', to: '/account-types', icon: Tags, color: 'bg-pink-500' },
-    { name: 'Add Category', to: '/categories', icon: Bookmark, color: 'bg-rose-500' },
-    { name: 'Journal Voucher', to: '/general-voucher', icon: FileText, color: 'bg-orange-500' },
-    { name: 'Sale Return', to: '/sale-return', icon: CornerDownLeft, color: 'bg-red-500' },
-    { name: 'Purchase Return', to: '/purchase-return', icon: CornerUpRight, color: 'bg-yellow-500' },
-    { name: 'Add Area', to: '/areas', icon: MapPin, color: 'bg-teal-500' },
+  // The 9 specific shortcuts
+  const quickNav = [
+    { label: "Sales Invoice", icon: FileText, to: "/sales", color: "bg-blue-100 text-blue-700" },
+    { label: "Purchase", icon: ShoppingCart, to: "/purchases", color: "bg-teal-100 text-teal-700" },
+    { label: "New Product", icon: PlusCircle, to: "/product?tab=products&new=true", color: "bg-purple-100 text-purple-700" },
+    { label: "New Category", icon: Tags, to: "/product?tab=categories&new=true", color: "bg-orange-100 text-orange-700" },
+    { label: "Sales Return", icon: CornerDownLeft, to: "/sale-return", color: "bg-red-100 text-red-700" },
+    { label: "Purchase Return", icon: CornerUpRight, to: "/purchase-return", color: "bg-indigo-100 text-indigo-700" },
+    { label: "Stocks", icon: Box, to: "/inventory", color: "bg-slate-100 text-slate-700" },
+    { label: "Expenses", icon: DollarSign, to: "/other-accounts?tab=expenses", color: "bg-rose-100 text-rose-700" },
+    { label: "Mulazmeen Attendance", icon: UsersIcon, to: "/other-accounts?tab=workers", color: "bg-emerald-100 text-emerald-700" },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
-      </div>
-
-      {/* KPI Tiles (ERP Enhancement) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((kpi, idx) => (
-          <div key={idx} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500 mb-1">{kpi.title}</p>
-              <h3 className="text-2xl font-bold text-slate-800">{kpi.value}</h3>
+      
+      {/* 3 Summary Sections (Mock Data) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Sales Summary */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-blue-600" /> Sales
+            </h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-500">Today</span>
+              <span className="font-bold text-slate-800">Rs. 45,000</span>
             </div>
-            <div className="h-12 w-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-600">
-              <kpi.icon className="h-6 w-6" />
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-500">This Week</span>
+              <span className="font-bold text-slate-800">Rs. 280,500</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-500">This Month</span>
+              <span className="font-bold text-slate-800">Rs. 1,150,000</span>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* Quick Navigate Tiles */}
-      <div>
-        <h3 className="text-lg font-bold text-slate-800 mb-4">Quick Navigate</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {quickLinks.map((link, idx) => (
-            <NavLink 
-              key={idx}
-              to={link.to}
-              className={`${link.color} text-white p-4 rounded-xl shadow-sm hover:shadow-md transition-all flex flex-col items-center justify-center gap-3 hover:-translate-y-1`}
-            >
-              <link.icon className="h-8 w-8" />
-              <span className="font-semibold text-sm text-center">{link.name}</span>
-            </NavLink>
-          ))}
+        {/* Purchases Summary */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5 text-teal-600" /> Purchases
+            </h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-500">Today</span>
+              <span className="font-bold text-slate-800">Rs. 12,000</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-500">This Week</span>
+              <span className="font-bold text-slate-800">Rs. 95,000</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-500">This Month</span>
+              <span className="font-bold text-slate-800">Rs. 420,000</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Customers Summary */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
+              <UsersIcon className="h-5 w-5 text-orange-600" /> Customers
+            </h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-500">Active (30 days)</span>
+              <span className="font-bold text-slate-800">42</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-500">Total Receivables</span>
+              <span className="font-bold text-slate-800 text-red-600">Rs. 89,500</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-500">New This Month</span>
+              <span className="font-bold text-slate-800">8</span>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* QUICK NAVIGATE */}
+      <div>
+        <h2 className="text-lg font-bold text-slate-800 mb-4 px-1">Quick Navigate</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {quickNav.map((item, index) => {
+            const Icon = item.icon;
+            return (
+              <NavLink 
+                key={index} 
+                to={item.to}
+                className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-blue-300 transition-all group flex flex-col items-center justify-center gap-3 text-center h-32"
+              >
+                <div className={`h-12 w-12 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 ${item.color}`}>
+                  <Icon className="h-6 w-6" />
+                </div>
+                <span className="font-semibold text-slate-700 text-sm">{item.label}</span>
+              </NavLink>
+            )
+          })}
+        </div>
+      </div>
+
     </div>
   );
 };

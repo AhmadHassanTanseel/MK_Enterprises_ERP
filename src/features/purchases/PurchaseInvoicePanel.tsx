@@ -13,7 +13,10 @@ export const PurchaseInvoicePanel: React.FC = () => {
   const [lines, setLines] = useState<(InvoiceLine & { id: string })[]>([
     { id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }
   ]);
-  const [amountPaid, setAmountPaid] = useState<number>(0);
+  const [amountPaidCash, setAmountPaidCash] = useState<number>(0);
+  const [amountPaidBank, setAmountPaidBank] = useState<number>(0);
+  const [bankAccountId, setBankAccountId] = useState<number | null>(null);
+  const amountPaid = amountPaidCash + amountPaidBank;
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   const supplierAccounts = accounts.filter(a => a.account_type_id === 4 || a.account_type_id === 1); // Suppliers & Cash
@@ -85,7 +88,9 @@ export const PurchaseInvoicePanel: React.FC = () => {
       });
       toast.success(`Purchase Invoice saved successfully`);
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
-      setAmountPaid(0);
+      setAmountPaidCash(0);
+      setAmountPaidBank(0);
+      setBankAccountId(null);
       setAccountId(null);
     } catch (err) { toast.error(`Could not save Purchase Invoice: ${err instanceof Error ? err.message : String(err)}`); } finally {
       setIsSubmitting(false);

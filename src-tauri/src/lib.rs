@@ -71,6 +71,8 @@ pub fn run() {
             get_live_stock,
             get_trial_balance,
             get_sales_history,
+            get_purchase_history,
+            get_purchase_history,
             generate_report,
             process_stock_adjustment,
             get_invoices,
