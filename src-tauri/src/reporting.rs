@@ -699,6 +699,79 @@ async fn run_profit_report(pool: &SqlitePool, filters: &ReportFilters) -> Result
     })
 }
 
+
+async fn run_asset_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let mut sql = String::from(r#"
+        SELECT 
+            name, 
+            purchase_date, 
+            purchase_price, 
+            status, 
+            IFNULL(sold_date, '-') as sold_date, 
+            IFNULL(sold_price, 0.0) as sold_price 
+        FROM company_assets 
+        WHERE 1=1
+    "#);
+
+    if let Some(fd) = &filters.from_date {
+        sql.push_str(&format!(" AND purchase_date >= '{}'", fd));
+    }
+    if let Some(td) = &filters.to_date {
+        sql.push_str(&format!(" AND purchase_date <= '{}'", td));
+    }
+    sql.push_str(" ORDER BY purchase_date ASC");
+
+    #[derive(sqlx::FromRow)]
+    struct AssetRow {
+        name: String,
+        purchase_date: String,
+        purchase_price: f64,
+        status: String,
+        sold_date: String,
+        sold_price: f64,
+    }
+
+    let records: Vec<AssetRow> = sqlx::query_as(&sql)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("DB Error: {}", e))?;
+
+    let mut rows = Vec::new();
+    let mut total_purchase = 0.0;
+    let mut total_sold = 0.0;
+
+    for r in records {
+        total_purchase += r.purchase_price;
+        total_sold += r.sold_price;
+
+        rows.push(vec![
+            r.name,
+            r.purchase_date,
+            format!("{:.2}", r.purchase_price),
+            r.status,
+            r.sold_date,
+            if r.sold_price > 0.0 { format!("{:.2}", r.sold_price) } else { "-".to_string() }
+        ]);
+    }
+
+    Ok(ReportResult {
+        title: "Company Assets Report".into(),
+        headers: vec![
+            "Asset Name".into(),
+            "Purchase Date".into(),
+            "Purchase Price".into(),
+            "Status".into(),
+            "Sold Date".into(),
+            "Sold Price".into(),
+        ],
+        rows,
+        totals: vec![
+            ReportTotal { label: "Total Purchase Value".into(), value: total_purchase },
+            ReportTotal { label: "Total Sold Value".into(), value: total_sold },
+        ],
+    })
+}
+
 #[tauri::command]
 pub async fn generate_report(
     report_name: String,
@@ -713,10 +786,11 @@ pub async fn generate_report(
         "TRIAL" | "TRIAL_BALANCE" => run_trial_balance_report(&db, &filters).await,
         "SALES" | "SALES_REPORT" => run_sales_report(&db, &filters).await,
         "PURCHASE" | "PURCHASES" | "PURCHASE_REPORT" => run_purchase_report(&db, &filters).await,
-        "STOCK" | "STOCK_REPORT" => run_stock_report(&db, &filters).await,
+                "STOCK" | "STOCK_REPORT" => run_stock_report(&db, &filters).await,
         "PROFIT" | "PROFIT_REPORT" | "P&L" => run_profit_report(&db, &filters).await,
+        "ASSETS" | "ASSET_REPORT" => run_asset_report(&db, &filters).await,
         other => Err(format!(
-            "Unknown report type '{}'. Supported: Ledger, CashBook, Trial, Sales, Purchase, Stock, Profit.",
+            "Unknown report type '{}'. Supported: Ledger, CashBook, Trial, Sales, Purchase, Stock, Profit, Assets.",
             other
         )),
     }

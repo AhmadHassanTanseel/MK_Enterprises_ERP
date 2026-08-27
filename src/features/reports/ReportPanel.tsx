@@ -19,7 +19,7 @@ interface ReportResult {
   totals: ReportTotal[];
 }
 
-const BACKEND_REPORT_TYPES = ['LEDGER', 'CASHBOOK', 'TRIAL', 'SALES', 'PURCHASE', 'STOCK', 'PROFIT'];
+const BACKEND_REPORT_TYPES = ['LEDGER', 'CASHBOOK', 'TRIAL', 'SALES', 'PURCHASE', 'STOCK', 'PROFIT', 'ASSETS'];
 
 export const ReportPanel: React.FC = () => {
   const { ledgerEntries, accounts } = useAppContext();
@@ -100,6 +100,7 @@ export const ReportPanel: React.FC = () => {
               <option value="PURCHASE">Purchase Report</option>
               <option value="STOCK">Stock Report</option>
               <option value="PROFIT">Profit Report</option>
+              <option value="ASSETS">Company Assets</option>
             </select>
           </div>
           <div>

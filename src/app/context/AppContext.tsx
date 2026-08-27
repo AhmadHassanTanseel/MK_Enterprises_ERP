@@ -15,6 +15,16 @@ export interface InvoiceLine { category_id?: number | null; product_name?: strin
 export interface Invoice { id: number; type: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN'; ref_no: string; account_id: number; salesman_id?: number; date: string; lines: InvoiceLine[]; gross_amount: number; discount_amount: number; net_amount: number; amount_paid: number; }
 export interface LedgerEntry { id: number; date: string; account_id: number; dr_amount: number; cr_amount: number; description: string; ref_id?: number; ref_type?: string; }
 export interface InventoryMovement { id: number; date: string; product_id: number; qty_in: number; qty_out: number; type: string; ref_id?: number; }
+export interface CompanyAsset {
+  id: number;
+  name: string;
+  purchase_date: string;
+  purchase_price: number;
+  status: string;
+  sold_date?: string;
+  sold_price?: number;
+}
+
 export interface AppSetting { key: string; value: string; }
 
 interface AppContextType {
@@ -55,6 +65,10 @@ interface AppContextType {
   createAccountType: (name: string, nature: string, trial_bal_type: string, trial_order: number) => Promise<void>;
   
   saveSetting: (key: string, value: string) => Promise<void>;
+  companyAssets: CompanyAsset[];
+  fetchCompanyAssets: () => Promise<void>;
+  addCompanyAsset: (name: string, purchase_price: number, purchase_date: string) => Promise<void>;
+  sellCompanyAsset: (id: number, sold_price: number, sold_date: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -71,6 +85,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [settings, setSettings] = useState<AppSetting[]>([]);
   const [salesmen, setSalesmen] = useState<Salesman[]>([]);
+
+
+  const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>([]);
+
+  const fetchCompanyAssets = async () => {
+    try {
+      const data: CompanyAsset[] = await invoke('get_company_assets');
+      setCompanyAssets(data);
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  const addCompanyAsset = async (name: string, purchase_price: number, purchase_date: string) => {
+    await invoke('add_company_asset', { name, purchasePrice: purchase_price, purchaseDate: purchase_date });
+    await fetchCompanyAssets();
+    await fetchData();
+  };
+
+  const sellCompanyAsset = async (id: number, sold_price: number, sold_date: string) => {
+    await invoke('sell_company_asset', { id, soldPrice: sold_price, soldDate: sold_date });
+    await fetchCompanyAssets();
+    await fetchData();
+  };
 
   const fetchData = async () => {
     try {
@@ -134,6 +172,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       const dbSalesmen: Salesman[] = await invoke('get_salesmen');
       setSalesmen(dbSalesmen);
+      await fetchCompanyAssets();
 
     } catch (error) {
       console.error("Failed to load initial data from Tauri backend:", error);
@@ -399,8 +438,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       createAccount, updateAccount, deleteAccount,
       createArea, updateArea, deleteArea,
       createAccountType,
-      saveSetting
-    }}>
+      saveSetting,
+        companyAssets,
+        fetchCompanyAssets,
+        addCompanyAsset,
+        sellCompanyAsset
+      }}>
       {children}
     </AppContext.Provider>
   );

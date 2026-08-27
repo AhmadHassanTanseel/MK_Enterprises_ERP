@@ -183,6 +183,17 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             status TEXT DEFAULT 'ACTIVE'
         );
 
+        
+        CREATE TABLE IF NOT EXISTS company_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            purchase_date TEXT NOT NULL,
+            purchase_price REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            sold_date TEXT,
+            sold_price REAL
+        );
+
         CREATE TABLE IF NOT EXISTS system_config (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL

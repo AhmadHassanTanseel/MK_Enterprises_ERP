@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAppContext } from '../../app/context/AppContext';
 
 export const OtherAccountsPanel: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'loan');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'assets');
+  const { companyAssets, addCompanyAsset, sellCompanyAsset } = useAppContext();
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -19,23 +21,55 @@ export const OtherAccountsPanel: React.FC = () => {
 
   const menuGroups = [
     {
-      title: 'Finance & Lending',
+      title: 'Accounts',
       items: [
-        { id: 'loan', label: 'Loan', icon: Wallet },
-        { id: 'investors', label: 'Investors', icon: TrendingDown },
-        { id: 'banking', label: 'Banking', icon: Layout },
-      ]
-    },
-    {
-      title: 'Business Operations',
-      items: [
-        { id: 'workers', label: 'Workers', icon: Users },
         { id: 'assets', label: 'Assets', icon: Activity },
         { id: 'expenses', label: 'Expenses', icon: DollarSign },
         { id: 'adjustments', label: 'Adjustments', icon: FileText },
+        { id: 'payables_receivables', label: 'Payables & Receivables', icon: Users },
       ]
     }
   ];
+
+  
+  // Assets state
+  const [assetTab, setAssetTab] = useState<'list' | 'buy' | 'sell'>('list');
+  const [assetName, setAssetName] = useState('');
+  const [assetPrice, setAssetPrice] = useState<number | ''>('');
+  const [assetDate, setAssetDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedAssetId, setSelectedAssetId] = useState<number | ''>('');
+
+  const handleBuyAsset = async () => {
+    if (!assetName || !assetPrice) {
+      toast.error('Please fill name and price');
+      return;
+    }
+    try {
+      await addCompanyAsset(assetName, Number(assetPrice), assetDate);
+      toast.success('Asset purchased successfully');
+      setAssetTab('list');
+      setAssetName('');
+      setAssetPrice('');
+    } catch (e: any) {
+      toast.error(e.toString());
+    }
+  };
+
+  const handleSellAsset = async () => {
+    if (!selectedAssetId || !assetPrice) {
+      toast.error('Please select asset and enter sold price');
+      return;
+    }
+    try {
+      await sellCompanyAsset(Number(selectedAssetId), Number(assetPrice), assetDate);
+      toast.success('Asset sold successfully');
+      setAssetTab('list');
+      setSelectedAssetId('');
+      setAssetPrice('');
+    } catch (e: any) {
+      toast.error(e.toString());
+    }
+  };
 
   const handleNotConnected = () => {
     toast.error('Not yet connected — coming in the next phase');
@@ -102,14 +136,98 @@ export const OtherAccountsPanel: React.FC = () => {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h2 className="text-xl font-bold text-slate-800 mb-6">Company Assets</h2>
             <div className="flex gap-4 mb-6 border-b border-slate-200 pb-2">
-              <button className="font-bold text-blue-600 border-b-2 border-blue-600 pb-2 px-2">Purchase Asset</button>
-              <button className="text-slate-500 hover:text-slate-700 px-2 pb-2">Sell Asset</button>
+              <button 
+                onClick={() => setAssetTab('list')}
+                className={`font-bold pb-2 px-2 ${assetTab === 'list' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >Assets List</button>
+              <button 
+                onClick={() => setAssetTab('buy')}
+                className={`font-bold pb-2 px-2 ${assetTab === 'buy' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >Purchase Asset</button>
+              <button 
+                onClick={() => setAssetTab('sell')}
+                className={`font-bold pb-2 px-2 ${assetTab === 'sell' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >Sell Asset</button>
             </div>
-            <div className="space-y-4">
-              <input type="text" placeholder="Asset Name / Description" className="w-full border border-slate-300 rounded p-2" />
-              <input type="number" placeholder="Value" className="w-full border border-slate-300 rounded p-2" />
-              <button onClick={handleNotConnected} className="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700">Record Transaction</button>
-            </div>
+            
+            {assetTab === 'list' && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Asset Name</th>
+                      <th className="px-4 py-2 font-medium">Purchase Date</th>
+                      <th className="px-4 py-2 font-medium text-right">Purchase Price</th>
+                      <th className="px-4 py-2 font-medium text-center">Status</th>
+                      <th className="px-4 py-2 font-medium">Sold Date</th>
+                      <th className="px-4 py-2 font-medium text-right">Sold Price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {companyAssets.map((a: any) => (
+                      <tr key={a.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-2 font-semibold text-slate-700">{a.name}</td>
+                        <td className="px-4 py-2">{a.purchase_date}</td>
+                        <td className="px-4 py-2 text-right">Rs. {a.purchase_price.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-center">
+                          <span className={`px-2 py-1 text-xs rounded-full ${a.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                            {a.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">{a.sold_date || '-'}</td>
+                        <td className="px-4 py-2 text-right">{a.sold_price ? `Rs. ${a.sold_price.toLocaleString()}` : '-'}</td>
+                      </tr>
+                    ))}
+                    {companyAssets.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No assets recorded yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            
+            {assetTab === 'buy' && (
+              <div className="space-y-4 max-w-md">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Asset Name / Description</label>
+                  <input type="text" value={assetName} onChange={e => setAssetName(e.target.value)} placeholder="e.g. Delivery Van, Office AC" className="w-full border border-slate-300 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Purchase Date</label>
+                  <input type="date" value={assetDate} onChange={e => setAssetDate(e.target.value)} className="w-full border border-slate-300 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Purchase Price (Rs)</label>
+                  <input type="number" value={assetPrice} onChange={e => setAssetPrice(Number(e.target.value) || '')} placeholder="Amount paid" className="w-full border border-slate-300 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <button onClick={handleBuyAsset} className="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700 w-full">Record Asset Purchase</button>
+              </div>
+            )}
+            
+            {assetTab === 'sell' && (
+              <div className="space-y-4 max-w-md">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Select Asset to Sell</label>
+                  <select value={selectedAssetId} onChange={e => setSelectedAssetId(Number(e.target.value) || '')} className="w-full border border-slate-300 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="">-- Select Active Asset --</option>
+                    {companyAssets.filter((a: any) => a.status === 'ACTIVE').map((a: any) => (
+                      <option key={a.id} value={a.id}>{a.name} (Purchased for Rs. {a.purchase_price})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Sold Date</label>
+                  <input type="date" value={assetDate} onChange={e => setAssetDate(e.target.value)} className="w-full border border-slate-300 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Sold Price (Current Market Price)</label>
+                  <input type="number" value={assetPrice} onChange={e => setAssetPrice(Number(e.target.value) || '')} placeholder="Amount received" className="w-full border border-slate-300 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <button onClick={handleSellAsset} className="bg-emerald-600 text-white px-4 py-2 rounded font-medium hover:bg-emerald-700 w-full">Record Asset Sale</button>
+              </div>
+            )}
           </div>
         );
       case 'expenses':

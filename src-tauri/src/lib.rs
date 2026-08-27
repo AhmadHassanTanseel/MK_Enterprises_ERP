@@ -2,6 +2,7 @@ pub mod database;
 pub mod master_data;
 pub mod system_accounts;
 pub mod audit;
+mod assets;
 pub mod drm;
 pub mod backup;
 pub mod users;
