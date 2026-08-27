@@ -71,7 +71,9 @@ export const SaleReturnPanel: React.FC = () => {
 
   const calculateLineTotal = (line: InvoiceLine) => {
     const disc = (line as any).discount !== undefined ? (line as any).discount : line.discount_pct;
-    return (line.rate - disc) * line.qty;
+    const uniqueBrands = Array.from(new Set(products.map(p => p.name).filter(Boolean)));
+
+  return (line.rate - disc) * line.qty;
   };
 
   const totalGross = lines.reduce((sum, line) => sum + (line.qty * line.rate), 0);

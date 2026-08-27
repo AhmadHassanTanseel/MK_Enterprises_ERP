@@ -121,6 +121,8 @@ export const SaleInvoicePanel: React.FC = () => {
     }
   };
 
+  const uniqueBrands = Array.from(new Set(products.map(p => p.name).filter(Boolean)));
+
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">

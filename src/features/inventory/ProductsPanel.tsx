@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useAppContext, Product } from '../../app/context/AppContext';
 import { Plus, Edit2, Search, Filter, Trash2, X, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { EntitySelect } from '../../shared/components/EntitySelect';
 
 export const ProductsPanel: React.FC = () => {
-  const { products, createProduct, updateProduct, deleteProduct } = useAppContext();
+  const { products, categories, createProduct, updateProduct, deleteProduct } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
   
   const [isAddMode, setIsAddMode] = useState(false);
@@ -121,86 +122,66 @@ export const ProductsPanel: React.FC = () => {
         
         
         <form onSubmit={handleSave} className="space-y-4 flex-1 overflow-y-auto pr-2">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Product Code *</label>
-            <input 
-              type="text" required
-              className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              value={formData.code || ''}
-              onChange={e => setFormData({...formData, code: e.target.value})}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Product Name *</label>
-            <input 
-              type="text" required
-              className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              value={formData.name || ''}
-              onChange={e => setFormData({...formData, name: e.target.value})}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Purchase Rate</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Product Code *</label>
               <input 
-                type="number" 
+                type="text" required
                 className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                value={formData.purchase_price || ''}
-                onChange={e => setFormData({...formData, purchase_price: Number(e.target.value)})}
+                value={formData.code || ''}
+                onChange={e => setFormData({...formData, code: e.target.value})}
+                placeholder="e.g. PEP-1L"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Sale Rate</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Product Name (Brand) *</label>
               <input 
-                type="number" 
+                type="text" required
                 className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                value={formData.sale_price || ''}
-                onChange={e => setFormData({...formData, sale_price: Number(e.target.value)})}
+                value={formData.name || ''}
+                onChange={e => setFormData({...formData, name: e.target.value})}
+                placeholder="e.g. Pepsi"
               />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Barcode (ERP Feature)</label>
-            <div className="flex gap-2">
-              <input 
-                type="text" placeholder="Scan or generate..."
-                className="flex-1 border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                value={formData.real_barcode || ''}
-                onChange={e => setFormData({...formData, real_barcode: e.target.value})}
-              />
-              <button type="button" className="bg-slate-100 border border-slate-300 text-slate-700 px-3 rounded-md hover:bg-slate-200">
-                Gen
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Unit of Measure</label>
-              <select 
-                className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                value={formData.uom || 'Piece'}
-                onChange={e => setFormData({...formData, uom: e.target.value})}
-              >
-                <option value="Piece">Piece</option>
-                <option value="Carton">Carton</option>
-                <option value="Case">Case</option>
-                <option value="Liter">Liter</option>
-              </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Reorder Level</label>
-              <input 
-                type="number" 
-                className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                value={formData.reorder_level || ''}
-                onChange={e => setFormData({...formData, reorder_level: Number(e.target.value)})}
+              <label className="block text-sm font-medium text-slate-700 mb-1">Size (Category)</label>
+              <EntitySelect 
+                type="category" 
+                value={formData.category_id || 0} 
+                onChange={v => setFormData({...formData, category_id: v})} 
               />
             </div>
-          </div>
-          <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-medium py-2 rounded-md hover:bg-blue-700 transition-colors mt-4 disabled:opacity-50">
-            {isSubmitting ? 'Saving...' : (formData.id ? 'Update Product' : 'Save Product')}
-          </button>
-        </form>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Unit of Measure</label>
+                <select 
+                  className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={formData.uom || 'Piece'}
+                  onChange={e => setFormData({...formData, uom: e.target.value})}
+                >
+                  <option value="Piece">Piece</option>
+                  <option value="Dozen">Dozen</option>
+                  <option value="Carton">Carton</option>
+                  <option value="Kg">Kg</option>
+                  <option value="Gram">Gram</option>
+                  <option value="Liter">Liter</option>
+                  <option value="Box">Box</option>
+                  <option value="Pack">Pack</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Reorder Level</label>
+                <input 
+                  type="number" 
+                  className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={formData.reorder_level || ''}
+                  onChange={e => setFormData({...formData, reorder_level: Number(e.target.value)})}
+                />
+              </div>
+            </div>
+            <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-medium py-2 rounded-md hover:bg-blue-700 transition-colors disabled:bg-blue-400">
+              {formData.id ? 'Update Product' : 'Save Product'}
+            </button>
+          </form>
       </div>
 
       {/* Right Panel: List */}

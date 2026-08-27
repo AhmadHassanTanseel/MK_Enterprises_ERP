@@ -56,7 +56,9 @@ export const PurchaseInvoicePanel: React.FC = () => {
   };
 
   const calculateLineTotal = (line: InvoiceLine) => {
-    return (line.rate - line.discount_pct) * line.qty;
+    const uniqueBrands = Array.from(new Set(products.map(p => p.name).filter(Boolean)));
+
+  return (line.rate - line.discount_pct) * line.qty;
   };
 
   const totalGross = lines.reduce((sum, line) => sum + (line.qty * line.rate), 0);
