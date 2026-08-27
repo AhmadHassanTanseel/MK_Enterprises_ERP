@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useAppContext, InvoiceLine } from '../../app/context/AppContext';
-import { Plus, Trash2, Save, CornerDownLeft, Printer, FileText } from 'lucide-react';
+import { Plus, Trash2, Save, CornerDownLeft, Printer, FileText, Search } from 'lucide-react';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
 import { printContent } from '../../utils/printHelper';
 import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 
 export const SaleReturnPanel: React.FC = () => {
-  const { products, accounts, postInvoice } = useAppContext();
+  const { products, accounts, postInvoice, invoices } = useAppContext();
+  const [originalBillNo, setOriginalBillNo] = useState("");
   
   const [accountId, setAccountId] = useState<number | null>(null);
   const [lines, setLines] = useState<(InvoiceLine & { id: string })[]>([
@@ -17,6 +19,39 @@ export const SaleReturnPanel: React.FC = () => {
 
   const customerAccounts = accounts.filter(a => a.account_type_id === 2 || a.account_type_id === 1);
 
+  const handleLoadBill = async () => {
+      if (!originalBillNo) return;
+      const bill = invoices.find(i => i.type === 'SALE' && i.ref_no.toLowerCase() === originalBillNo.toLowerCase());
+      if (bill) {
+        setAccountId(bill.account_id);
+        
+        try {
+          const rawLines = await invoke('get_invoice_lines', { invoiceId: bill.id });
+          
+          if (Array.isArray(rawLines) && rawLines.length > 0) {
+            setLines(rawLines.map((l: any) => ({ 
+              id: Math.random().toString(), 
+              product_id: l.product_id, 
+              category_id: products.find(p => p.id === l.product_id)?.category_id || null,
+              qty: l.qty, 
+              rate: l.rate, 
+              discount_pct: l.discount_pct || 0,
+              discount: l.discount_pct || 0,
+              amount: l.amount 
+            })));
+          } else {
+            toast.error("This invoice has no items recorded");
+          }
+        } catch (e) {
+          toast.error("Failed to load invoice items");
+        }
+        
+        setInvoiceDate(bill.date.split(' ')[0]);
+        toast.success(`Loaded bill ${bill.ref_no}`);
+      } else {
+        toast.error('No invoice found with that number');
+      }
+    };
   const addLine = () => setLines([...lines, { id: Math.random().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
   const removeLine = (id: string) => lines.length > 1 && setLines(lines.filter(l => l.id !== id));
 
@@ -35,12 +70,12 @@ export const SaleReturnPanel: React.FC = () => {
   };
 
   const calculateLineTotal = (line: InvoiceLine) => {
-    const gross = line.qty * line.rate;
-    return gross - (gross * (line.discount_pct / 100));
+    const disc = (line as any).discount !== undefined ? (line as any).discount : line.discount_pct;
+    return (line.rate - disc) * line.qty;
   };
 
   const totalGross = lines.reduce((sum, line) => sum + (line.qty * line.rate), 0);
-  const totalDiscount = lines.reduce((sum, line) => sum + ((line.qty * line.rate) * (line.discount_pct / 100)), 0);
+  const totalDiscount = lines.reduce((sum, line) => sum + (((line as any).discount !== undefined ? (line as any).discount : line.discount_pct) * line.qty), 0);
   const totalNet = totalGross - totalDiscount;
 
   
@@ -130,19 +165,29 @@ export const SaleReturnPanel: React.FC = () => {
         </div>
         <div className="grid grid-cols-3 gap-6">
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Original Invoice # (Optional)</label>
+            <div className="flex">
+              <input 
+                type="text" 
+                className="w-full border border-slate-300 rounded-l-md p-2 focus:ring-2 focus:ring-blue-500 outline-none" 
+                placeholder="e.g. INV-12345"
+                value={originalBillNo}
+                onChange={e => setOriginalBillNo(e.target.value)}
+                onBlur={handleLoadBill}
+                onKeyDown={e => e.key === 'Enter' && handleLoadBill()}
+              />
+              <button onClick={handleLoadBill} className="bg-slate-100 border border-l-0 border-slate-300 px-3 rounded-r-md text-slate-600 hover:bg-slate-200">
+                <Search className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Customer *</label>
-            <select className="w-full border border-slate-300 rounded-md p-2" value={accountId || ''} onChange={e => setAccountId(Number(e.target.value))}>
-              <option value="">-- Select Customer --</option>
-              {customerAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-            </select>
+            <EntitySelect type="account" value={accountId || 0} onChange={setAccountId} filter={a => a.is_customer} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
             <input type="date" className="w-full border border-slate-300 rounded-md p-2" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Original Invoice # (Optional)</label>
-            <input type="text" className="w-full border border-slate-300 rounded-md p-2" placeholder="Search original bill..." />
           </div>
         </div>
       </div>
@@ -151,43 +196,44 @@ export const SaleReturnPanel: React.FC = () => {
       <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
         <div className="flex-1 overflow-auto">
           <table className="w-full text-left text-sm text-slate-600">
-            <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-200 shadow-sm">
-              <tr>
-                <th className="px-4 py-3 font-medium w-12 text-center">#</th>
-                <th className="px-4 py-3 font-medium w-1/3">Returned Item</th>
-                <th className="px-4 py-3 font-medium text-right w-24">Qty</th>
-                <th className="px-4 py-3 font-medium text-right w-32">Rate (Rs)</th>
-                <th className="px-4 py-3 font-medium text-right w-32">Gross</th>
-                <th className="px-4 py-3 font-medium text-right w-24">Disc %</th>
-                <th className="px-4 py-3 font-medium text-right w-32">Refund Total</th>
-                <th className="px-4 py-3 font-medium w-16 text-center">Del</th>
-              </tr>
-            </thead>
+            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-2 font-semibold text-slate-600 text-center w-12">#</th>
+                  <th className="px-4 py-2 font-semibold text-slate-600 w-64 min-w-[200px]">Product (Brand)</th>
+                  <th className="px-4 py-2 font-semibold text-slate-600 w-64 min-w-[200px]">Size (Category)</th>
+                  <th className="px-4 py-2 font-semibold text-slate-600 text-right w-24">Qty</th>
+                  <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Rate (Rs)</th>
+                  <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Gross</th>
+                  <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Disc (Rs/Unit)</th>
+                  <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Refund Total</th>
+                  <th className="px-4 py-2 font-semibold text-slate-600 text-center w-16">Del</th>
+                </tr>
+              </thead>
             <tbody className="divide-y divide-slate-100">
               {lines.map((line, index) => (
                 <tr key={line.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2 text-center">{index + 1}</td>
-                  <td className="px-4 py-2 w-48">
-                        <EntitySelect 
-                          type="category" 
-                          value={line.category_id || 0} 
-                          onChange={v => updateLine(line.id, 'category_id', v)} 
-                        />
-                      </td>
-                      <td className="px-4 py-2">
-                    <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} filter={p => line.category_id ? p.category_id === line.category_id : true} className="w-full" />
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <input type="number" min="1" className="w-full text-right border border-slate-200 rounded p-1" value={line.qty} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <input type="number" className="w-full text-right border border-slate-200 rounded p-1" value={line.rate} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
-                  </td>
-                  <td className="px-4 py-2 text-right">{(line.qty * line.rate).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right">
-                    <input type="number" className="w-full text-right border border-slate-200 rounded p-1" value={line.discount_pct} onChange={e => updateLine(line.id, 'discount_pct', Number(e.target.value))} />
-                  </td>
-                  <td className="px-4 py-2 text-right font-medium text-red-600">{calculateLineTotal(line).toLocaleString()}</td>
+                  <td className="px-4 py-2 w-64">
+                          <EntitySelect 
+                            type="category" 
+                            value={line.category_id || 0} 
+                            onChange={v => updateLine(line.id, 'category_id', v)} 
+                          />
+                        </td>
+                        <td className="px-4 py-2 w-64">
+                      <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} filter={p => line.category_id ? p.category_id === line.category_id : true} className="w-full" />
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.rate || ''} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
+                    </td>
+                    <td className="px-4 py-2 text-right font-medium text-slate-700">{(line.qty * line.rate).toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right">
+                      <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.discount_pct || ''} onChange={e => updateLine(line.id, 'discount_pct', Number(e.target.value))} />
+                    </td>
+                    <td className="px-4 py-2 text-right font-medium text-red-600">{calculateLineTotal(line).toLocaleString()}</td>
                   <td className="px-4 py-2 text-center">
                     <button onClick={() => removeLine(line.id)} className="text-slate-400 hover:text-red-500 p-1"><Trash2 className="h-4 w-4" /></button>
                   </td>

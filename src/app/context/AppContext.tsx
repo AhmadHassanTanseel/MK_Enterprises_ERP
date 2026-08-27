@@ -2,14 +2,16 @@ import React, { createContext, useContext, useState, ReactNode, useEffect } from
 import { invoke } from '@tauri-apps/api/core';
 
 // Core Master Data
-export interface Product { id: number; code: string; name: string; packing: string | null; purchase_price: number; sale_price: number; opening_stock: number; category_id: number | null; real_barcode: string | null; uom: string | null; reorder_level: number | null; sale_account_id: number | null; }
-export interface Account { id: number; name: string; account_type_id: number; contact: string | null; opening_balance: number; current_balance: number; }
+export interface Product { id: number; code: string; name: string; packing: string | null; purchase_price: number; sale_price: number; opening_stock: number; current_stock?: number; category_id: number | null; real_barcode: string | null; uom: string | null; reorder_level: number | null; sale_account_id: number | null; }
+export interface Salesman { id: number; name: string; contact: string | null; salary: number; details: string | null; status: string; }
+export interface Account { id: number; name: string; account_type_id: number; contact: string | null; area_id: number | null; opening_balance: number; opening_balance_type: string; current_balance: number; is_customer: boolean; is_supplier: boolean; created_at: string; }
 export interface Category { id: number; name: string; description: string | null; parent_id: number | null; }
 export interface Area { id: number; name: string; salesman_id: number | null; remarks: string | null; active: number; account_count: number; }
+export interface Salesman { id: number; name: string; contact: string | null; salary: number; details: string | null; status: string; }
 export interface AccountType { id: number; name: string; nature: 'DR' | 'CR'; trial_bal_type: 'BS' | 'IS'; trial_order: number; }
 
 // Transaction Data
-export interface InvoiceLine { category_id?: number | null; product_id: number; qty: number; rate: number; discount_pct: number; amount: number; }
+export interface InvoiceLine { category_id?: number | null; product_name?: string; product_id: number; qty: number; rate: number; discount_pct: number; amount: number; }
 export interface Invoice { id: number; type: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN'; ref_no: string; account_id: number; salesman_id?: number; date: string; lines: InvoiceLine[]; gross_amount: number; discount_amount: number; net_amount: number; amount_paid: number; }
 export interface LedgerEntry { id: number; date: string; account_id: number; dr_amount: number; cr_amount: number; description: string; ref_id?: number; ref_type?: string; }
 export interface InventoryMovement { id: number; date: string; product_id: number; qty_in: number; qty_out: number; type: string; ref_id?: number; }
@@ -26,6 +28,8 @@ interface AppContextType {
   ledgerEntries: LedgerEntry[]; setLedgerEntries: React.Dispatch<React.SetStateAction<LedgerEntry[]>>;
   inventoryMovements: InventoryMovement[]; setInventoryMovements: React.Dispatch<React.SetStateAction<InventoryMovement[]>>;
   settings: AppSetting[]; setSettings: React.Dispatch<React.SetStateAction<AppSetting[]>>;
+  salesmen: Salesman[]; setSalesmen: React.Dispatch<React.SetStateAction<Salesman[]>>;
+  createSalesman: (name: string, contact?: string, salary?: number, details?: string, area_ids?: number[]) => Promise<void>;
 
   postInvoice: (invoice: Omit<Invoice, 'id'>) => Promise<void>;
   postJournalEntry: (date: string, lines: { accountId: number; entryType: 'DR' | 'CR'; amount: number; description?: string }[], description: string) => Promise<void>;
@@ -40,8 +44,8 @@ interface AppContextType {
   updateProduct: (id: number, code: string, name: string, category_id?: number, packing?: string, purchase_price?: number, sale_price?: number, opening_stock?: number, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
 
-  createAccount: (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string) => Promise<void>;
-  updateAccount: (id: number, account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string) => Promise<void>;
+  createAccount: (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean) => Promise<void>;
+  updateAccount: (id: number, account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean) => Promise<void>;
   deleteAccount: (id: number) => Promise<void>;
 
   createArea: (name: string, salesman_id?: number, remarks?: string) => Promise<void>;
@@ -66,6 +70,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [settings, setSettings] = useState<AppSetting[]>([]);
+  const [salesmen, setSalesmen] = useState<Salesman[]>([]);
 
   const fetchData = async () => {
     try {
@@ -73,7 +78,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setCategories(dbCategories);
 
       const dbProducts: Product[] = await invoke('get_products');
-      setProducts(dbProducts);
+      const liveStock: any[] = await invoke('get_live_stock');
+      
+      const stockMap = new Map();
+      liveStock.forEach(s => stockMap.set(s.product_id, s.available_stock));
+      
+      const productsWithStock = dbProducts.map(p => ({
+        ...p,
+        current_stock: stockMap.get(p.id) || 0
+      }));
+      setProducts(productsWithStock);
 
       const dbLedger: LedgerEntry[] = await invoke('get_all_ledger_entries');
       const formattedLedger = dbLedger.map((l: any) => ({
@@ -118,6 +132,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const dbSettings: AppSetting[] = await invoke('get_settings');
       setSettings(dbSettings);
 
+      const dbSalesmen: Salesman[] = await invoke('get_salesmen');
+      setSalesmen(dbSalesmen);
+
     } catch (error) {
       console.error("Failed to load initial data from Tauri backend:", error);
     }
@@ -129,6 +146,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Master Data CRUD ---
 
+  const createSalesman = async (name: string, contact?: string, salary?: number, details?: string, area_ids?: number[]) => {
+    try {
+      await invoke('create_salesman', { name, contact, salary: salary || 0, details, areaIds: area_ids || [] });
+      await fetchData();
+    } catch (e) { console.error(e); throw e; }
+  };
+  
   const createCategory = async (name: string, description?: string, parent_id?: number, margin_target?: number, flavor?: string) => {
     try {
       await invoke('create_category', { name, description, parent_id, margin_target, flavor });
@@ -175,18 +199,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) { console.error(e); throw e; }
   };
 
-  const createAccount = async (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance: number = 0, opening_balance_type: string = 'DEBIT') => {
+  const createAccount = async (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance: number = 0, opening_balance_type: string = 'DEBIT', is_customer: boolean = false, is_supplier: boolean = false) => {
     try {
-      await invoke('create_account', { accountTypeId: account_type_id, name, contact, address, areaId: area_id, openingBalance: opening_balance, openingBalanceType: opening_balance_type });
+      await invoke('create_account', { accountTypeId: account_type_id, name, contact, address, areaId: area_id, openingBalance: opening_balance, openingBalanceType: opening_balance_type, isCustomer: is_customer, isSupplier: is_supplier });
       await fetchData();
     } catch (e) {
       console.error(e); throw e;
     }
   };
 
-  const updateAccount = async (id: number, account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance: number = 0, opening_balance_type: string = 'DEBIT') => {
+  const updateAccount = async (id: number, account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance: number = 0, opening_balance_type: string = 'DEBIT', is_customer: boolean = false, is_supplier: boolean = false) => {
     try {
-      await invoke('update_account', { id, accountTypeId: account_type_id, name, contact, address, areaId: area_id, openingBalance: opening_balance, openingBalanceType: opening_balance_type });
+      await invoke('update_account', { id, accountTypeId: account_type_id, name, contact, address, areaId: area_id, openingBalance: opening_balance, openingBalanceType: opening_balance_type, isCustomer: is_customer, isSupplier: is_supplier });
       await fetchData();
     } catch (e) { console.error(e); throw e; }
   };
@@ -364,7 +388,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       ledgerEntries, setLedgerEntries,
       inventoryMovements, setInventoryMovements,
       settings, setSettings,
-      postInvoice,
+    salesmen, setSalesmen,
+    createSalesman,
+    postInvoice,
       postJournalEntry,
       postPayment,
       fetchData,

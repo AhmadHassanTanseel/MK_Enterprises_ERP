@@ -74,17 +74,15 @@ pub async fn process_purchase(
 
     // Insert invoice lines and inventory movements
     for line in &lines {
-        let disc_pct = line.discount_percent.unwrap_or(0.0);
-        let line_gross = (line.quantity as f64) * line.unit_price;
-        let disc_amt = line_gross * (disc_pct / 100.0);
-        let total_price = line_gross - disc_amt;
+        let disc_per_unit = line.discount_percent.unwrap_or(0.0);
+        let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
 
         sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price) VALUES (?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
             .bind(line.unit_price)
-            .bind(disc_pct)
+            .bind(disc_per_unit)
             .bind(total_price)
             .execute(&mut *tx)
             .await
@@ -214,17 +212,15 @@ pub async fn process_return(
             ));
         }
 
-        let disc_pct = line.discount_percent.unwrap_or(0.0);
-        let line_gross = (line.quantity as f64) * line.unit_price;
-        let disc_amt = line_gross * (disc_pct / 100.0);
-        let total_price = line_gross - disc_amt;
+        let disc_per_unit = line.discount_percent.unwrap_or(0.0);
+        let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
 
         sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price) VALUES (?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
             .bind(line.unit_price)
-            .bind(disc_pct)
+            .bind(disc_per_unit)
             .bind(total_price)
             .execute(&mut *tx)
             .await

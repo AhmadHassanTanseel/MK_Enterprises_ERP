@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 interface SalesHistoryRow {
   id: number;
   invoice_no: string;
+  invoice_type: string;
   date: string;
   account_name: string;
   mobile: string;
@@ -97,7 +98,10 @@ export const SalesHistoryPanel: React.FC = () => {
                 return (
                   <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 whitespace-nowrap">{inv.date.split(' ')[0]}</td>
-                    <td className="px-4 py-3 font-bold text-slate-700">{inv.invoice_no}</td>
+                    <td className="px-4 py-3 font-bold text-slate-700">
+                      {inv.invoice_no}
+                      {inv.invoice_type === 'SALE_RETURN' && <span className="bg-rose-100 text-rose-800 text-xs px-2 py-0.5 rounded ml-2 font-normal">RETURN</span>}
+                    </td>
                     <td className="px-4 py-3 font-medium text-slate-800">
                       {inv.account_name}
                       {inv.mobile && <div className="text-xs text-slate-400 font-normal">{inv.mobile}</div>}

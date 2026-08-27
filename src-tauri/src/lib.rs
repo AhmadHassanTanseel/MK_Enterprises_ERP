@@ -63,6 +63,8 @@ pub fn run() {
             update_account,
             delete_account,
             get_account_types,
+            get_salesmen,
+            create_salesman,
             create_account_type,
 
             // Reporting & inventory
@@ -76,6 +78,7 @@ pub fn run() {
             generate_report,
             process_stock_adjustment,
             get_invoices,
+            get_invoice_lines,
             get_all_ledger_entries,
 
             // Admin & utilities

@@ -28,21 +28,27 @@ export const SaleInvoicePanel: React.FC = () => {
   ]);
 
   // Split cash/bank
-  const [amountReceivedCash, setAmountReceivedCash] = useState<number>(0);
-  const [amountReceivedBank, setAmountReceivedBank] = useState<number>(0);
-  const [bankAccountId, setBankAccountId] = useState<number | null>(null);
+  const [amountReceived, setAmountReceived] = useState<number>(0);
+  
+  
 
   const [loading, setLoading] = useState(false);
 
   const totalGross = lines.reduce((sum, l) => sum + (l.qty * l.rate), 0);
-  const totalDiscount = lines.reduce((sum, l) => sum + (l.discount || 0), 0);
+  const totalDiscount = lines.reduce((sum, l) => sum + ((l.discount || 0) * l.qty), 0);
   const totalNet = totalGross - totalDiscount;
   
-  const amountReceived = amountReceivedCash + amountReceivedBank;
+  
   const balance = totalNet - amountReceived;
 
   const addLine = () => {
     setLines([...lines, { id: Date.now().toString(), category_id: null, product_id: null, qty: 1, rate: 0, discount: 0 }]);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      addLine();
+    }
   };
 
   const removeLine = (id: string) => {
@@ -82,26 +88,30 @@ export const SaleInvoicePanel: React.FC = () => {
     try {
       setLoading(true);
       await invoke('process_sale', {
-        customerId: customer_id,
-        transDate: invoiceDate,
-        totalAmount: totalNet,
-        amountPaid: amountReceived, // the backend only takes amountPaid right now per rule 0.
-        lines: validLines.map(l => ({
-          product_id: l.product_id,
-          qty: l.qty,
-          rate: l.rate,
-          discount: l.discount
-        }))
-      });
+          accountId: customer_id,
+          salesmanId: salesman_id,
+          invoiceNumber: null,
+          invoiceDate: invoiceDate,
+          grossAmount: totalGross,
+          discountAmount: totalDiscount,
+          netAmount: totalNet,
+          amountReceived: amountReceived,
+          lines: validLines.map(l => ({
+            product_id: l.product_id,
+            quantity: l.qty,
+            unit_price: l.rate,
+            discount_percent: l.discount || 0
+          }))
+        });
       toast.success('Sale Invoice Saved');
       
       // Reset form
       setCustomerId(null);
       setSalesmanId(null);
       setLines([{ id: Date.now().toString(), category_id: null, product_id: null, qty: 1, rate: 0, discount: 0 }]);
-      setAmountReceivedCash(0);
-      setAmountReceivedBank(0);
-      setBankAccountId(null);
+      setAmountReceived(0);
+      
+      
       
       fetchData();
     } catch (err: any) {
@@ -118,7 +128,7 @@ export const SaleInvoicePanel: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Customer / Walk-in *</label>
-            <EntitySelect type="account" value={customer_id || 0} onChange={setCustomerId} />
+            <EntitySelect type="account" value={customer_id || 0} onChange={setCustomerId} filter={a => a.is_customer} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
@@ -126,7 +136,7 @@ export const SaleInvoicePanel: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Bill No (Auto)</label>
-            <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-md p-2 text-slate-500" value="INV-25001" disabled />
+            <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-md p-2 text-slate-500" placeholder="Generated on save" disabled />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Salesman</label>
@@ -141,8 +151,8 @@ export const SaleInvoicePanel: React.FC = () => {
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
               <tr>
                 <th className="px-4 py-2 font-semibold text-slate-600 text-center w-12">#</th>
-                <th className="px-4 py-2 font-semibold text-slate-600 w-48">Size (Category)</th>
-                <th className="px-4 py-2 font-semibold text-slate-600">Product (Brand)</th>
+                <th className="px-4 py-2 font-semibold text-slate-600 w-64">Product (Brand)</th>
+                <th className="px-4 py-2 font-semibold text-slate-600 w-64 min-w-[200px]">Size (Category)</th>
                 <th className="px-4 py-2 font-semibold text-slate-600 text-right w-24">Stock</th>
                 <th className="px-4 py-2 font-semibold text-slate-600 text-right w-24">Qty</th>
                 <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Rate</th>
@@ -151,22 +161,28 @@ export const SaleInvoicePanel: React.FC = () => {
                 <th className="px-4 py-2 font-semibold text-slate-600 text-center w-16">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100" onKeyDown={handleKeyDown}>
               {lines.map((line, index) => {
                 const stock = products.find(p => p.id === line.product_id)?.current_stock || 0;
-                const lineTotal = (line.qty * line.rate) - line.discount;
+                const lineTotal = (line.rate - (line.discount || 0)) * line.qty;
                 return (
                   <tr key={line.id} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-center text-slate-400">{index + 1}</td>
-                    <td className="px-4 py-2 w-48">
+                    <td className="px-4 py-2 w-1/4">
+                      <EntitySelect 
+                        type="product" 
+                        value={line.product_id || 0} 
+                        onChange={v => updateLine(line.id, 'product_id', v)} 
+                        filter={p => line.category_id ? p.category_id === line.category_id : true} 
+                        className="w-full" 
+                      />
+                    </td>
+                    <td className="px-4 py-2 w-1/4">
                       <EntitySelect 
                         type="category" 
                         value={line.category_id || 0} 
                         onChange={v => updateLine(line.id, 'category_id', v)} 
                       />
-                    </td>
-                    <td className="px-4 py-2">
-                      <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} filter={p => line.category_id ? p.category_id === line.category_id : true} className="w-full" />
                     </td>
                     <td className="px-4 py-2 text-right">
                       <span className={`px-2 py-1 rounded text-xs ${stock > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
@@ -217,39 +233,16 @@ export const SaleInvoicePanel: React.FC = () => {
               </div>
               
               <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-slate-200">
-                <div className="flex items-center justify-between gap-4">
-                  <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Cash Received:</label>
-                  <input 
-                    type="number" 
-                    className="w-32 text-right border-b-2 border-slate-300 bg-emerald-50 text-emerald-800 font-bold p-1 outline-none focus:border-emerald-500 rounded-t" 
-                    value={amountReceivedCash || ''}
-                    onChange={e => setAmountReceivedCash(Number(e.target.value))}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Bank Received:</label>
-                  <input 
-                    type="number" 
-                    className="w-32 text-right border-b-2 border-slate-300 bg-emerald-50 text-emerald-800 font-bold p-1 outline-none focus:border-emerald-500 rounded-t" 
-                    value={amountReceivedBank || ''}
-                    onChange={e => setAmountReceivedBank(Number(e.target.value))}
-                  />
-                </div>
-                {amountReceivedBank > 0 && (
                   <div className="flex items-center justify-between gap-4">
-                    <label className="text-sm text-slate-600 whitespace-nowrap">Bank Account:</label>
-                    <select 
-                      className="flex-1 border border-slate-300 rounded p-1"
-                      value={bankAccountId || ''}
-                      onChange={e => setBankAccountId(Number(e.target.value))}
-                    >
-                      <option value="">Select Bank...</option>
-                      <option value="1">Meezan Bank</option>
-                      <option value="2">HBL</option>
-                    </select>
+                    <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Amount Received Now:</label>
+                    <input 
+                      type="number" 
+                      className="w-32 text-right border-b-2 border-slate-300 bg-emerald-50 text-emerald-800 font-bold p-1 outline-none focus:border-emerald-500 rounded-t" 
+                      value={amountReceived || ''}
+                      onChange={e => setAmountReceived(Number(e.target.value))}
+                    />
                   </div>
-                )}
-              </div>
+                </div>
               <div className="flex justify-between text-sm mt-1">
                 <span className="text-slate-600 font-medium">Balance (Bakaya):</span>
                 <span className={`font-bold ${balance > 0 ? 'text-amber-600' : 'text-slate-500'}`}>Rs. {balance.toLocaleString()}</span>

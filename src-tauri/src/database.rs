@@ -50,7 +50,9 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             contact TEXT,
-            status TEXT DEFAULT 'ACTIVE'
+            status TEXT DEFAULT 'ACTIVE',
+            salary REAL DEFAULT 0.0,
+            details TEXT
         );
 
         -- 3. MASTER DATA: ACCOUNTS (CUSTOMERS, SUPPLIERS, BANKS, CASH, EXPENSES)
@@ -65,6 +67,8 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             opening_balance REAL DEFAULT 0.0,
             opening_balance_type TEXT DEFAULT 'DEBIT', -- 'DEBIT' or 'CREDIT'
             status TEXT DEFAULT 'ACTIVE',
+            is_customer BOOLEAN DEFAULT 0,
+            is_supplier BOOLEAN DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(account_type_id) REFERENCES account_types(id),
             FOREIGN KEY(area_id) REFERENCES areas(id),
@@ -249,6 +253,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
         record_migration(pool, 4).await?;
     }
 
+    if current < 6 {
+        migration_006_accounts_and_salesmen(pool).await?;
+        record_migration(pool, 6).await?;
+    }
+
     if current < 5 {
         migration_005_legacy_lazy_columns(pool).await?;
         record_migration(pool, 5).await?;
@@ -403,5 +412,34 @@ async fn migration_005_legacy_lazy_columns(pool: &SqlitePool) -> Result<(), Stri
         sqlx::query("ALTER TABLE journal_entries ADD COLUMN attachment_path TEXT").execute(pool).await.map_err(|e| e.to_string())?;
     }
 
+    Ok(())
+}
+
+async fn migration_006_accounts_and_salesmen(pool: &SqlitePool) -> Result<(), String> {
+    if !column_exists(pool, "accounts", "is_customer").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN is_customer BOOLEAN DEFAULT 0")
+            .execute(pool).await.map_err(|e| e.to_string())?;
+        
+        sqlx::query("ALTER TABLE accounts ADD COLUMN is_supplier BOOLEAN DEFAULT 0")
+            .execute(pool).await.map_err(|e| e.to_string())?;
+            
+        // Backfill existing
+        sqlx::query("UPDATE accounts SET is_customer = 1 WHERE account_type_id = 2")
+            .execute(pool).await.map_err(|e| e.to_string())?;
+            
+        sqlx::query("UPDATE accounts SET is_supplier = 1 WHERE account_type_id = 4")
+            .execute(pool).await.map_err(|e| e.to_string())?;
+            
+        // Cash is technically used in both sometimes, but we leave it 0 unless they mark it explicitly
+    }
+
+    if !column_exists(pool, "salesmen", "salary").await? {
+        sqlx::query("ALTER TABLE salesmen ADD COLUMN salary REAL DEFAULT 0.0")
+            .execute(pool).await.map_err(|e| e.to_string())?;
+            
+        sqlx::query("ALTER TABLE salesmen ADD COLUMN details TEXT")
+            .execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    
     Ok(())
 }

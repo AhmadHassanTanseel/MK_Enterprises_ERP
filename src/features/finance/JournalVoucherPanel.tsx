@@ -117,7 +117,7 @@ export const JournalVoucherPanel: React.FC = () => {
                     <EntitySelect 
                           type="account" 
                           value={line.accountId} 
-                          onChange={(val) => updateLine(index, 'accountId', val)}
+                          onChange={(val) => updateLine(line.id, 'accountId', val)}
                         />
                   </td>
                   <td className="px-4 py-2 text-right">

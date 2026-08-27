@@ -34,6 +34,8 @@ pub struct Salesman {
     pub id: i64,
     pub name: String,
     pub contact: Option<String>,
+    pub salary: f64,
+    pub details: Option<String>,
     pub status: String,
 }
 
@@ -66,6 +68,9 @@ pub struct Account {
     pub opening_balance: f64,
     pub opening_balance_type: String,
     pub status: String,
+    pub is_customer: bool,
+    pub is_supplier: bool,
+    pub created_at: String,
 }
 
 // --- TAURI COMMANDS (CRUD ENGINES) ---
@@ -267,8 +272,8 @@ pub async fn delete_product(
 #[tauri::command]
 pub async fn get_accounts(db: State<'_, SqlitePool>) -> Result<Vec<Account>, String> {
     sqlx::query_as::<_, Account>(
-        "SELECT id, account_type_id, name, contact, address, area_id, salesman_id, opening_balance, opening_balance_type, status 
-         FROM accounts WHERE status = 'ACTIVE' ORDER BY name ASC"
+          "SELECT id, account_type_id, name, contact, address, area_id, salesman_id, opening_balance, opening_balance_type, status, is_customer, is_supplier, datetime(created_at, 'localtime') as created_at 
+           FROM accounts WHERE status = 'ACTIVE' ORDER BY name ASC"
     )
     .fetch_all(&*db)
     .await
@@ -284,13 +289,15 @@ pub async fn create_account(
     area_id: Option<i64>,
     opening_balance: f64,
     opening_balance_type: String,
+    is_customer: bool,
+    is_supplier: bool,
     db: State<'_, SqlitePool>,
 ) -> Result<i64, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
 
     let account_id = sqlx::query(
-        "INSERT INTO accounts (account_type_id, name, contact, address, area_id, opening_balance, opening_balance_type) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO accounts (account_type_id, name, contact, address, area_id, opening_balance, opening_balance_type, is_customer, is_supplier) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(account_type_id)
     .bind(&name)
@@ -299,6 +306,8 @@ pub async fn create_account(
     .bind(area_id)
     .bind(opening_balance)
     .bind(&opening_balance_type)
+    .bind(is_customer)
+    .bind(is_supplier)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?
@@ -339,12 +348,14 @@ pub async fn update_account(
     area_id: Option<i64>,
     opening_balance: f64,
     opening_balance_type: String,
+    is_customer: bool,
+    is_supplier: bool,
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
 
     sqlx::query(
-        "UPDATE accounts SET account_type_id = ?, name = ?, contact = ?, address = ?, area_id = ?, opening_balance = ?, opening_balance_type = ? WHERE id = ?"
+        "UPDATE accounts SET account_type_id = ?, name = ?, contact = ?, address = ?, area_id = ?, opening_balance = ?, opening_balance_type = ?, is_customer = ?, is_supplier = ? WHERE id = ?"
     )
     .bind(account_type_id)
     .bind(&name)
@@ -353,6 +364,8 @@ pub async fn update_account(
     .bind(area_id)
     .bind(opening_balance)
     .bind(&opening_balance_type)
+    .bind(is_customer)
+    .bind(is_supplier)
     .bind(id)
     .execute(&mut *tx)
     .await
@@ -615,4 +628,48 @@ pub async fn save_setting(
         .await
         .map_err(|e| e.to_string())?;
     Ok(format!("Setting {} saved", key))
+}
+
+
+
+#[tauri::command]
+pub async fn get_salesmen(db: State<'_, SqlitePool>) -> Result<Vec<Salesman>, String> {
+    sqlx::query_as::<_, Salesman>("SELECT id, name, contact, salary, details, status FROM salesmen ORDER BY name")
+        .fetch_all(&*db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_salesman(
+    name: String,
+    contact: Option<String>,
+    salary: f64,
+    details: Option<String>,
+    area_ids: Vec<i64>,
+    db: State<'_, SqlitePool>,
+) -> Result<i64, String> {
+    let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+
+    let id = sqlx::query("INSERT INTO salesmen (name, contact, salary, details) VALUES (?, ?, ?, ?)")
+        .bind(&name)
+        .bind(contact)
+        .bind(salary)
+        .bind(details)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?
+        .last_insert_rowid();
+
+    for area_id in area_ids {
+        sqlx::query("UPDATE areas SET salesman_id = ? WHERE id = ?")
+            .bind(id)
+            .bind(area_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(id)
 }

@@ -13,16 +13,22 @@ export const PurchaseInvoicePanel: React.FC = () => {
   const [lines, setLines] = useState<(InvoiceLine & { id: string })[]>([
     { id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }
   ]);
-  const [amountPaidCash, setAmountPaidCash] = useState<number>(0);
-  const [amountPaidBank, setAmountPaidBank] = useState<number>(0);
-  const [bankAccountId, setBankAccountId] = useState<number | null>(null);
-  const amountPaid = amountPaidCash + amountPaidBank;
+  const [amountPaid, setAmountPaid] = useState<number>(0);
+  
+  
+  
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [supplierRef, setSupplierRef] = useState<string>('');
 
   const supplierAccounts = accounts.filter(a => a.account_type_id === 4 || a.account_type_id === 1); // Suppliers & Cash
 
   const addLine = () => {
     setLines([...lines, { id: Math.random().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
+  };
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      addLine();
+    }
   };
 
   const removeLine = (id: string) => {
@@ -50,12 +56,11 @@ export const PurchaseInvoicePanel: React.FC = () => {
   };
 
   const calculateLineTotal = (line: InvoiceLine) => {
-    const gross = line.qty * line.rate;
-    return gross - (gross * (line.discount_pct / 100));
+    return (line.rate - line.discount_pct) * line.qty;
   };
 
   const totalGross = lines.reduce((sum, line) => sum + (line.qty * line.rate), 0);
-  const totalDiscount = lines.reduce((sum, line) => sum + ((line.qty * line.rate) * (line.discount_pct / 100)), 0);
+  const totalDiscount = lines.reduce((sum, line) => sum + (line.discount_pct * line.qty), 0);
   const totalNet = totalGross - totalDiscount;
   const balance = totalNet - amountPaid;
 
@@ -77,7 +82,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
     try {
       await postInvoice({
         type: 'PURCHASE',
-        ref_no: `PUR-${Math.floor(Math.random() * 10000)}`,
+        ref_no: supplierRef.trim() ? supplierRef.trim() : `PUR-${Date.now().toString().slice(-6)}`,
         account_id: accountId,
         date: invoiceDate,
         lines: lines as any,
@@ -88,9 +93,9 @@ export const PurchaseInvoicePanel: React.FC = () => {
       });
       toast.success(`Purchase Invoice saved successfully`);
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
-      setAmountPaidCash(0);
-      setAmountPaidBank(0);
-      setBankAccountId(null);
+      setAmountPaid(0);
+      
+      
       setAccountId(null);
     } catch (err) { toast.error(`Could not save Purchase Invoice: ${err instanceof Error ? err.message : String(err)}`); } finally {
       setIsSubmitting(false);
@@ -154,16 +159,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
         <div className="grid grid-cols-4 gap-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Supplier *</label>
-            <select 
-              className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              value={accountId || ''}
-              onChange={e => setAccountId(Number(e.target.value))}
-            >
-              <option value="">-- Select Supplier --</option>
-              {supplierAccounts.map(acc => (
-                <option key={acc.id} value={acc.id}>{acc.name} (Bal: {acc.current_balance})</option>
-              ))}
-            </select>
+            <EntitySelect type="account" value={accountId || 0} onChange={setAccountId} filter={a => a.is_supplier} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
@@ -171,7 +167,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Supplier Ref No.</label>
-            <input type="text" className="w-full border border-slate-300 rounded-md p-2" placeholder="e.g. INV-992" />
+            <input type="text" className="w-full border border-slate-300 rounded-md p-2" placeholder="e.g. INV-992 (Auto if empty)" value={supplierRef} onChange={e => setSupplierRef(e.target.value)} />
           </div>
         </div>
       </div>
@@ -183,38 +179,45 @@ export const PurchaseInvoicePanel: React.FC = () => {
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-200 shadow-sm z-10">
               <tr>
                 <th className="px-4 py-3 font-medium w-12 text-center">#</th>
-                <th className="px-4 py-3 font-medium w-1/3">Product Item</th>
+                <th className="px-4 py-3 font-medium w-64">Size (Category)</th>
+                <th className="px-4 py-3 font-medium w-64">Product (Brand)</th>
                 <th className="px-4 py-3 font-medium text-right w-24">Qty (In)</th>
                 <th className="px-4 py-3 font-medium text-right w-32">Pur. Rate (Rs)</th>
                 <th className="px-4 py-3 font-medium text-right w-32">Gross</th>
-                <th className="px-4 py-3 font-medium text-right w-24">Disc %</th>
+                <th className="px-4 py-3 font-medium text-right w-28">Disc (Rs/Unit)</th>
                 <th className="px-4 py-3 font-medium text-right w-32">Net Total</th>
                 <th className="px-4 py-3 font-medium w-16 text-center">Del</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100" onKeyDown={handleKeyDown}>
               {lines.map((line, index) => (
                 <tr key={line.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2 text-center text-slate-400">{index + 1}</td>
-                  <td className="px-4 py-2 w-48">
-                        <EntitySelect 
-                          type="category" 
-                          value={line.category_id || 0} 
-                          onChange={v => updateLine(line.id, 'category_id', v)} 
-                        />
-                      </td>
-                      <td className="px-4 py-2">
-                    <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} filter={p => line.category_id ? p.category_id === line.category_id : true} className="w-full" />
+                  <td className="px-4 py-2 w-64">
+                      <EntitySelect 
+                        type="category" 
+                        value={line.category_id || 0} 
+                        onChange={v => updateLine(line.id, 'category_id', v)} 
+                      />
+                    </td>
+                    <td className="px-4 py-2 w-64">
+                      <EntitySelect 
+                        type="product" 
+                        value={line.product_id || 0} 
+                        onChange={v => updateLine(line.id, 'product_id', v)} 
+                        filter={p => line.category_id ? p.category_id === line.category_id : true} 
+                        className="w-full" 
+                      />
+                    </td>
+                  <td className="px-4 py-2 text-right">
+                    <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.qty} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <input type="number" min="1" className="w-full text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.qty} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <input type="number" className="w-full text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.rate} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
+                    <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.rate} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
                   </td>
                   <td className="px-4 py-2 text-right font-medium text-slate-700">{(line.qty * line.rate).toLocaleString()}</td>
                   <td className="px-4 py-2 text-right">
-                    <input type="number" className="w-full text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.discount_pct} onChange={e => updateLine(line.id, 'discount_pct', Number(e.target.value))} />
+                    <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.discount_pct} onChange={e => updateLine(line.id, 'discount_pct', Number(e.target.value))} />
                   </td>
                   <td className="px-4 py-2 text-right font-medium text-blue-700">{calculateLineTotal(line).toLocaleString()}</td>
                   <td className="px-4 py-2 text-center">
@@ -260,7 +263,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
             <input 
               type="number" 
               className="flex-1 text-right border-b-2 border-slate-300 bg-blue-50 text-blue-800 font-bold p-2 outline-none focus:border-blue-500 rounded-t" 
-              value={amountPaid}
+              value={amountPaid || ''}
               onChange={e => setAmountPaid(Number(e.target.value))}
             />
           </div>

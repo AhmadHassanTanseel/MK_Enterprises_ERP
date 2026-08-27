@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open as openShell } from '@tauri-apps/plugin-shell';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 import { useAppContext } from '../../app/context/AppContext';
-import { Plus, Search, Filter, Paperclip, CreditCard, Banknote, Building2 } from 'lucide-react';
+import { Plus, Search, Filter, Paperclip, CreditCard, Banknote, Building2, X } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import toast from 'react-hot-toast';
 

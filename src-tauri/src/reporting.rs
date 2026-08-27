@@ -170,6 +170,7 @@ pub struct SalesHistoryRow {
     pub t_amount: f64, // Total Amount (Gross)
     pub discount: f64,
     pub status: String, // DRAFT, POSTED, PAID, OVERDUE
+    pub invoice_type: String,
 }
 
 #[tauri::command]
@@ -185,10 +186,11 @@ pub async fn get_purchase_history(db: State<'_, SqlitePool>) -> Result<Vec<Sales
             i.net_amount, 
             i.gross_amount as t_amount, 
             i.discount_amount as discount, 
-            i.status
+            i.status,
+            i.invoice_type
         FROM invoices i
         JOIN accounts a ON i.account_id = a.id
-        WHERE i.invoice_type = 'PURCHASE'
+        WHERE i.invoice_type IN ('PURCHASE', 'PURCHASE_RETURN')
         ORDER BY i.id DESC
         "#
     )
@@ -210,10 +212,11 @@ pub async fn get_sales_history(db: State<'_, SqlitePool>) -> Result<Vec<SalesHis
             i.net_amount, 
             i.gross_amount as t_amount, 
             i.discount_amount as discount, 
-            i.status
+            i.status,
+            i.invoice_type
         FROM invoices i
         JOIN accounts a ON i.account_id = a.id
-        WHERE i.invoice_type = 'SALE'
+        WHERE i.invoice_type IN ('SALE', 'SALE_RETURN')
         ORDER BY i.id DESC
         "#
     )
@@ -717,6 +720,36 @@ pub async fn generate_report(
             other
         )),
     }
+}
+
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct InvoiceLineRaw {
+    pub product_id: i64,
+    pub qty: i64,
+    pub rate: f64,
+    pub discount_pct: f64,
+    pub amount: f64,
+}
+
+#[tauri::command]
+pub async fn get_invoice_lines(invoice_id: i64, db: State<'_, SqlitePool>) -> Result<Vec<InvoiceLineRaw>, String> {
+    sqlx::query_as::<_, InvoiceLineRaw>(
+        r#"
+        SELECT 
+            product_id,
+            quantity as qty,
+            unit_price as rate,
+            discount_percent as discount_pct,
+            total_price as amount
+        FROM invoice_items
+        WHERE invoice_id = ?
+        "#
+    )
+    .bind(invoice_id)
+    .fetch_all(&*db)
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
