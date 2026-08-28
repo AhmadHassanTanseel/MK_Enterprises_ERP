@@ -8,7 +8,7 @@ export interface Account { id: number; name: string; account_type_id: number; co
 export interface Category { id: number; name: string; description: string | null; parent_id: number | null; }
 export interface Area { id: number; name: string; salesman_id: number | null; remarks: string | null; active: number; account_count: number; }
 export interface Salesman { id: number; name: string; contact: string | null; salary: number; details: string | null; status: string; }
-export interface AccountType { id: number; name: string; nature: 'DR' | 'CR'; trial_bal_type: 'BS' | 'IS'; trial_order: number; }
+export interface AccountType { id: number; name: string; nature: string; trial_bal_type: string; trial_order: number; }
 
 // Transaction Data
 export interface InvoiceLine { category_id?: number | null; product_name?: string; product_id: number; qty: number; rate: number; discount_pct: number; amount: number; }

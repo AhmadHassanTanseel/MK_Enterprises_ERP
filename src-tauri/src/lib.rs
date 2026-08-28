@@ -21,6 +21,7 @@ use attachments::{save_attachment, get_attachments, get_attachment_path};
 use drm::*;
 use backup::*;
 use audit::*;
+use assets::*;
 use tauri::Manager;
 
 
@@ -90,6 +91,9 @@ pub fn run() {
             create_system_backup,
             execute_factory_reset,
             get_audit_logs,
+            get_company_assets,
+            add_company_asset,
+            sell_company_asset,
             get_settings,
             save_setting
         ])

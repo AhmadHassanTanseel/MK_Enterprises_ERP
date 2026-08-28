@@ -15,7 +15,7 @@ pub struct CompanyAsset {
 }
 
 #[tauri::command]
-pub async fn get_company_assets(pool: State<'_, Arc<SqlitePool>>) -> Result<Vec<CompanyAsset>, String> {
+pub async fn get_company_assets(pool: State<'_, SqlitePool>) -> Result<Vec<CompanyAsset>, String> {
     let records = sqlx::query(
         r#"
         SELECT id, name, purchase_date, purchase_price, status, sold_date, sold_price 
@@ -23,7 +23,7 @@ pub async fn get_company_assets(pool: State<'_, Arc<SqlitePool>>) -> Result<Vec<
         ORDER BY id DESC
         "#
     )
-    .fetch_all(&**pool)
+    .fetch_all(&*pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -44,7 +44,7 @@ pub async fn get_company_assets(pool: State<'_, Arc<SqlitePool>>) -> Result<Vec<
 
 #[tauri::command]
 pub async fn add_company_asset(
-    pool: State<'_, Arc<SqlitePool>>,
+    pool: State<'_, SqlitePool>,
     name: String,
     purchase_price: f64,
     purchase_date: String,
@@ -83,13 +83,13 @@ pub async fn add_company_asset(
     };
     
     sqlx::query(
-        "INSERT INTO journal_entries (date, account_id, dr_amount, cr_amount, description, ref_type, ref_id) VALUES (?, ?, ?, 0, ?, 'ASSET_PURCHASE', ?)"
+        "INSERT INTO journal_entries (entry_date, account_id, debit, credit, narration, voucher_type, reference_id) VALUES (?, ?, ?, 0.0, ?, 'JOURNAL_VOUCHER', ?)"
     )
     .bind(&purchase_date).bind(acc_id).bind(purchase_price).bind(&name).bind(asset_id)
     .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     
     sqlx::query(
-        "INSERT INTO journal_entries (date, account_id, dr_amount, cr_amount, description, ref_type, ref_id) VALUES (?, 1, 0, ?, ?, 'ASSET_PURCHASE', ?)"
+        "INSERT INTO journal_entries (entry_date, account_id, debit, credit, narration, voucher_type, reference_id) VALUES (?, 1, 0.0, ?, ?, 'JOURNAL_VOUCHER', ?)"
     )
     .bind(&purchase_date).bind(purchase_price).bind(&name).bind(asset_id)
     .execute(&mut *tx).await.map_err(|e| e.to_string())?;
@@ -100,7 +100,7 @@ pub async fn add_company_asset(
 
 #[tauri::command]
 pub async fn sell_company_asset(
-    pool: State<'_, Arc<SqlitePool>>,
+    pool: State<'_, SqlitePool>,
     id: i64,
     sold_price: f64,
     sold_date: String,
@@ -137,13 +137,13 @@ pub async fn sell_company_asset(
     let desc = format!("Sold Asset: {}", asset_name);
     
     sqlx::query(
-        "INSERT INTO journal_entries (date, account_id, dr_amount, cr_amount, description, ref_type, ref_id) VALUES (?, 1, ?, 0, ?, 'ASSET_SALE', ?)"
+        "INSERT INTO journal_entries (entry_date, account_id, debit, credit, narration, voucher_type, reference_id) VALUES (?, 1, ?, 0.0, ?, 'JOURNAL_VOUCHER', ?)"
     )
     .bind(&sold_date).bind(sold_price).bind(&desc).bind(id)
     .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     
     sqlx::query(
-        "INSERT INTO journal_entries (date, account_id, dr_amount, cr_amount, description, ref_type, ref_id) VALUES (?, ?, 0, ?, ?, 'ASSET_SALE', ?)"
+        "INSERT INTO journal_entries (entry_date, account_id, debit, credit, narration, voucher_type, reference_id) VALUES (?, ?, 0.0, ?, ?, 'JOURNAL_VOUCHER', ?)"
     )
     .bind(&sold_date).bind(acc_id).bind(asset_purchase_price).bind(&desc).bind(id)
     .execute(&mut *tx).await.map_err(|e| e.to_string())?;
@@ -164,7 +164,7 @@ pub async fn sell_company_asset(
         };
 
         sqlx::query(
-            "INSERT INTO journal_entries (date, account_id, dr_amount, cr_amount, description, ref_type, ref_id) VALUES (?, ?, 0, ?, ?, 'ASSET_SALE', ?)"
+            "INSERT INTO journal_entries (entry_date, account_id, debit, credit, narration, voucher_type, reference_id) VALUES (?, ?, 0.0, ?, ?, 'JOURNAL_VOUCHER', ?)"
         )
         .bind(&sold_date).bind(pl_id).bind(profit).bind(&desc).bind(id)
         .execute(&mut *tx).await.map_err(|e| e.to_string())?;
@@ -185,7 +185,7 @@ pub async fn sell_company_asset(
         };
         
         sqlx::query(
-            "INSERT INTO journal_entries (date, account_id, dr_amount, cr_amount, description, ref_type, ref_id) VALUES (?, ?, ?, 0, ?, 'ASSET_SALE', ?)"
+            "INSERT INTO journal_entries (entry_date, account_id, debit, credit, narration, voucher_type, reference_id) VALUES (?, ?, ?, 0.0, ?, 'JOURNAL_VOUCHER', ?)"
         )
         .bind(&sold_date).bind(loss_id).bind(loss).bind(&desc).bind(id)
         .execute(&mut *tx).await.map_err(|e| e.to_string())?;

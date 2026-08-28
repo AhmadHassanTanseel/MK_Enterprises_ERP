@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
 
 export const OtherAccountsPanel: React.FC = () => {
@@ -68,6 +69,64 @@ export const OtherAccountsPanel: React.FC = () => {
       setAssetPrice('');
     } catch (e: any) {
       toast.error(e.toString());
+    }
+  };
+
+  // Expenses state
+  const [expCategory, setExpCategory] = useState('');
+  const [expAmount, setExpAmount] = useState<number | ''>('');
+  const [expDesc, setExpDesc] = useState('');
+  const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const { accountTypes, accounts, postJournalEntry, fetchData } = useAppContext();
+  
+  const expenseTypes = accountTypes.filter(t => t.nature === 'EXPENSE').map(t => t.id);
+  const expenseAccounts = accounts.filter(a => expenseTypes.includes(a.account_type_id));
+
+  const handleAddExpense = async () => {
+    if (!expCategory || !expAmount) {
+      toast.error('Category and Amount are required');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      let accId = accounts.find(a => a.name.toLowerCase() === expCategory.toLowerCase() && expenseTypes.includes(a.account_type_id))?.id;
+      
+      if (!accId) {
+        // Create it
+        const typeId = expenseTypes[0] || 7; // fallback to 7 (Operating Expense)
+        accId = await invoke('create_account', {
+          accountTypeId: typeId,
+          name: expCategory,
+          contact: null, address: null, areaId: null,
+          openingBalance: 0, openingBalanceType: 'DEBIT',
+          isCustomer: false, isSupplier: false
+        });
+        await fetchData(); // Refresh accounts in context
+      }
+      
+      // Cash Account is usually ID 1 (Cash Drawer)
+      const cashAccountId = 1;
+      
+      await postJournalEntry(
+        expDate,
+        [
+          { accountId: accId as number, entryType: 'DR', amount: Number(expAmount), description: expDesc },
+          { accountId: cashAccountId, entryType: 'CR', amount: Number(expAmount), description: expDesc }
+        ],
+        `Expense: ${expCategory} - ${expDesc}`
+      );
+      
+      toast.success('Expense recorded successfully');
+      setExpCategory('');
+      setExpAmount('');
+      setExpDesc('');
+      
+    } catch (e: any) {
+      toast.error(e.toString());
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
