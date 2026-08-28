@@ -73,13 +73,16 @@ export const OtherAccountsPanel: React.FC = () => {
   };
 
   // Expenses state
+  const [expenseTab, setExpenseTab] = useState<'list' | 'add'>('list');
+  const [expStartDate, setExpStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0]);
+  const [expEndDate, setExpEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [expCategory, setExpCategory] = useState('');
   const [expAmount, setExpAmount] = useState<number | ''>('');
   const [expDesc, setExpDesc] = useState('');
   const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const { accountTypes, accounts, postJournalEntry, fetchData } = useAppContext();
+  const { accountTypes, accounts, postJournalEntry, fetchData, ledgerEntries } = useAppContext();
   
   const expenseTypes = accountTypes.filter(t => t.nature === 'EXPENSE').map(t => t.id);
   const expenseAccounts = accounts.filter(a => expenseTypes.includes(a.account_type_id));
@@ -289,18 +292,132 @@ export const OtherAccountsPanel: React.FC = () => {
             )}
           </div>
         );
-      case 'expenses':
+            case 'expenses': {
+        const filteredExpenses = ledgerEntries
+          .filter(l => expenseAccounts.some(a => a.id === l.account_id) && l.dr_amount > 0 && l.ref_type === 'JOURNAL_VOUCHER' && !l.description.includes('Opening Balance'))
+          .filter(l => {
+            if (!l.date) return true;
+            const d = l.date.split(' ')[0];
+            return d >= expStartDate && d <= expEndDate;
+          })
+          .sort((a, b) => (a.date > b.date ? -1 : 1));
+
         return (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h2 className="text-xl font-bold text-slate-800 mb-6">General Expenses</h2>
-            <div className="space-y-4">
-              <input type="text" placeholder="Expense Category (e.g. Utility, Office)" className="w-full border border-slate-300 rounded p-2" />
-              <input type="number" placeholder="Amount" className="w-full border border-slate-300 rounded p-2" />
-              <input type="text" placeholder="Description" className="w-full border border-slate-300 rounded p-2" />
-              <button onClick={handleNotConnected} className="bg-rose-600 text-white px-4 py-2 rounded font-medium hover:bg-rose-700">Add Expense</button>
+            
+            <div className="flex border-b border-slate-200 mb-6">
+              <button
+                className={`py-2 px-4 font-medium text-sm transition-colors ${expenseTab === 'list' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                onClick={() => setExpenseTab('list')}
+              >
+                Expenses List
+              </button>
+              <button
+                className={`py-2 px-4 font-medium text-sm transition-colors ${expenseTab === 'add' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                onClick={() => setExpenseTab('add')}
+              >
+                Record Expense
+              </button>
             </div>
+
+            {expenseTab === 'list' && (
+              <div className="space-y-4">
+                <div className="flex gap-4 mb-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">From Date</label>
+                    <input type="date" value={expStartDate} onChange={e => setExpStartDate(e.target.value)} className="border border-slate-300 rounded p-1 text-sm outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">To Date</label>
+                    <input type="date" value={expEndDate} onChange={e => setExpEndDate(e.target.value)} className="border border-slate-300 rounded p-1 text-sm outline-none" />
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-600 text-sm">
+                        <th className="p-3 border-b border-slate-200">Date</th>
+                        <th className="p-3 border-b border-slate-200">Category</th>
+                        <th className="p-3 border-b border-slate-200">Description</th>
+                        <th className="p-3 border-b border-slate-200 text-right">Amount (Rs)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm">
+                      {filteredExpenses.length === 0 ? (
+                        <tr><td colSpan={4} className="p-4 text-center text-slate-500">No expenses recorded in this period.</td></tr>
+                      ) : (
+                        filteredExpenses.map((exp, idx) => {
+                          const catName = accounts.find(a => a.id === exp.account_id)?.name || 'Unknown';
+                          return (
+                            <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                              <td className="p-3 text-slate-600">{exp.date.split(' ')[0]}</td>
+                              <td className="p-3 font-medium text-slate-800">{catName}</td>
+                              <td className="p-3 text-slate-600">{exp.description}</td>
+                              <td className="p-3 text-right text-slate-800">Rs. {exp.dr_amount.toLocaleString()}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {expenseTab === 'add' && (
+              <div className="space-y-4 max-w-md">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                  <input type="date" value={expDate} onChange={e => setExpDate(e.target.value)} className="w-full border border-slate-300 rounded p-2 outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Expense Category</label>
+                  <input 
+                    list="expense-categories" 
+                    type="text" 
+                    placeholder="e.g. Utility, Office, Salary" 
+                    value={expCategory}
+                    onChange={e => setExpCategory(e.target.value)}
+                    className="w-full border border-slate-300 rounded p-2 outline-none focus:border-blue-500" 
+                  />
+                  <datalist id="expense-categories">
+                    {expenseAccounts.map((a: any) => <option key={a.id} value={a.name} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Amount (Rs)</label>
+                  <input 
+                    type="number" 
+                    placeholder="Amount Paid" 
+                    value={expAmount}
+                    onChange={e => setExpAmount(Number(e.target.value) || '')}
+                    className="w-full border border-slate-300 rounded p-2 outline-none focus:border-blue-500" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Description (Optional)</label>
+                  <input 
+                    type="text" 
+                    placeholder="Details of expense..." 
+                    value={expDesc}
+                    onChange={e => setExpDesc(e.target.value)}
+                    className="w-full border border-slate-300 rounded p-2 outline-none focus:border-blue-500" 
+                  />
+                </div>
+                <button 
+                  onClick={handleAddExpense} 
+                  disabled={isSubmitting}
+                  className="w-full bg-rose-600 text-white px-4 py-2 rounded font-medium hover:bg-rose-700 disabled:bg-rose-400 transition-colors"
+                >
+                  Record Expense
+                </button>
+              </div>
+            )}
           </div>
         );
+      }
       case 'investors':
         return (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

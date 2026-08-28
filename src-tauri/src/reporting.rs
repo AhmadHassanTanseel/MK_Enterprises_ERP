@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, SqlitePool, Row};
 use tauri::State;
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -896,4 +896,65 @@ pub async fn get_all_ledger_entries(db: State<'_, SqlitePool>) -> Result<Vec<App
     .fetch_all(&*db)
     .await
     .map_err(|e| e.to_string())
+}
+pub async fn run_expense_report(from_date: &str, to_date: &str, db: State<'_, SqlitePool>) -> Result<ReportResult, String> {
+    let records = sqlx::query(
+        r#"
+        SELECT 
+            je.entry_date,
+            a.name as category,
+            je.narration,
+            je.debit as amount
+        FROM journal_entries je
+        JOIN accounts a ON je.account_id = a.id
+        JOIN account_types at ON a.account_type_id = at.id
+        WHERE at.nature = 'EXPENSE'
+          AND je.debit > 0
+          AND date(je.entry_date) >= date(?)
+          AND date(je.entry_date) <= date(?)
+        ORDER BY je.entry_date DESC
+        "#
+    )
+    .bind(from_date)
+    .bind(to_date)
+    .fetch_all(&*db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut rows = Vec::new();
+    let mut total_amount = 0.0;
+
+    for r in records {
+        let entry_date: String = r.try_get("entry_date").unwrap_or_default();
+        let category: String = r.try_get("category").unwrap_or_default();
+        let narration: String = r.try_get("narration").unwrap_or_default();
+        let amount: f64 = r.try_get("amount").unwrap_or(0.0);
+
+        total_amount += amount;
+
+        // format date
+        let date_only = if entry_date.len() > 10 { entry_date[0..10].to_string() } else { entry_date };
+        
+        let row_vec = vec![
+            date_only,
+            category,
+            narration,
+            format!("{:.2}", amount)
+        ];
+        rows.push(row_vec);
+    }
+
+    let totals = vec![
+        ReportTotal {
+            label: "Total Expenses".to_string(),
+            value: total_amount,
+        }
+    ];
+
+    Ok(ReportResult {
+        title: format!("Expenses Report ({} to {})", from_date, to_date),
+        headers: vec!["Date".to_string(), "Category".to_string(), "Description".to_string(), "Amount".to_string()],
+        rows,
+        totals,
+    })
 }
