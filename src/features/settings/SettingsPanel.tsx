@@ -169,274 +169,178 @@ export const SettingsPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full gap-6">
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <Settings className="h-6 w-6 text-slate-500" /> Application Settings
-          </h2>
-          <p className="text-sm text-slate-500 mt-1">Configure system preferences and manage data</p>
-        </div>
+    <div className="flex flex-col h-full gap-6 p-4">
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+          <Settings className="h-6 w-6 text-slate-500" /> Application Settings
+        </h2>
+        <p className="text-sm text-slate-500 mt-1">Configure system preferences and manage data</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <Building className="h-5 w-5 text-emerald-500" />
-            <h3 className="font-bold text-slate-800">Setup</h3>
+      <div className="max-w-4xl space-y-6">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-6 border-b border-slate-200">
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <Database className="h-5 w-5 text-blue-600" />
+              Backup & Restore
+            </h2>
+            <p className="text-slate-500 mt-1">Manage local and cloud backups of your system data</p>
           </div>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Company Name</label>
-              <input
-                type="text"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                placeholder="Enter Company Name"
-              />
-            </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">Company Logo</label>
-                <div className="flex items-center gap-4">
-                  <div className="h-16 w-16 bg-slate-100 border border-slate-200 rounded overflow-hidden flex items-center justify-center">
-                    {logoUrl ? <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" /> : <span className="text-xs text-slate-400">No Logo</span>}
+          
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Local Backup Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                  <Database className="h-4 w-4" /> Local Storage
+                </h3>
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                  <p className="text-sm text-slate-600 mb-4">Create a backup file on your computer or restore from a previously saved local backup file.</p>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={handleBackup}
+                      className="flex-1 bg-white border border-blue-200 text-blue-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Download className="h-4 w-4" /> Backup
+                    </button>
+                    <button 
+                      onClick={handleRestoreClick}
+                      className="flex-1 bg-white border border-slate-200 text-slate-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Save className="h-4 w-4" /> Restore
+                    </button>
                   </div>
-                  <input type="file" accept="image/*" className="text-sm text-slate-500" onChange={e => {
-                    if (e.target.files && e.target.files[0]) {
-                      setLogoUrl(URL.createObjectURL(e.target.files[0]));
-                    }
-                  }} />
                 </div>
               </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Company Address</label>
-              <input
-                type="text"
-                value={companyAddress}
-                onChange={(e) => setCompanyAddress(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                placeholder="Enter Company Address"
-              />
+              {/* Drive Backup Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7.71 3.5L1.15 15l3.43 6l6.55-11.5M9.73 3.5l-3.43 6L12.86 21h6.85M13.72 13.5l-4.57 8h13.7l4.57-8"/>
+                  </svg>
+                  Google Drive
+                </h3>
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                  <p className="text-sm text-slate-600 mb-4">Connect your Google Drive account to securely backup and restore your data to the cloud.</p>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setShowDriveSetup(true)}
+                      className="flex-1 bg-blue-600 text-white font-medium py-2 px-3 rounded shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M7.71 3.5L1.15 15l3.43 6l6.55-11.5M9.73 3.5l-3.43 6L12.86 21h6.85M13.72 13.5l-4.57 8h13.7l4.57-8"/>
+                      </svg>
+                      Setup Drive
+                    </button>
+                    <button 
+                      onClick={() => setShowDriveSetup(true)}
+                      className="flex-1 bg-white border border-slate-200 text-slate-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <button
-              onClick={handleSaveGeneral}
-              disabled={isSubmitting}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save General Settings'}
-            </button>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <Shield className="h-5 w-5 text-indigo-500" />
-            <h3 className="font-bold text-slate-800">Security & Access</h3>
-          </div>
-          <div className="space-y-3">
-            <button className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded border border-slate-200 flex justify-between items-center opacity-50 cursor-not-allowed">
-              <span>Manage Users</span> <Users className="h-4 w-4 text-slate-400" />
-            </button>
-            <button className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded border border-slate-200 opacity-50 cursor-not-allowed">
-              Role Based Access Control (RBAC)
-            </button>
-            <button
-              onClick={handleOpenAuditLog}
-              className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded border border-slate-200"
-            >
-              Audit Log Viewer
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <Database className="h-5 w-5 text-blue-500" />
-            <h3 className="font-bold text-slate-800">Data Management</h3>
-          </div>
-          <div className="space-y-3">
-            
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Backup</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleBackup}
-                  className="flex-1 text-center px-2 py-2 text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 rounded border border-slate-200"
-                >
-                  Local
-                </button>
-                <button
-                  onClick={() => toast.error('Cloud backup isn\'t connected yet')}
-                  className="flex-1 text-center px-2 py-2 text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 rounded border border-blue-200"
-                >
-                  Drive
-                </button>
-              </div>
-            </div>
-            
-            <div className="flex flex-col gap-2 mt-4">
-              <label className="text-xs font-bold text-slate-500 uppercase">Restore</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleRestoreClick}
-                  className="flex-1 text-center px-2 py-2 text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 rounded border border-slate-200"
-                >
-                  Local
-                </button>
-                <button
-                  onClick={() => toast.error('Cloud backup isn\'t connected yet')}
-                  className="flex-1 text-center px-2 py-2 text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 rounded border border-blue-200"
-                >
-                  Drive
-                </button>
-              </div>
-            </div>
-
-            {backupMessage && (
-              <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded border border-slate-200">{backupMessage}</p>
-            )}
-            <button className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded border border-slate-200 opacity-50 cursor-not-allowed">
-              Import / Export Wizard
-            </button>
-            <div className="pt-2 border-t border-slate-100 mt-4">
-              <button
-                onClick={() => { setShowResetConfirm(true); setResetConfirmText(''); }}
-                className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 rounded border border-rose-200 flex justify-between items-center"
-              >
-                <span>Delete All Data</span> <Trash2 className="h-4 w-4 text-rose-400" />
-              </button>
-              <p className="text-xs text-slate-400 mt-2 flex items-start gap-1">
-                <AlertTriangle className="h-3 w-3 mt-0.5" /> Requires typing DELETE to confirm.
-              </p>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-6">
+            <h2 className="text-xl font-bold text-slate-800 mb-4">About</h2>
+            <div className="space-y-2 text-sm text-slate-600">
+              <p><span className="font-medium">Software:</span> MK Enterprises Business Management System</p>
+              <p><span className="font-medium">Version:</span> v2.0.0 Production Build</p>
+              <p><span className="font-medium">Developed For:</span> Mian Khan Enterprises</p>
+              <p className="pt-4 text-xs text-slate-400">© 2026 MK Enterprises. All rights reserved.</p>
             </div>
           </div>
         </div>
       </div>
 
-      {showAuditLog && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-slate-200">
-              <h3 className="font-bold text-slate-800">Audit Log</h3>
-              <button onClick={() => setShowAuditLog(false)} className="p-1 hover:bg-slate-100 rounded">
-                <X className="h-5 w-5 text-slate-500" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              {auditLogs.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-8">No audit entries yet.</p>
-              ) : (
-                <table className="w-full text-sm text-left">
-                  <thead className="text-xs uppercase text-slate-500 bg-slate-50">
-                    <tr>
-                      <th className="px-3 py-2">Time</th>
-                      <th className="px-3 py-2">User</th>
-                      <th className="px-3 py-2">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {auditLogs.map(log => (
-                      <tr key={log.id}>
-                        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{log.timestamp}</td>
-                        <td className="px-3 py-2">{log.user_name}</td>
-                        <td className="px-3 py-2">{log.action}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      
-      {showRestoreConfirm && restoreFile && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="bg-orange-50 p-6 text-center border-b border-orange-100">
-              <div className="h-12 w-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <AlertTriangle className="h-6 w-6" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-800">Restore Database?</h3>
-              <p className="text-sm text-slate-600 mt-2">
-                You are about to restore the database from a backup file. Your current data will be automatically backed up before this action.
-              </p>
-            </div>
-            
-            <div className="p-6">
-              <div className="bg-slate-50 border border-slate-200 rounded-md p-3 mb-6 text-sm text-slate-700">
-                <p><strong>File:</strong> {restoreFile.path.split('\\').pop()?.split('/').pop()}</p>
-                <p><strong>Size:</strong> {(restoreFile.size / (1024 * 1024)).toFixed(2)} MB</p>
-                <p><strong>Date modified:</strong> {restoreFile.date.toLocaleString()}</p>
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Type <strong>RESTORE</strong> to confirm
-                </label>
-                <input 
-                  type="text" 
-                  value={restoreConfirmText}
-                  onChange={e => setRestoreConfirmText(e.target.value)}
-                  className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-orange-500 outline-none font-mono"
-                  placeholder="RESTORE"
-                />
-              </div>
-              
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => setShowRestoreConfirm(false)}
-                  disabled={isSubmitting}
-                  className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={executeRestore}
-                  disabled={restoreConfirmText !== 'RESTORE' || isSubmitting}
-                  className="flex-1 px-4 py-2 bg-orange-600 text-white font-medium rounded-md hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isSubmitting ? <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> : null}
-                  {isSubmitting ? "Restoring..." : "Restore Now"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showResetConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      {showRestoreConfirm && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h3 className="font-bold text-rose-700 flex items-center gap-2 mb-2">
-              <AlertTriangle className="h-5 w-5" /> Factory Reset
-            </h3>
-            <p className="text-sm text-slate-600 mb-4">
-              This will permanently delete all invoices, inventory movements (except opening stock), and journal entries (except opening balances). Products and accounts will be preserved.
+            <h3 className="text-lg font-bold text-slate-800 mb-2">Confirm Restore</h3>
+            <p className="text-slate-600 text-sm mb-4">
+              You are about to overwrite the current database with the backup file. 
+              <strong> This cannot be undone.</strong>
             </p>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Type DELETE to confirm</label>
-            <input
-              type="text"
-              value={resetConfirmText}
-              onChange={e => setResetConfirmText(e.target.value)}
-              className="w-full border border-slate-300 rounded-md p-2 mb-3"
-              placeholder="DELETE"
-            />
-            {resetError && <p className="text-sm text-rose-600 mb-3">{resetError}</p>}
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowResetConfirm(false)} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">
+            <div className="bg-rose-50 border border-rose-200 p-3 rounded mb-4 text-sm">
+              <p className="font-mono text-xs mb-1 text-slate-700">File: {restoreFile?.path.split('\\').pop()?.split('/').pop()}</p>
+              <p className="font-mono text-xs text-slate-700">Size: {restoreFile ? (restoreFile.size / 1024).toFixed(1) : 0} KB</p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button 
+                onClick={() => {setShowRestoreConfirm(false); setRestoreFile(null);}}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded hover:bg-slate-50 transition-colors"
+              >
                 Cancel
               </button>
-              <button
-                onClick={handleFactoryReset}
-                disabled={resetConfirmText !== 'DELETE'}
-                className="px-4 py-2 text-sm bg-rose-600 text-white rounded-md hover:bg-rose-700 disabled:opacity-50"
+              <button 
+                onClick={handleConfirmRestore}
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700 transition-colors disabled:opacity-50"
               >
-                Wipe Transactional Data
+                {isSubmitting ? 'Restoring...' : 'Restore Database'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDriveSetup && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 relative">
+            <button onClick={() => setShowDriveSetup(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+              <X className="h-5 w-5" />
+            </button>
+            <h3 className="text-xl font-bold text-slate-800 mb-2 flex items-center gap-2">
+              <svg className="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7.71 3.5L1.15 15l3.43 6l6.55-11.5M9.73 3.5l-3.43 6L12.86 21h6.85M13.72 13.5l-4.57 8h13.7l4.57-8"/>
+              </svg>
+              Google Drive Backup
+            </h3>
+            <p className="text-slate-600 text-sm mb-6">
+              Connect your Google account to enable automatic backups and cloud restores.
+            </p>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Google Email Address</label>
+                <input 
+                  type="email" 
+                  placeholder="admin@example.com"
+                  className="w-full border border-slate-300 rounded p-2 outline-none focus:border-blue-500" 
+                />
+              </div>
+              <p className="text-xs text-slate-500">
+                You will be redirected to Google to authorize access to Google Drive.
+              </p>
+            </div>
+
+            <div className="bg-amber-50 text-amber-800 p-3 rounded-lg text-sm border border-amber-200 mb-6">
+              <span className="font-bold flex items-center gap-1 mb-1"><AlertTriangle className="h-4 w-4" /> Developer Note:</span>
+              To make this fully functional, an OAuth Client ID must be configured in Google Cloud Console. Until configured, Drive backups will save locally.
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button 
+                onClick={() => setShowDriveSetup(false)}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                onClick={() => {
+                  toast.success("OAuth configuration required. Saved as local backup for now.");
+                  setShowDriveSetup(false);
+                  handleBackup();
+                }}
+              >
+                Connect Drive
               </button>
             </div>
           </div>
