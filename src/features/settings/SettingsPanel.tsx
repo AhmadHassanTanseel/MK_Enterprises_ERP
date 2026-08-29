@@ -31,6 +31,7 @@ export const SettingsPanel: React.FC = () => {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [restoreFile, setRestoreFile] = useState<{path: string, size: number, date: Date} | null>(null);
   const [restoreConfirmText, setRestoreConfirmText] = useState("");
+  const [showDriveSetup, setShowDriveSetup] = useState(false);
 
   useEffect(() => {
     const nameSetting = settings.find(s => s.key === 'company_name');
@@ -54,29 +55,31 @@ export const SettingsPanel: React.FC = () => {
     }
   };
 
-    const handleBackup = async () => {
+  const handleBackup = async () => {
     try {
       setBackupMessage(null);
-      const result: { filepath: string, size_bytes: number } = await invoke('create_system_backup');
-      const sizeMb = (result.size_bytes / (1024 * 1024)).toFixed(2);
-      toast((t) => (
-        <div className="flex flex-col gap-2">
-          <span>Backup created: {result.filepath.split('\\').pop()?.split('/').pop()}, {sizeMb} MB</span>
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={() => { openShell(result.filepath.substring(0, result.filepath.lastIndexOf('\\'))); toast.dismiss(t.id); }}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-            >
-              Open Folder
-            </button>
-            <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1 bg-slate-200 text-slate-800 rounded text-xs hover:bg-slate-300">
-              Dismiss
-            </button>
-          </div>
-        </div>
-      ), { duration: 8000 });
+      const result: string = await invoke('create_system_backup');
+      toast.success(result);
     } catch (e: any) {
       toast.error(`Backup failed: ${e}`);
+    }
+  };
+
+    const handleConfirmRestore = async () => {
+    if (!restoreFile) return;
+    setIsSubmitting(true);
+    try {
+      const msg: string = await invoke('restore_database', { filePath: restoreFile.path });
+      toast.success(msg);
+      setTimeout(() => {
+        invoke('restart_app').catch(e => {
+          toast.error("Failed to restart automatically. Please close and reopen.");
+          exit(0);
+        });
+      }, 2000);
+    } catch (e: any) {
+      toast.error(`Restore failed: ${e.toString()}`);
+      setIsSubmitting(false);
     }
   };
 

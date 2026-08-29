@@ -789,8 +789,18 @@ pub async fn generate_report(
                 "STOCK" | "STOCK_REPORT" => run_stock_report(&db, &filters).await,
         "PROFIT" | "PROFIT_REPORT" | "P&L" => run_profit_report(&db, &filters).await,
         "ASSETS" | "ASSET_REPORT" => run_asset_report(&db, &filters).await,
+        "EXPENSES" => {
+            let from_date = filters.from_date.clone().unwrap_or_else(|| "1970-01-01".to_string());
+            let to_date = filters.to_date.clone().unwrap_or_else(|| "2100-01-01".to_string());
+            run_expense_report(&from_date, &to_date, db).await
+        },
+        "ADJUSTMENTS" => {
+            let from_date = filters.from_date.clone().unwrap_or_else(|| "1970-01-01".to_string());
+            let to_date = filters.to_date.clone().unwrap_or_else(|| "2100-01-01".to_string());
+            run_adjustments_report(&from_date, &to_date, db).await
+        },
         other => Err(format!(
-            "Unknown report type '{}'. Supported: Ledger, CashBook, Trial, Sales, Purchase, Stock, Profit, Assets.",
+            "Unknown report type '{}'. Supported: Ledger, CashBook, Trial, Sales, Purchase, Stock, Profit, Assets, Expenses, Adjustments.",
             other
         )),
     }
@@ -956,5 +966,98 @@ pub async fn run_expense_report(from_date: &str, to_date: &str, db: State<'_, Sq
         headers: vec!["Date".to_string(), "Category".to_string(), "Description".to_string(), "Amount".to_string()],
         rows,
         totals,
+    })
+}
+
+pub async fn run_adjustments_report(from_date: &str, to_date: &str, db: State<'_, SqlitePool>) -> Result<ReportResult, String> {
+    // We want to combine Cash, Sales, and Stock adjustments.
+    
+    // 1. Cash and Sales adjustments from journal_entries
+    let financial_adj = sqlx::query(
+        r#"
+        SELECT 
+            entry_date as date,
+            voucher_type as type,
+            narration as reason,
+            debit as amount
+        FROM journal_entries
+        WHERE voucher_type IN ('CASH_ADJUSTMENT', 'SALES_ADJUSTMENT')
+          AND debit > 0
+          AND date(entry_date) >= date(?)
+          AND date(entry_date) <= date(?)
+        "#
+    )
+    .bind(from_date)
+    .bind(to_date)
+    .fetch_all(&*db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // 2. Stock adjustments from inventory_movements
+    let stock_adj = sqlx::query(
+        r#"
+        SELECT 
+            datetime(im.created_at, 'localtime') as date,
+            'STOCK_ADJUSTMENT' as type,
+            im.notes as reason,
+            p.name as product_name,
+            im.quantity as qty
+        FROM inventory_movements im
+        JOIN products p ON im.product_id = p.id
+        WHERE im.movement_type = 'ADJUSTMENT'
+          AND date(im.created_at) >= date(?)
+          AND date(im.created_at) <= date(?)
+        "#
+    )
+    .bind(from_date)
+    .bind(to_date)
+    .fetch_all(&*db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut rows = Vec::new();
+    
+    for r in financial_adj {
+        let date_str: String = r.try_get("date").unwrap_or_default();
+        let adj_type: String = r.try_get("type").unwrap_or_default();
+        let reason: String = r.try_get("reason").unwrap_or_default();
+        let amount: f64 = r.try_get("amount").unwrap_or(0.0);
+        
+        let display_type = if adj_type == "CASH_ADJUSTMENT" { "Cash" } else { "Sales" };
+        let date_only = if date_str.len() > 10 { date_str[0..10].to_string() } else { date_str };
+        
+        rows.push(vec![
+            date_only,
+            display_type.to_string(),
+            reason,
+            format!("Rs. {:.2}", amount)
+        ]);
+    }
+
+    for r in stock_adj {
+        let date_str: String = r.try_get("date").unwrap_or_default();
+        let reason: String = r.try_get("reason").unwrap_or_default();
+        let product: String = r.try_get("product_name").unwrap_or_default();
+        let qty: i64 = r.try_get("qty").unwrap_or(0);
+        
+        let date_only = if date_str.len() > 10 { date_str[0..10].to_string() } else { date_str };
+        let qty_str = if qty > 0 { format!("+{} units", qty) } else { format!("{} units", qty) };
+        
+        rows.push(vec![
+            date_only,
+            "Stock".to_string(),
+            format!("{} ({})", reason, product),
+            qty_str
+        ]);
+    }
+
+    // Sort rows by date descending
+    rows.sort_by(|a, b| b[0].cmp(&a[0]));
+
+    Ok(ReportResult {
+        title: format!("Adjustments Report ({} to {})", from_date, to_date),
+        headers: vec!["Date".to_string(), "Type".to_string(), "Reason / Details".to_string(), "Adjustment".to_string()],
+        rows,
+        totals: vec![],
     })
 }

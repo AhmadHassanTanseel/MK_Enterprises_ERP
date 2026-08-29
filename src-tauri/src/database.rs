@@ -144,6 +144,7 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             quantity INTEGER NOT NULL, -- Positive for IN (Purchases/Returns), Negative for OUT (Sales)
             movement_type TEXT NOT NULL, -- 'OPENING', 'PURCHASE', 'SALE', 'PURCHASE_RETURN', 'SALE_RETURN', 'DAMAGE_WRITE_OFF'
             reference_id INTEGER,
+            notes TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(product_id) REFERENCES products(id)
         );
@@ -225,6 +226,12 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to create production schema: {}", e))?;
 
+    
+    // Handle migrations
+    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
+
     Ok(())
 }
 
@@ -274,6 +281,12 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
         record_migration(pool, 5).await?;
     }
 
+    
+    // Handle migrations
+    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
+
     Ok(())
 }
 
@@ -283,6 +296,12 @@ async fn record_migration(pool: &SqlitePool, version: i64) -> Result<(), String>
         .execute(pool)
         .await
         .map_err(|e| format!("Failed to record migration {}: {}", version, e))?;
+    
+    // Handle migrations
+    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
+
     Ok(())
 }
 
@@ -312,6 +331,12 @@ async fn migration_001_areas_columns(pool: &SqlitePool) -> Result<(), String> {
             .map_err(|e| format!("Failed to add areas.remarks: {}", e))?;
     }
 
+    
+    // Handle migrations
+    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
+
     Ok(())
 }
 
@@ -331,6 +356,12 @@ async fn migration_002_backfill_opening_stock(pool: &SqlitePool) -> Result<(), S
     .execute(pool)
     .await
     .map_err(|e| format!("Failed to backfill OPENING inventory movements: {}", e))?;
+
+    
+    // Handle migrations
+    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
 
     Ok(())
 }
@@ -354,6 +385,12 @@ async fn migration_003_seed_system_account_config(pool: &SqlitePool) -> Result<(
         .map_err(|e| format!("Failed to seed system_config key '{}': {}", key, e))?;
     }
 
+    
+    // Handle migrations
+    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
+
     Ok(())
 }
 
@@ -371,6 +408,12 @@ async fn migration_004_audit_logs(pool: &SqlitePool) -> Result<(), String> {
     .execute(pool)
     .await
     .map_err(|e| format!("Failed to create audit_logs table: {}", e))?;
+
+    
+    // Handle migrations
+    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
 
     Ok(())
 }
@@ -423,6 +466,12 @@ async fn migration_005_legacy_lazy_columns(pool: &SqlitePool) -> Result<(), Stri
         sqlx::query("ALTER TABLE journal_entries ADD COLUMN attachment_path TEXT").execute(pool).await.map_err(|e| e.to_string())?;
     }
 
+    
+    // Handle migrations
+    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
+
     Ok(())
 }
 
@@ -452,5 +501,11 @@ async fn migration_006_accounts_and_salesmen(pool: &SqlitePool) -> Result<(), St
             .execute(pool).await.map_err(|e| e.to_string())?;
     }
     
+    
+    // Handle migrations
+    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
+
     Ok(())
 }

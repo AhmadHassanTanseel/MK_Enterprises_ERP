@@ -3,6 +3,7 @@ pub mod master_data;
 pub mod system_accounts;
 pub mod audit;
 mod assets;
+pub mod adjustments;
 pub mod drm;
 pub mod backup;
 pub mod users;
@@ -22,6 +23,7 @@ use drm::*;
 use backup::*;
 use audit::*;
 use assets::*;
+use adjustments::*;
 use tauri::Manager;
 
 
@@ -78,6 +80,9 @@ pub fn run() {
             get_purchase_history,
             get_purchase_history,
             generate_report,
+            adjust_cash,
+            adjust_stock,
+            adjust_sales,
             process_stock_adjustment,
             get_invoices,
             get_invoice_lines,
