@@ -96,6 +96,7 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             min_sale_price REAL DEFAULT 0.0,
             reorder_level INTEGER DEFAULT 0,
             opening_stock INTEGER DEFAULT 0,
+              flavors TEXT,
             status TEXT DEFAULT 'ACTIVE',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             real_barcode TEXT,
@@ -282,6 +283,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
     }
 
     
+    if current < 7 {
+        migration_007_features(pool).await?;
+        record_migration(pool, 7).await?;
+    }
+
     // Handle migrations
     let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
         .execute(pool)
@@ -506,6 +512,48 @@ async fn migration_006_accounts_and_salesmen(pool: &SqlitePool) -> Result<(), St
     let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
         .execute(pool)
         .await;
+
+    Ok(())
+}
+
+async fn migration_007_features(pool: &sqlx::SqlitePool) -> Result<(), String> {
+    if !column_exists(pool, "products", "flavors").await? {
+        sqlx::query("ALTER TABLE products ADD COLUMN flavors TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "invoice_items", "flavor").await? {
+        sqlx::query("ALTER TABLE invoice_items ADD COLUMN flavor TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    
+    // Create dispatches tables
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dispatches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            salesman_id INTEGER NOT NULL,
+            dispatch_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            notes TEXT,
+            FOREIGN KEY(salesman_id) REFERENCES accounts(id)
+        )
+        "#
+    ).execute(pool).await.map_err(|e| e.to_string())?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dispatch_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dispatch_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            dispatched_quantity INTEGER NOT NULL,
+            sold_quantity INTEGER DEFAULT 0,
+            returned_quantity INTEGER DEFAULT 0,
+            unit_price REAL NOT NULL,
+            flavor TEXT,
+            FOREIGN KEY(dispatch_id) REFERENCES dispatches(id) ON DELETE CASCADE,
+            FOREIGN KEY(product_id) REFERENCES products(id)
+        )
+        "#
+    ).execute(pool).await.map_err(|e| e.to_string())?;
 
     Ok(())
 }

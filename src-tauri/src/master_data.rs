@@ -48,6 +48,7 @@ pub struct Product {
     pub purchase_price: f64,
     pub sale_price: f64,
     pub opening_stock: i64,
+    pub flavors: Option<String>,
     // ERP Enhancements & Khata Logic
     pub category_id: Option<i64>,
     pub real_barcode: Option<String>,
@@ -170,7 +171,7 @@ pub async fn delete_category(
 pub async fn get_products(db: State<'_, SqlitePool>) -> Result<Vec<Product>, String> {
 
     sqlx::query_as::<_, Product>(
-        "SELECT id, code, name, packing, purchase_price, sale_price, opening_stock, category_id, real_barcode, uom, reorder_level, sale_account_id FROM products ORDER BY id DESC"
+        "SELECT id, code, name, packing, purchase_price, sale_price, opening_stock, flavors, category_id, real_barcode, uom, reorder_level, sale_account_id FROM products ORDER BY id DESC"
     )
     .fetch_all(&*db)
     .await
@@ -179,7 +180,7 @@ pub async fn get_products(db: State<'_, SqlitePool>) -> Result<Vec<Product>, Str
 
 #[tauri::command]
 pub async fn create_product(
-    code: String, name: String, category_id: Option<i64>, packing: Option<String>,
+    code: String, name: String, flavors: Option<String>, packing: Option<String>,
     purchase_price: f64, sale_price: f64, opening_stock: i64,
     real_barcode: Option<String>, uom: Option<String>, reorder_level: Option<i64>,
     sale_account_id: Option<i64>,
@@ -188,11 +189,9 @@ pub async fn create_product(
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
 
     let id = sqlx::query(
-        r#"INSERT INTO products 
-        (code, name, category_id, packing, purchase_price, sale_price, opening_stock, real_barcode, uom, reorder_level, sale_account_id) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#
+        r#"INSERT INTO products (code, name, flavors, category_id, packing, purchase_price, sale_price, opening_stock, real_barcode, uom, reorder_level, sale_account_id) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)"#
     )
-    .bind(&code).bind(&name).bind(category_id).bind(&packing)
+    .bind(&code).bind(&name).bind(&flavors).bind(&packing)
     .bind(purchase_price).bind(sale_price).bind(opening_stock)
     .bind(&real_barcode).bind(&uom).bind(reorder_level).bind(sale_account_id)
     .execute(&mut *tx).await.map_err(|e| e.to_string())?.last_insert_rowid();
@@ -217,18 +216,17 @@ pub async fn create_product(
 #[tauri::command]
 pub async fn update_product(
     id: i64,
-    code: String, name: String, category_id: Option<i64>, packing: Option<String>,
+    code: String, name: String, flavors: Option<String>, packing: Option<String>,
     purchase_price: f64, sale_price: f64, opening_stock: i64,
     real_barcode: Option<String>, uom: Option<String>, reorder_level: Option<i64>,
     sale_account_id: Option<i64>,
     db: State<'_, SqlitePool>
 ) -> Result<String, String> {
     sqlx::query(
-        r#"UPDATE products 
-        SET code = ?, name = ?, category_id = ?, packing = ?, purchase_price = ?, sale_price = ?, opening_stock = ?, real_barcode = ?, uom = ?, reorder_level = ?, sale_account_id = ?
+        r#"UPDATE products SET code = ?, name = ?, flavors = ?, category_id = NULL, packing = ?, purchase_price = ?, sale_price = ?, opening_stock = ?, real_barcode = ?, uom = ?, reorder_level = ?, sale_account_id = ?
         WHERE id = ?"#
     )
-    .bind(&code).bind(&name).bind(category_id).bind(&packing)
+    .bind(&code).bind(&name).bind(&flavors).bind(&packing)
     .bind(purchase_price).bind(sale_price).bind(opening_stock)
     .bind(&real_barcode).bind(&uom).bind(reorder_level).bind(sale_account_id)
     .bind(id)

@@ -13,7 +13,8 @@ export const PurchaseInvoicePanel: React.FC = () => {
   const [lines, setLines] = useState<(InvoiceLine & { id: string })[]>([
     { id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }
   ]);
-  const [amountPaid, setAmountPaid] = useState<number>(0);
+  const [amountPaidCash, setAmountPaidCash] = useState<number>(0);
+  const [amountPaidBank, setAmountPaidBank] = useState<number>(0);
   
   
   
@@ -37,11 +38,11 @@ export const PurchaseInvoicePanel: React.FC = () => {
     }
   };
 
-  const updateLine = (id: string, field: keyof InvoiceLine | 'category_id', value: any) => {
+  const updateLine = (id: string, field: keyof InvoiceLine | 'flavor', value: any) => {
     setLines(lines.map(l => {
       if (l.id === id) {
         const newLine = { ...l, [field]: value };
-        if (field === 'category_id') {
+        if (field === 'flavor') {
           newLine.product_id = 0;
           newLine.rate = 0;
         }
@@ -64,7 +65,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
   const totalGross = lines.reduce((sum, line) => sum + (line.qty * line.rate), 0);
   const totalDiscount = lines.reduce((sum, line) => sum + (line.discount_pct * line.qty), 0);
   const totalNet = totalGross - totalDiscount;
-  const balance = totalNet - amountPaid;
+  const balance = totalNet - (amountPaidCash + amountPaidBank);
 
   
   
@@ -91,11 +92,12 @@ export const PurchaseInvoicePanel: React.FC = () => {
         gross_amount: totalGross,
         discount_amount: totalDiscount,
         net_amount: totalNet,
-        amount_paid: amountPaid
+        amount_paid_cash: amountPaidCash, amount_paid_bank: amountPaidBank
       });
       toast.success(`Purchase Invoice saved successfully`);
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
-      setAmountPaid(0);
+      setAmountPaidCash(0);
+      setAmountPaidBank(0);
       
       
       setAccountId(null);
@@ -138,7 +140,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
                   <div>Gross: Rs. ${totalGross.toLocaleString()}</div>
                   <div>Discount: Rs. ${totalDiscount.toLocaleString()}</div>
                   <div>Net Total: Rs. ${totalNet.toLocaleString()}</div>
-                  <div>Amount Paid: Rs. ${amountPaid.toLocaleString()}</div>
+                  <div>Amount Paid: Rs. ${(amountPaidCash + amountPaidBank).toLocaleString()}</div>
                   <div>Balance: Rs. ${balance.toLocaleString()}</div>
                 </div>
               `;
@@ -148,7 +150,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
             </button>
             <button onClick={() => {
               const acc = accounts.find(a => a.id === accountId);
-              generateInvoicePDF('PURCHASE', `PUR-${Date.now()}`, new Date().toISOString().split('T')[0], acc, lines as any, products, totalGross, totalDiscount, totalNet, amountPaid);
+              generateInvoicePDF('PURCHASE', `PUR-${Date.now()}`, new Date().toISOString().split('T')[0], acc, lines as any, products, totalGross, totalDiscount, totalNet, (amountPaidCash + amountPaidBank));
             }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
               <FileText className="h-4 w-4" /> PDF
             </button>
@@ -175,55 +177,57 @@ export const PurchaseInvoicePanel: React.FC = () => {
       </div>
 
       {/* Grid Panel */}
-      <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+      <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden min-h-[300px]">
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-left text-sm text-slate-600">
+          <table className="w-full min-w-[800px] text-left text-sm text-slate-600">
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-200 shadow-sm z-10">
               <tr>
-                <th className="px-4 py-3 font-medium w-12 text-center">#</th>
-                <th className="px-4 py-3 font-medium w-64">Size (Category)</th>
-                <th className="px-4 py-3 font-medium w-64">Product (Brand)</th>
-                <th className="px-4 py-3 font-medium text-right w-24">Qty (In)</th>
-                <th className="px-4 py-3 font-medium text-right w-32">Pur. Rate (Rs)</th>
-                <th className="px-4 py-3 font-medium text-right w-32">Gross</th>
-                <th className="px-4 py-3 font-medium text-right w-28">Disc (Rs/Unit)</th>
-                <th className="px-4 py-3 font-medium text-right w-32">Net Total</th>
-                <th className="px-4 py-3 font-medium w-16 text-center">Del</th>
+                <th className="px-2 py-3 font-medium w-8 text-center">#</th>
+                <th className="px-2 py-3 font-medium w-1/5">Product (Brand)</th>
+                <th className="px-2 py-3 font-medium text-right w-20">Qty (In)</th>
+                <th className="px-2 py-3 font-medium text-right w-24">Pur. Rate</th>
+                <th className="px-2 py-3 font-medium text-right w-24">Sale Rate</th>
+                <th className="px-2 py-3 font-medium text-right w-24">Gross</th>
+                <th className="px-2 py-3 font-medium text-right w-20">Disc/Unit</th>
+                <th className="px-2 py-3 font-medium text-right w-28">Net Total</th>
+                <th className="px-2 py-3 font-medium w-12 text-center">Del</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100" onKeyDown={handleKeyDown}>
+                        <tbody className="divide-y divide-slate-100" onKeyDown={handleKeyDown}>
               {lines.map((line, index) => (
                 <tr key={line.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-2 text-center text-slate-400">{index + 1}</td>
-                  <td className="px-4 py-2 w-64">
-                      <EntitySelect 
-                        type="category" 
-                        value={line.category_id || 0} 
-                        onChange={v => updateLine(line.id, 'category_id', v)} 
-                      />
-                    </td>
-                    <td className="px-4 py-2 w-64">
+                  <td className="px-2 py-2 text-center text-slate-400">{index + 1}</td>
+                    <td className="px-2 py-2">
                       <EntitySelect 
                         type="product" 
                         value={line.product_id || 0} 
-                        onChange={v => updateLine(line.id, 'product_id', v)} 
-                        filter={p => line.category_id ? p.category_id === line.category_id : true} 
+                        onChange={v => {
+                          const p = products.find(prod => prod.id === v);
+                          if (p) {
+                            setLines(lines.map(l => l.id === line.id ? { ...l, product_id: v, rate: p.purchase_price, sale_rate: p.sale_price } : l));
+                          } else {
+                            updateLine(line.id, 'product_id', v);
+                          }
+                        }} 
                         className="w-full" 
                       />
                     </td>
-                  <td className="px-4 py-2 text-right">
-                    <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.qty} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
+                  <td className="px-2 py-2 text-right">
+                    <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
                   </td>
-                  <td className="px-4 py-2 text-right">
-                    <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.rate} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
+                  <td className="px-2 py-2 text-right">
+                    <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.rate || ''} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
                   </td>
-                  <td className="px-4 py-2 text-right font-medium text-slate-700">{(line.qty * line.rate).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right">
-                    <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.discount_pct} onChange={e => updateLine(line.id, 'discount_pct', Number(e.target.value))} />
+                  <td className="px-2 py-2 text-right">
+                    <input type="number" min="0" className="w-full min-w-[80px] text-right border border-emerald-300 bg-emerald-50 rounded p-1 focus:ring-2 outline-none" value={line.sale_rate || ''} onChange={e => updateLine(line.id, 'sale_rate', Number(e.target.value))} />
                   </td>
-                  <td className="px-4 py-2 text-right font-medium text-blue-700">{calculateLineTotal(line).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-center">
-                    <button onClick={() => removeLine(line.id)} className="text-rose-500 hover:bg-rose-50 p-1 rounded transition-colors">
+                  <td className="px-2 py-2 text-right font-medium text-slate-700">{((line.qty || 0) * (line.rate || 0)).toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right">
+                    <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.discount_pct || ''} onChange={e => updateLine(line.id, 'discount_pct', Number(e.target.value))} />
+                  </td>
+                  <td className="px-2 py-2 text-right font-bold text-slate-800 bg-slate-50/50">{calculateLineTotal(line).toLocaleString()}</td>
+                  <td className="px-2 py-2 text-center">
+                    <button onClick={() => setLines(lines.filter(l => l.id !== line.id))} className="p-1 text-rose-500 hover:bg-rose-50 rounded transition-colors" disabled={lines.length <= 1}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </td>
@@ -240,38 +244,51 @@ export const PurchaseInvoicePanel: React.FC = () => {
       </div>
 
       {/* Footer Panel */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-end justify-between">
-        <div className="w-1/3">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col xl:flex-row gap-6 justify-between items-start xl:items-end">
+        <div className="w-full xl:w-1/3">
           <label className="block text-sm font-medium text-slate-700 mb-1">Remarks</label>
           <textarea className="w-full border border-slate-300 rounded-md p-2 h-20 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Purchase notes..."></textarea>
         </div>
 
-        <div className="w-1/2 max-w-sm flex flex-col gap-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-600 font-medium">Gross Amount:</span>
-            <span className="text-slate-800 font-medium">Rs. {totalGross.toLocaleString()}</span>
+        <div className="flex flex-col md:flex-row gap-6 w-full xl:w-auto">
+          <div className="flex flex-col gap-2 w-full md:w-64 bg-slate-50 p-4 rounded-lg border border-slate-100">
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-600 font-medium">Gross Amount:</span>
+              <span className="text-slate-800 font-medium">Rs. {totalGross.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-600 font-medium">Discount Amount:</span>
+              <span className="text-rose-600 font-medium">- Rs. {totalDiscount.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-base pt-2 border-t border-slate-200 mt-2">
+              <span className="text-slate-800 font-bold">Net Total:</span>
+              <span className="text-slate-800 font-bold">Rs. {totalNet.toLocaleString()}</span>
+            </div>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-600 font-medium">Discount Amount:</span>
-            <span className="text-rose-600 font-medium">- Rs. {totalDiscount.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between text-lg pt-2 border-t border-slate-200">
-            <span className="text-slate-800 font-bold">Net Total:</span>
-            <span className="text-slate-800 font-bold">Rs. {totalNet.toLocaleString()}</span>
-          </div>
-          
-          <div className="flex items-center justify-between gap-4 mt-4 pt-4 border-t border-slate-200">
-            <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Amount Paid Now:</label>
-            <input 
-              type="number" 
-              className="flex-1 text-right border-b-2 border-slate-300 bg-blue-50 text-blue-800 font-bold p-2 outline-none focus:border-blue-500 rounded-t" 
-              value={amountPaid || ''}
-              onChange={e => setAmountPaid(Number(e.target.value))}
-            />
-          </div>
-          <div className="flex justify-between text-sm mt-1">
-            <span className="text-slate-600 font-medium">Balance Payable:</span>
-            <span className={`font-bold ${balance > 0 ? 'text-amber-600' : 'text-slate-500'}`}>Rs. {balance.toLocaleString()}</span>
+
+          <div className="flex flex-col gap-2 w-full md:w-80 p-2">
+            <div className="flex items-center justify-between gap-4">
+              <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Cash Paid Now:</label>
+              <input 
+                type="number" 
+                className="w-32 text-right border-b-2 border-slate-300 bg-emerald-50 text-emerald-800 font-bold p-1 outline-none focus:border-emerald-500 rounded-t" 
+                value={amountPaidCash || ''}
+                onChange={e => setAmountPaidCash(Number(e.target.value))}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Bank Paid Now:</label>
+              <input 
+                type="number" 
+                className="w-32 text-right border-b-2 border-slate-300 bg-blue-50 text-blue-800 font-bold p-1 outline-none focus:border-blue-500 rounded-t" 
+                value={amountPaidBank || ''}
+                onChange={e => setAmountPaidBank(Number(e.target.value))}
+              />
+            </div>
+            <div className="flex justify-between text-sm mt-2 border-t border-slate-100 pt-2">
+              <span className="text-slate-600 font-medium">Balance Payable:</span>
+              <span className={`font-bold ${balance > 0 ? 'text-amber-600' : 'text-slate-500'}`}>Rs. {balance.toLocaleString()}</span>
+            </div>
           </div>
         </div>
       </div>

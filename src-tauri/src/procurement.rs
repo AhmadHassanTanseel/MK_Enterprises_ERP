@@ -12,6 +12,8 @@ pub struct InvoiceLine {
     pub quantity: i64,
     pub unit_price: f64,
     pub discount_percent: Option<f64>,
+    pub flavor: Option<String>,
+    pub sale_rate: Option<f64>,
 }
 
 #[tauri::command]
@@ -24,13 +26,15 @@ pub async fn process_purchase(
     gross_amount: f64,
     discount_amount: f64,
     net_amount: f64,
-    amount_paid: f64,
+    amount_paid_cash: f64,
+    amount_paid_bank: f64,
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
     let accounts = get_system_accounts(&db).await?;
 
     // Create an invoice header
+    let amount_paid = amount_paid_cash + amount_paid_bank;
     let inv_no = match invoice_number {
         Some(no) => no,
         None => {
@@ -77,6 +81,23 @@ pub async fn process_purchase(
         let disc_per_unit = line.discount_percent.unwrap_or(0.0);
         let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
 
+        // Update Product Purchase and Sale Prices
+        sqlx::query("UPDATE products SET purchase_price = ? WHERE id = ?")
+            .bind(line.unit_price)
+            .bind(line.product_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(sr) = line.sale_rate {
+            sqlx::query("UPDATE products SET sale_price = ? WHERE id = ?")
+                .bind(sr)
+                .bind(line.product_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+
         sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price) VALUES (?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
@@ -116,22 +137,25 @@ pub async fn process_purchase(
         .map_err(|e| e.to_string())?;
 
     // Handle immediate cash payment
-    if amount_paid > 0.0 {
-        // Debit Supplier (reduces payable)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'CASH_PAYMENT', ?, 'Paid Supplier at Purchase')")
-            .bind(supplier_id)
-            .bind(amount_paid)
-            .bind(invoice_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
+    if amount_paid_cash > 0.0 {
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'CASH_PAYMENT', ?, 'Cash Paid at Purchase')")
+            .bind(supplier_id).bind(amount_paid_cash).bind(invoice_id)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'CASH_PAYMENT', ?, 'Cash Paid at Purchase')")
+            .bind(accounts.cash).bind(amount_paid_cash).bind(invoice_id)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    }
 
-        // Credit Cash Drawer (decrease cash)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'CASH_PAYMENT', ?, 'Paid Supplier at Purchase')")
-            .bind(accounts.cash).bind(amount_paid).bind(invoice_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
+    if amount_paid_bank > 0.0 {
+        let bank_account_id = 2; // Fixed Bank Account ID
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_PAYMENT', ?, 'Bank Paid at Purchase')")
+            .bind(supplier_id).bind(amount_paid_bank).bind(invoice_id)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'BANK_PAYMENT', ?, 'Bank Paid at Purchase')")
+            .bind(bank_account_id).bind(amount_paid_bank).bind(invoice_id)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
@@ -214,6 +238,23 @@ pub async fn process_return(
 
         let disc_per_unit = line.discount_percent.unwrap_or(0.0);
         let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
+
+        // Update Product Purchase and Sale Prices
+        sqlx::query("UPDATE products SET purchase_price = ? WHERE id = ?")
+            .bind(line.unit_price)
+            .bind(line.product_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(sr) = line.sale_rate {
+            sqlx::query("UPDATE products SET sale_price = ? WHERE id = ?")
+                .bind(sr)
+                .bind(line.product_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
 
         sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price) VALUES (?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)

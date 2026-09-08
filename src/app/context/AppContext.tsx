@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect } from
 import { invoke } from '@tauri-apps/api/core';
 
 // Core Master Data
-export interface Product { id: number; code: string; name: string; packing: string | null; purchase_price: number; sale_price: number; opening_stock: number; current_stock?: number; category_id: number | null; real_barcode: string | null; uom: string | null; reorder_level: number | null; sale_account_id: number | null; }
+export interface Product { id: number; code: string; name: string; packing: string | null; purchase_price: number; sale_price: number; opening_stock: number; current_stock?: number; flavor?: string | null; real_barcode: string | null; uom: string | null; reorder_level: number | null; flavors?: string | null; sale_account_id: number | null; }
 export interface Salesman { id: number; name: string; contact: string | null; salary: number; details: string | null; status: string; }
 export interface Account { id: number; name: string; account_type_id: number; contact: string | null; area_id: number | null; opening_balance: number; opening_balance_type: string; current_balance: number; is_customer: boolean; is_supplier: boolean; created_at: string; }
 export interface Category { id: number; name: string; description: string | null; parent_id: number | null; }
@@ -11,8 +11,8 @@ export interface Salesman { id: number; name: string; contact: string | null; sa
 export interface AccountType { id: number; name: string; nature: string; trial_bal_type: string; trial_order: number; }
 
 // Transaction Data
-export interface InvoiceLine { category_id?: number | null; product_name?: string; product_id: number; qty: number; rate: number; discount_pct: number; amount: number; }
-export interface Invoice { id: number; type: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN'; ref_no: string; account_id: number; salesman_id?: number; date: string; lines: InvoiceLine[]; gross_amount: number; discount_amount: number; net_amount: number; amount_paid: number; }
+export interface InvoiceLine { flavor?: string; sale_rate?: number; product_name?: string; product_id: number; qty: number; rate: number; discount_pct: number; amount: number; }
+export interface Invoice { id: number; type: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN'; ref_no: string; account_id: number; salesman_id?: number; date: string; lines: InvoiceLine[]; gross_amount: number; discount_amount: number; net_amount: number; amount_paid_cash: number; amount_paid_bank: number; }
 export interface LedgerEntry { id: number; date: string; account_id: number; dr_amount: number; cr_amount: number; description: string; ref_id?: number; ref_type?: string; }
 export interface InventoryMovement { id: number; date: string; product_id: number; qty_in: number; qty_out: number; type: string; ref_id?: number; }
 export interface CompanyAsset {
@@ -50,8 +50,8 @@ interface AppContextType {
   updateCategory: (id: number, name: string, description?: string, parent_id?: number, margin_target?: number, flavor?: string) => Promise<void>;
   deleteCategory: (id: number) => Promise<void>;
 
-  createProduct: (code: string, name: string, category_id?: number, packing?: string, purchase_price?: number, sale_price?: number, opening_stock?: number, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => Promise<void>;
-  updateProduct: (id: number, code: string, name: string, category_id?: number, packing?: string, purchase_price?: number, sale_price?: number, opening_stock?: number, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => Promise<void>;
+  createProduct: (code: string, name: string, flavors?: string, packing?: string, purchase_price?: number, sale_price?: number, opening_stock?: number, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => Promise<void>;
+  updateProduct: (id: number, code: string, name: string, flavors?: string, packing?: string, purchase_price?: number, sale_price?: number, opening_stock?: number, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
 
   createAccount: (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean) => Promise<void>;
@@ -164,7 +164,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         gross_amount: inv.gross_amount,
         discount_amount: inv.discount_amount,
         net_amount: inv.net_amount,
-        amount_paid: inv.amount_paid
+        amount_paid_cash: inv.amount_paid, amount_paid_bank: 0
       })));
 
       const dbSettings: AppSetting[] = await invoke('get_settings');
@@ -215,18 +215,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) { console.error(e); throw e; }
   };
 
-  const createProduct = async (code: string, name: string, category_id?: number, packing?: string, purchase_price: number = 0, sale_price: number = 0, opening_stock: number = 0, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => {
+  const createProduct = async (code: string, name: string, flavors?: string, packing?: string, purchase_price: number = 0, sale_price: number = 0, opening_stock: number = 0, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => {
     try {
-      await invoke('create_product', { code, name, categoryId: category_id, packing, purchasePrice: purchase_price, salePrice: sale_price, openingStock: opening_stock, realBarcode: real_barcode, uom, reorderLevel: reorder_level, saleAccountId: sale_account_id });
+      await invoke('create_product', { code, name, flavors: flavors, packing, purchasePrice: purchase_price, salePrice: sale_price, openingStock: opening_stock, realBarcode: real_barcode, uom, reorderLevel: reorder_level, saleAccountId: sale_account_id });
       await fetchData();
     } catch (e) {
       console.error(e); throw e;
     }
   };
 
-  const updateProduct = async (id: number, code: string, name: string, category_id?: number, packing?: string, purchase_price: number = 0, sale_price: number = 0, opening_stock: number = 0, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => {
+  const updateProduct = async (id: number, code: string, name: string, flavors?: string, packing?: string, purchase_price: number = 0, sale_price: number = 0, opening_stock: number = 0, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => {
     try {
-      await invoke('update_product', { id, code, name, categoryId: category_id, packing, purchasePrice: purchase_price, salePrice: sale_price, openingStock: opening_stock, realBarcode: real_barcode, uom, reorderLevel: reorder_level, saleAccountId: sale_account_id });
+      await invoke('update_product', { id, code, name, flavors: flavors, packing, purchasePrice: purchase_price, salePrice: sale_price, openingStock: opening_stock, realBarcode: real_barcode, uom, reorderLevel: reorder_level, saleAccountId: sale_account_id });
       await fetchData();
     } catch (e) { console.error(e); throw e; }
   };
@@ -357,7 +357,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           grossAmount: invoiceData.gross_amount,
           discountAmount: invoiceData.discount_amount,
           netAmount: invoiceData.net_amount,
-          amountReceived: invoiceData.amount_paid
+          amountReceivedCash: invoiceData.amount_paid_cash, amountReceivedBank: invoiceData.amount_paid_bank
         });
       } else if (invoiceData.type === 'PURCHASE') {
         await invoke('process_purchase', {
@@ -374,7 +374,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           grossAmount: invoiceData.gross_amount,
           discountAmount: invoiceData.discount_amount,
           netAmount: invoiceData.net_amount,
-          amountPaid: invoiceData.amount_paid
+          amountPaidCash: invoiceData.amount_paid_cash, amountPaidBank: invoiceData.amount_paid_bank
         });
       } else if (invoiceData.type === 'SALE_RETURN') {
         await invoke('process_sale_return', {

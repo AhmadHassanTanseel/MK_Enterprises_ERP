@@ -73,7 +73,7 @@ export const JournalVoucherRegisterPanel: React.FC = () => {
         </div>
       ) : (
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-left text-sm text-slate-600">
+          <table className="w-full min-w-[400px] text-left text-sm text-slate-600">
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0">
               <tr>
                 <th className="px-4 py-3">Date</th>

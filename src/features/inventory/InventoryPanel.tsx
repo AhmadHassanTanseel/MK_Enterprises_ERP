@@ -42,12 +42,12 @@ export const InventoryPanel: React.FC = () => {
 
   const rows = stockRows.map(row => {
     const product = productMeta.get(row.product_id);
-    const reorderLevel = product?.reorder_level ?? 0;
+    const reorderLevel = 200; // Product specific reorder level override based on user request
     return {
       ...row,
       uom: product?.uom ?? 'Piece',
       reorder_level: reorderLevel,
-      status: row.available_stock <= reorderLevel ? 'Low Stock' : 'Optimal',
+      status: row.available_stock < 200 ? 'Low Stock' : 'Optimal',
     };
   });
 
@@ -79,7 +79,7 @@ export const InventoryPanel: React.FC = () => {
         )}
         {!loading && !error && (
           <div className="flex-1 overflow-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+            <table className="w-full min-w-[800px] text-left text-sm text-slate-600">
               <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0">
                 <tr>
                   <th className="px-4 py-3 font-medium">Code</th>

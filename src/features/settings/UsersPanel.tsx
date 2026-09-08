@@ -181,7 +181,7 @@ export const UsersPanel: React.FC = () => {
         </div>
 
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-sm text-left">
+          <table className="w-full min-w-[800px] text-sm text-left">
             <thead className="text-xs uppercase text-slate-500 bg-slate-50">
               <tr>
                 <th className="px-4 py-3 font-medium">Username</th>

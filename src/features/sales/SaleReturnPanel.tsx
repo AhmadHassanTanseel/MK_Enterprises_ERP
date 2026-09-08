@@ -32,7 +32,7 @@ export const SaleReturnPanel: React.FC = () => {
             setLines(rawLines.map((l: any) => ({ 
               id: Math.random().toString(), 
               product_id: l.product_id, 
-              category_id: products.find(p => p.id === l.product_id)?.category_id || null,
+              flavor: products.find(p => p.id === l.product_id)?.flavors?.split(",")[0] || "",
               qty: l.qty, 
               rate: l.rate, 
               discount_pct: l.discount_pct || 0,
@@ -105,7 +105,7 @@ export const SaleReturnPanel: React.FC = () => {
         gross_amount: totalGross,
         discount_amount: totalDiscount,
         net_amount: totalNet,
-        amount_paid: 0
+        amount_paid_cash: 0, amount_paid_bank: 0
       });
       toast.success(`Sale Return saved successfully`);
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
@@ -216,14 +216,10 @@ export const SaleReturnPanel: React.FC = () => {
                 <tr key={line.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2 text-center">{index + 1}</td>
                   <td className="px-4 py-2 w-64">
-                          <EntitySelect 
-                            type="category" 
-                            value={line.category_id || 0} 
-                            onChange={v => updateLine(line.id, 'category_id', v)} 
-                          />
+                          {line.product_id ? (<select className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none" value={line.flavor || ''} onChange={e => updateLine(line.id, 'flavor', e.target.value)}><option value="">None</option>{(products.find(p => p.id === line.product_id)?.flavors || '').split(',').map(f => f.trim()).filter(f => f).map(f => (<option key={f} value={f}>{f}</option>))}</select>) : (<span className="text-slate-400 text-sm">Select product</span>)}
                         </td>
                         <td className="px-4 py-2 w-64">
-                      <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} filter={p => line.category_id ? p.category_id === line.category_id : true} className="w-full" />
+                      <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)}  className="w-full" />
                     </td>
                     <td className="px-4 py-2 text-right">
                       <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />

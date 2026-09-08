@@ -30,7 +30,7 @@ export const ProductsPanel: React.FC = () => {
           formData.id,
           formData.code, 
           formData.name, 
-          formData.category_id || undefined, 
+          formData.flavors || undefined, 
           formData.packing || undefined, 
           formData.purchase_price || 0, 
           formData.sale_price || 0, 
@@ -45,7 +45,7 @@ export const ProductsPanel: React.FC = () => {
         await createProduct(
           formData.code, 
           formData.name, 
-          formData.category_id || undefined, 
+          formData.flavors || undefined, 
           formData.packing || undefined, 
           formData.purchase_price || 0, 
           formData.sale_price || 0, 
@@ -69,7 +69,7 @@ export const ProductsPanel: React.FC = () => {
     setFormData({
       code: prod.code + '-COPY',
       name: prod.name + ' (Copy)',
-      category_id: prod.category_id || undefined,
+      flavors: prod.flavors || undefined,
       packing: prod.packing || '',
       purchase_price: prod.purchase_price,
       sale_price: prod.sale_price,
@@ -143,11 +143,13 @@ export const ProductsPanel: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Size (Category)</label>
-              <EntitySelect 
-                type="category" 
-                value={formData.category_id || 0} 
-                onChange={v => setFormData({...formData, category_id: v})} 
+              <label className="block text-sm font-medium text-slate-700 mb-1">Flavors (comma separated)</label>
+              <input 
+                type="text" 
+                className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none" 
+                value={formData.flavors || ''} 
+                placeholder="e.g. Cola, Sprite, Orange"
+                onChange={e => setFormData({...formData, flavors: e.target.value})} 
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -210,7 +212,7 @@ export const ProductsPanel: React.FC = () => {
         </div>
 
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-left text-sm text-slate-600">
+          <table className="w-full min-w-[800px] text-left text-sm text-slate-600">
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0">
               <tr>
                 <th className="px-4 py-3 font-medium">Code</th>

@@ -4,6 +4,7 @@ pub mod system_accounts;
 pub mod audit;
 mod assets;
 pub mod adjustments;
+mod trial;
 pub mod drm;
 pub mod backup;
 pub mod users;
@@ -36,7 +37,14 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             // Core transaction and master-data commands
+            
+            create_dispatch,
+            settle_dispatch,
+            get_pending_dispatches,
+            get_financial_summary,
+            get_account_ledger,
             process_sale,
+
             process_sale_return,
             process_purchase,
             process_return,
@@ -102,7 +110,8 @@ pub fn run() {
             get_settings,
             save_setting
         ])
-        .setup(|app| {
+        .setup(|mut app| {
+            let _ = trial::enforce_trial(&mut app);
             let handle = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {

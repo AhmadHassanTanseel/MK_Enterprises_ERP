@@ -99,7 +99,7 @@ export const JournalVoucherPanel: React.FC = () => {
       {/* Grid Panel */}
       <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-left text-sm text-slate-600">
+          <table className="w-full min-w-[400px] text-left text-sm text-slate-600">
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-200 shadow-sm z-10">
               <tr>
                 <th className="px-4 py-3 font-medium w-12 text-center">#</th>
@@ -121,10 +121,10 @@ export const JournalVoucherPanel: React.FC = () => {
                         />
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <input type="number" className="w-full text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.dr || ''} onChange={e => updateLine(line.id, 'dr', Number(e.target.value))} />
+                    <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.dr || ''} onChange={e => updateLine(line.id, 'dr', Number(e.target.value))} />
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <input type="number" className="w-full text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.cr || ''} onChange={e => updateLine(line.id, 'cr', Number(e.target.value))} />
+                    <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.cr || ''} onChange={e => updateLine(line.id, 'cr', Number(e.target.value))} />
                   </td>
                   <td className="px-4 py-2 text-center">
                     <button type="button" onClick={() => removeLine(line.id)} className="text-rose-500 hover:bg-rose-50 p-1 rounded transition-colors" disabled={lines.length <= 2}>

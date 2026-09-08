@@ -10,6 +10,7 @@ pub struct SaleLine {
     pub quantity: i64,
     pub unit_price: f64,
     pub discount_percent: Option<f64>,
+    pub flavor: Option<String>,
 }
 
 #[tauri::command]
@@ -22,13 +23,15 @@ pub async fn process_sale(
     gross_amount: f64,
     discount_amount: f64,
     net_amount: f64,
-    amount_received: f64,
+    amount_received_cash: f64,
+    amount_received_bank: f64,
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
     let accounts = get_system_accounts(&db).await?;
 
     // Create invoice header
+    let amount_received = amount_received_cash + amount_received_bank;
     let inv_no = match invoice_number {
         Some(no) => no,
         None => {
@@ -131,20 +134,25 @@ pub async fn process_sale(
         .map_err(|e| e.to_string())?;
 
     // Handle immediate payment (reduce AR)
-    if amount_received > 0.0 {
-        // Debit Cash Drawer (id 1)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, 'Payment Received at POS')")
-            .bind(accounts.cash).bind(amount_received).bind(invoice_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
+    if amount_received_cash > 0.0 {
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, 'Cash Received at POS')")
+            .bind(accounts.cash).bind(amount_received_cash).bind(invoice_id)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, 'Cash Received at POS')")
+            .bind(account_id).bind(amount_received_cash).bind(invoice_id)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    }
 
-        // Credit Customer (reduce AR)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, 'Payment Received at POS')")
-            .bind(account_id).bind(amount_received).bind(invoice_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
+    if amount_received_bank > 0.0 {
+        let bank_account_id = 2; // Fixed Bank Account ID
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS')")
+            .bind(bank_account_id).bind(amount_received_bank).bind(invoice_id)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS')")
+            .bind(account_id).bind(amount_received_bank).bind(invoice_id)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
@@ -251,3 +259,253 @@ pub async fn process_sale_return(
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(format!("Sale Return {} posted with id {}", inv_no, invoice_id))
 }
+
+
+
+#[derive(Deserialize)]
+pub struct DispatchLine {
+    pub product_id: i64,
+    pub qty: i64,
+}
+
+#[derive(Deserialize)]
+pub struct SettleLine {
+    pub dispatch_item_id: i64,
+    pub product_id: i64,
+    pub qty_sold: i64,
+    pub qty_returned: i64,
+    pub unit_price: f64,
+    pub discount_percent: f64,
+}
+
+#[tauri::command]
+pub async fn create_dispatch(
+    salesman_id: i64,
+    lines: Vec<DispatchLine>,
+    db: State<'_, SqlitePool>,
+) -> Result<i64, String> {
+    let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+
+    let dispatch_id = sqlx::query(
+        "INSERT INTO dispatches (salesman_id, dispatch_date, status) VALUES (?, date('now'), 'PENDING')"
+    )
+    .bind(salesman_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?
+    .last_insert_rowid();
+
+    for line in lines {
+        sqlx::query(
+            "INSERT INTO dispatch_items (dispatch_id, product_id, dispatched_quantity, unit_price) VALUES (?, ?, ?, 0.0)"
+        )
+        .bind(dispatch_id)
+        .bind(line.product_id)
+        .bind(line.qty)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query(
+            "INSERT INTO inventory_movements (product_id, quantity, movement_type, reference_id) VALUES (?, -?, 'DISPATCH', ?)"
+        )
+        .bind(line.product_id)
+        .bind(line.qty)
+        .bind(dispatch_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(dispatch_id)
+}
+
+#[tauri::command]
+pub async fn settle_dispatch(
+    dispatch_id: i64,
+    lines: Vec<SettleLine>,
+    db: State<'_, SqlitePool>,
+) -> Result<i64, String> {
+    let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+
+    // Update dispatch status
+    sqlx::query("UPDATE dispatches SET status = 'SETTLED' WHERE id = ?")
+        .bind(dispatch_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut total_gross = 0.0;
+    let mut total_discount = 0.0;
+    
+    // We get salesman_id to use as customer for the invoice, or maybe create a generic cash sale?
+    let row = sqlx::query("SELECT salesman_id FROM dispatches WHERE id = ?").bind(dispatch_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    let salesman_id: i64 = sqlx::Row::try_get(&row, "salesman_id").map_err(|e: sqlx::Error| e.to_string())?;
+
+    // Prepare lines for invoice
+    let mut sale_lines = Vec::new();
+
+    for line in lines {
+        // Update dispatch item
+        sqlx::query("UPDATE dispatch_items SET sold_quantity = ?, returned_quantity = ?, unit_price = ? WHERE id = ?")
+            .bind(line.qty_sold)
+            .bind(line.qty_returned)
+            .bind(line.unit_price)
+            .bind(line.dispatch_item_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Restock returned items
+        if line.qty_returned > 0 {
+            sqlx::query(
+                "INSERT INTO inventory_movements (product_id, quantity, movement_type, reference_id) VALUES (?, ?, 'DISPATCH_RETURN', ?)"
+            )
+            .bind(line.product_id)
+            .bind(line.qty_returned)
+            .bind(dispatch_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
+        if line.qty_sold > 0 {
+            let gross = (line.qty_sold as f64) * line.unit_price;
+            let discount = gross * (line.discount_percent / 100.0);
+            total_gross += gross;
+            total_discount += discount;
+            sale_lines.push((line.product_id, line.qty_sold, line.unit_price, line.discount_percent));
+        }
+    }
+    
+    // Create Sale Invoice for the sold items
+    let mut invoice_id = 0;
+    if !sale_lines.is_empty() {
+        let net = total_gross - total_discount;
+        let ref_no = format!("DISP-{}", dispatch_id);
+        
+        invoice_id = sqlx::query(
+            "INSERT INTO invoices (invoice_type, invoice_number, invoice_date, account_id, salesman_id, gross_amount, discount_amount, net_amount, amount_received, bakaya, status)
+             VALUES ('SALE', ?, date('now'), ?, ?, ?, ?, ?, ?, 0, 'POSTED')"
+        )
+        .bind(&ref_no).bind(salesman_id).bind(salesman_id).bind(total_gross).bind(total_discount).bind(net).bind(net)
+        .execute(&mut *tx)
+        .await.map_err(|e| e.to_string())?.last_insert_rowid();
+
+        for (pid, qty, price, disc) in sale_lines {
+            let total_price = (qty as f64) * price * (1.0 - (disc / 100.0));
+            sqlx::query(
+                "INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price) VALUES (?, ?, ?, ?, ?, ?)"
+            )
+            .bind(invoice_id).bind(pid).bind(qty).bind(price).bind(disc).bind(total_price)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        }
+        
+        // Ledger Entries (Cash Received automatically since it's a salesman)
+        let cash_acc_id = 1; // Default Cash account
+        let sales_acc_id = 3; // Default Sales account
+        
+        // Debit Cash
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0, 'SALE', ?, 'Dispatch Sale Cash')")
+            .bind(cash_acc_id).bind(net).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+            
+        // Credit Sales
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0, ?, 'SALE', ?, 'Dispatch Sale Revenue')")
+            .bind(sales_acc_id).bind(net).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(dispatch_id)
+}
+
+use serde::Serialize;
+
+#[derive(Serialize)]
+pub struct DispatchItemRow {
+    pub id: i64,
+    pub dispatch_id: i64,
+    pub product_id: i64,
+    pub product_name: String,
+    pub qty_dispatched: i64,
+    pub qty_sold: i64,
+    pub qty_returned: i64,
+    pub sale_price: f64,
+}
+
+#[derive(Serialize)]
+pub struct DispatchRow {
+    pub id: i64,
+    pub salesman_id: i64,
+    pub salesman_name: String,
+    pub dispatch_date: String,
+    pub status: String,
+    pub items: Vec<DispatchItemRow>,
+}
+
+#[tauri::command]
+pub async fn get_pending_dispatches(db: State<'_, SqlitePool>) -> Result<Vec<DispatchRow>, String> {
+    let mut conn = db.acquire().await.map_err(|e| e.to_string())?;
+
+    let dispatches = sqlx::query(
+        r#"
+        SELECT d.id, d.salesman_id, d.dispatch_date, d.status, a.name as salesman_name
+        FROM dispatches d
+        LEFT JOIN accounts a ON a.id = d.salesman_id
+        WHERE d.status = 'PENDING'
+        ORDER BY d.id DESC
+        "#
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut result = Vec::new();
+
+    for d in dispatches {
+        let d_id: i64 = sqlx::Row::try_get(&d, "id").unwrap_or_default();
+        let d_salesman_id: i64 = sqlx::Row::try_get(&d, "salesman_id").unwrap_or_default();
+        let d_salesman_name: String = sqlx::Row::try_get(&d, "salesman_name").unwrap_or_default();
+        let d_dispatch_date: String = sqlx::Row::try_get(&d, "dispatch_date").unwrap_or_default();
+        let d_status: String = sqlx::Row::try_get(&d, "status").unwrap_or_default();
+
+        let items = sqlx::query(
+            r#"
+            SELECT di.id, di.dispatch_id, di.product_id, di.dispatched_quantity, di.sold_quantity, di.returned_quantity, p.name as product_name, p.sale_price
+            FROM dispatch_items di
+            JOIN products p ON p.id = di.product_id
+            WHERE di.dispatch_id = ?
+            "#
+        )
+        .bind(d_id)
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut item_rows = Vec::new();
+        for i in items {
+            item_rows.push(DispatchItemRow {
+                id: sqlx::Row::try_get(&i, "id").unwrap_or_default(),
+                dispatch_id: sqlx::Row::try_get(&i, "dispatch_id").unwrap_or_default(),
+                product_id: sqlx::Row::try_get(&i, "product_id").unwrap_or_default(),
+                product_name: sqlx::Row::try_get(&i, "product_name").unwrap_or_default(),
+                qty_dispatched: sqlx::Row::try_get(&i, "dispatched_quantity").unwrap_or_default(),
+                qty_sold: sqlx::Row::try_get(&i, "sold_quantity").unwrap_or_default(),
+                qty_returned: sqlx::Row::try_get(&i, "returned_quantity").unwrap_or_default(),
+                sale_price: sqlx::Row::try_get(&i, "sale_price").unwrap_or_default(),
+            });
+        }
+
+        result.push(DispatchRow {
+            id: d_id,
+            salesman_id: d_salesman_id,
+            salesman_name: d_salesman_name,
+            dispatch_date: d_dispatch_date,
+            status: d_status,
+            items: item_rows,
+        });
+    }
+
+    Ok(result)
+}
+

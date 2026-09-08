@@ -1061,3 +1061,64 @@ pub async fn run_adjustments_report(from_date: &str, to_date: &str, db: State<'_
         totals: vec![],
     })
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FinancialSummary {
+    pub total_revenue: f64,
+    pub total_expenses: f64,
+    pub net_profit: f64,
+    pub total_assets: f64,
+    pub total_liabilities: f64,
+    pub total_equity: f64,
+}
+
+#[tauri::command]
+pub async fn get_financial_summary(db: State<'_, SqlitePool>) -> Result<FinancialSummary, String> {
+    let mut conn = db.acquire().await.map_err(|e| e.to_string())?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT at.nature, SUM(je.debit) as total_debit, SUM(je.credit) as total_credit
+        FROM journal_entries je
+        JOIN accounts a ON a.id = je.account_id
+        JOIN account_types at ON at.id = a.account_type_id
+        GROUP BY at.nature
+        "#
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut rev = 0.0;
+    let mut exp = 0.0;
+    let mut ast = 0.0;
+    let mut lia = 0.0;
+    let mut equ = 0.0;
+
+    for row in rows {
+        let nature: String = sqlx::Row::try_get(&row, "nature").unwrap_or_default();
+        let debit: f64 = sqlx::Row::try_get(&row, "total_debit").unwrap_or(0.0);
+        let credit: f64 = sqlx::Row::try_get(&row, "total_credit").unwrap_or(0.0);
+
+        match nature.as_str() {
+            "INCOME" | "REVENUE" => rev += credit - debit,
+            "EXPENSE" => exp += debit - credit,
+            "ASSET" => ast += debit - credit,
+            "LIABILITY" => lia += credit - debit,
+            "EQUITY" => equ += credit - debit,
+            _ => {}
+        }
+    }
+
+    let net_profit = rev - exp;
+    let total_equity = equ + net_profit;
+
+    Ok(FinancialSummary {
+        total_revenue: rev,
+        total_expenses: exp,
+        net_profit,
+        total_assets: ast,
+        total_liabilities: lia,
+        total_equity,
+    })
+}

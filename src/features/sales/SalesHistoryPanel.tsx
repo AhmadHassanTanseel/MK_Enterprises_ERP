@@ -77,7 +77,7 @@ export const SalesHistoryPanel: React.FC = () => {
       <div className="flex-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
         
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-left text-sm text-slate-600">
+          <table className="w-full min-w-[800px] text-left text-sm text-slate-600">
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-200 shadow-sm">
               <tr>
                 <th className="px-4 py-3 font-medium">Date</th>

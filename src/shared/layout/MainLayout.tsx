@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { GlobalSearch } from './GlobalSearch';
 import { 
   LayoutDashboard, Wallet, Receipt, FileText, 
-  Package, List, Users, Settings, Search, Bell, User, ChevronDown, ChevronRight, Menu, MapPin
+  Package, List, Users, Settings, Search, Bell, User, ChevronDown, ChevronRight, Menu, MapPin, TrendingUp
 } from 'lucide-react';
 
 export const MainLayout: React.FC = () => {
@@ -26,6 +26,7 @@ export const MainLayout: React.FC = () => {
         { id: 'sales', label: 'Sale Invoice' },
         { id: 'sale-return', label: 'Sale Return' },
         { id: 'sales-history', label: 'Sales History' },
+          { id: 'pending-orders', label: 'Pending Orders' },
       ]
     },
 
@@ -54,6 +55,7 @@ export const MainLayout: React.FC = () => {
     // Others
     { id: 'inventory', label: 'Stock Dash', icon: List },
     { id: 'reports', label: 'Reports', icon: FileText },
+      { id: 'financial-statements', label: 'Financial Statements', icon: TrendingUp },
     { id: 'areas', label: 'Areas', icon: MapPin },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

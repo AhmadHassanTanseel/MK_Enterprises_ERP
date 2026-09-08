@@ -69,6 +69,27 @@ export const OtherAccountsPanel: React.FC = () => {
   const [adjList, setAdjList] = useState<any[]>([]);
   // Payables & Receivables State
   const [prViewTab, setPrViewTab] = useState<'balances' | 'history'>('balances');
+
+  // View Ledger Modal State
+  const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
+  const [ledgerAccount, setLedgerAccount] = useState<any>(null);
+  const [accountLedgerEntries, setAccountLedgerEntries] = useState<any[]>([]);
+  const [isLedgerLoading, setIsLedgerLoading] = useState(false);
+
+  const handleOpenLedger = async (account: any) => {
+    setLedgerAccount(account);
+    setIsLedgerModalOpen(true);
+    setIsLedgerLoading(true);
+    try {
+      const entries = await invoke('get_account_ledger', { accountId: account.id });
+      setAccountLedgerEntries(entries as any[]);
+    } catch (e: any) {
+      toast.error(e.toString());
+    } finally {
+      setIsLedgerLoading(false);
+    }
+  };
+
   const [prSearch, setPrSearch] = useState('');
   const [settleModalOpen, setSettleModalOpen] = useState(false);
   const [settleAccount, setSettleAccount] = useState<any>(null);
@@ -344,7 +365,7 @@ export const OtherAccountsPanel: React.FC = () => {
             
             {assetTab === 'list' && (
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
+                <table className="w-full min-w-[800px] text-left border-collapse text-sm">
                   <thead className="bg-slate-50 text-slate-500">
                     <tr>
                       <th className="px-4 py-2 font-medium">Asset Name</th>
@@ -465,7 +486,7 @@ export const OtherAccountsPanel: React.FC = () => {
                 </div>
 
                 <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full min-w-[800px] text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-50 text-slate-600 text-sm">
                         <th className="p-3 border-b border-slate-200">Date</th>
@@ -583,7 +604,7 @@ export const OtherAccountsPanel: React.FC = () => {
                 </div>
 
                 <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full min-w-[800px] text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-50 text-slate-600 text-sm">
                         <th className="p-3 border-b border-slate-200">Date</th>
@@ -739,12 +760,20 @@ export const OtherAccountsPanel: React.FC = () => {
                         </div>
                         <div className="text-right">
                           <div className="font-bold text-emerald-600">Rs. {a.current_balance.toLocaleString()}</div>
-                          <button 
-                            onClick={() => handleOpenSettle(a, 'receive')}
-                            className="mt-1 text-xs bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700 transition-colors"
-                          >
-                            Settle Balance
-                          </button>
+                          <div className="flex gap-2 justify-end mt-1">
+                            <button 
+                              onClick={() => handleOpenLedger(a)}
+                              className="text-xs bg-slate-200 text-slate-700 px-2 py-1 rounded hover:bg-slate-300 transition-colors font-medium"
+                            >
+                              View Ledger
+                            </button>
+                            <button 
+                              onClick={() => handleOpenSettle(a, 'receive')}
+                              className="text-xs bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700 transition-colors"
+                            >
+                              Settle Balance
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))
@@ -767,12 +796,20 @@ export const OtherAccountsPanel: React.FC = () => {
                         </div>
                         <div className="text-right">
                           <div className="font-bold text-rose-600">Rs. {Math.abs(a.current_balance).toLocaleString()}</div>
-                          <button 
-                            onClick={() => handleOpenSettle(a, 'pay')}
-                            className="mt-1 text-xs bg-rose-600 text-white px-2 py-1 rounded hover:bg-rose-700 transition-colors"
-                          >
-                            Settle Balance
-                          </button>
+                            <div className="flex gap-2 justify-end mt-1">
+                              <button 
+                                onClick={() => handleOpenLedger(a)}
+                                className="text-xs bg-slate-200 text-slate-700 px-2 py-1 rounded hover:bg-slate-300 transition-colors font-medium"
+                              >
+                                View Ledger
+                              </button>
+                              <button 
+                                onClick={() => handleOpenSettle(a, 'pay')}
+                                className="text-xs bg-rose-600 text-white px-2 py-1 rounded hover:bg-rose-700 transition-colors"
+                              >
+                                Settle Balance
+                              </button>
+                            </div>
                         </div>
                       </div>
                     ))
@@ -803,7 +840,7 @@ export const OtherAccountsPanel: React.FC = () => {
 
             {prViewTab === 'history' && (
               <div className="overflow-x-auto border border-slate-200 rounded-lg mt-6">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full min-w-[800px] text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 text-slate-600 text-sm">
                       <th className="p-3 border-b border-slate-200">Date</th>
@@ -936,6 +973,84 @@ export const OtherAccountsPanel: React.FC = () => {
       <div className="flex-1 overflow-auto">
         {renderContent()}
       </div>
+
+      {/* Ledger Modal */}
+      {isLedgerModalOpen && ledgerAccount && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">Account Ledger</h2>
+                <p className="text-slate-500 font-medium">{ledgerAccount.name} ({ledgerAccount.is_customer ? 'Customer' : 'Supplier'})</p>
+              </div>
+              <button onClick={() => setIsLedgerModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+            </div>
+            
+            <div className="p-0 overflow-y-auto flex-1">
+              {isLedgerLoading ? (
+                <div className="p-8 text-center text-slate-500">Loading ledger entries...</div>
+              ) : (
+                <table className="w-full min-w-[800px] text-left border-collapse text-sm">
+                  <thead className="bg-slate-100 text-slate-600 sticky top-0 shadow-sm">
+                    <tr>
+                      <th className="p-3 border-b border-slate-200 font-semibold whitespace-nowrap">Date</th>
+                      <th className="p-3 border-b border-slate-200 font-semibold">Ref Type</th>
+                      <th className="p-3 border-b border-slate-200 font-semibold w-1/3">Description</th>
+                      <th className="p-3 border-b border-slate-200 font-semibold text-right">Debit (Dr)</th>
+                      <th className="p-3 border-b border-slate-200 font-semibold text-right">Credit (Cr)</th>
+                      <th className="p-3 border-b border-slate-200 font-semibold text-right">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(() => {
+                      let runningBalance = 0;
+                      if (accountLedgerEntries.length === 0) {
+                        return <tr><td colSpan={6} className="p-6 text-center text-slate-500">No transactions found for this account.</td></tr>;
+                      }
+                      
+                      return accountLedgerEntries.map((entry, idx) => {
+                        // Assuming Asset (Customer) increases with Debit, Liability (Supplier) increases with Credit
+                        if (ledgerAccount.is_customer) {
+                          runningBalance += (entry.debit - entry.credit);
+                        } else {
+                          runningBalance += (entry.credit - entry.debit);
+                        }
+                        
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="p-3 whitespace-nowrap text-slate-600">{entry.entry_date}</td>
+                            <td className="p-3 text-slate-600 font-medium">{entry.voucher_type}</td>
+                            <td className="p-3 text-slate-500">{entry.narration || '-'}</td>
+                            <td className="p-3 text-right text-emerald-600 font-medium">
+                              {entry.debit > 0 ? entry.debit.toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}
+                            </td>
+                            <td className="p-3 text-right text-red-500 font-medium">
+                              {entry.credit > 0 ? entry.credit.toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}
+                            </td>
+                            <td className="p-3 text-right text-slate-800 font-bold bg-slate-50/50">
+                              {runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                              <span className="text-xs text-slate-400 font-normal ml-1">
+                                {ledgerAccount.is_customer ? (runningBalance >= 0 ? 'Dr' : 'Cr') : (runningBalance >= 0 ? 'Cr' : 'Dr')}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex justify-between items-center">
+              <p className="text-sm text-slate-500 italic">* Chronological statement of account. Balance reflects Dr-Cr for Customers, Cr-Dr for Suppliers.</p>
+              <button onClick={() => setIsLedgerModalOpen(false)} className="px-6 py-2 bg-slate-800 text-white font-medium hover:bg-slate-900 rounded-lg transition-colors">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
