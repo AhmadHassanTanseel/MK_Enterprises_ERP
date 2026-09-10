@@ -74,7 +74,7 @@ export const PurchaseHistoryPanel: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+      <div className="flex-1 min-w-0 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
         
         <div className="flex-1 overflow-auto">
           <table className="w-full min-w-[800px] text-left text-sm text-slate-600">

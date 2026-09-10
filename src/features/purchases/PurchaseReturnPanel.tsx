@@ -195,7 +195,7 @@ export const PurchaseReturnPanel: React.FC = () => {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+      <div className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
         <div className="flex-1 overflow-auto">
           <table className="w-full text-left text-sm text-slate-600">
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm border-b border-slate-200">

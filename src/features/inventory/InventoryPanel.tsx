@@ -70,7 +70,7 @@ export const InventoryPanel: React.FC = () => {
         </button>
       </div>
 
-      <div className="flex-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+      <div className="flex-1 min-w-0 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
         {loading && (
           <p className="text-sm text-slate-500">Loading stock levels...</p>
         )}

@@ -19,7 +19,7 @@ interface ReportResult {
   totals: ReportTotal[];
 }
 
-const BACKEND_REPORT_TYPES = ['LEDGER', 'CASHBOOK', 'TRIAL', 'SALES', 'PURCHASE', 'STOCK', 'PROFIT', 'ASSETS', 'EXPENSES', 'ADJUSTMENTS'];
+const BACKEND_REPORT_TYPES = ['LEDGER', 'CASHBOOK', 'BANKBOOK', 'TRIAL', 'SALES', 'PURCHASE', 'STOCK', 'PROFIT', 'ASSETS', 'EXPENSES', 'ADJUSTMENTS'];
 
 export const ReportPanel: React.FC = () => {
   const { ledgerEntries, accounts } = useAppContext();
@@ -94,7 +94,8 @@ export const ReportPanel: React.FC = () => {
             <label className="block text-sm font-medium text-slate-700 mb-1">Report Type</label>
             <select className="w-full border border-slate-300 rounded-md p-2" value={reportType} onChange={e => setReportType(e.target.value)}>
               <option value="LEDGER">Account Ledger</option>
-              <option value="CASHBOOK">Cash Book</option>
+              <option value="CASHBOOK">Cash Book (Drawer)</option>
+                <option value="BANKBOOK">Bank Book (Accounts)</option>
               <option value="TRIAL">Trial Balance</option>
               <option value="SALES">Sales Report</option>
               <option value="PURCHASE">Purchase Report</option>
@@ -123,7 +124,7 @@ export const ReportPanel: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+      <div className="flex-1 min-w-0 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-bold text-slate-800">{reportTitle}</h3>
           <div className="flex gap-2">

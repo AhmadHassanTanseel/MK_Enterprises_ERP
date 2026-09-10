@@ -196,6 +196,14 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             sold_price REAL
         );
 
+
+        CREATE TABLE IF NOT EXISTS fixed_liabilities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            frequency TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS system_config (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -215,7 +223,7 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
 
         -- SEED DEFAULT SYSTEM ACCOUNTS
         INSERT OR IGNORE INTO accounts (id, account_type_id, name) VALUES 
-        (1, 1, 'Cash Drawer (Main Cash)'),
+        (1, 1, 'Cash in Drawer'),
         (2, 2, 'Walk-in Customer'),
         (3, 5, 'General Sales Revenue'),
         (4, 6, 'General Purchases'),

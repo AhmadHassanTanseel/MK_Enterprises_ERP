@@ -668,38 +668,87 @@ async fn run_profit_report(pool: &SqlitePool, filters: &ReportFilters) -> Result
             }
             _ => "Other",
         };
-        // rows built below
-        let _ = (label, count);
     }
 
     let net_sales = sales - sale_returns;
     let net_purchases = purchases - purchase_returns;
     let gross_profit = net_sales - net_purchases;
 
-    let report_rows: Vec<Vec<String>> = rows
-        .iter()
-        .map(|r| {
-            vec![
-                r.0.clone(),
-                r.1.to_string(),
-                format!("{:.2}", r.2),
-            ]
-        })
-        .collect();
+    // --- NEW: FETCH REGULAR EXPENSES ---
+    let je_date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "je.entry_date");
+    let exp_sql = format!(
+        r#"
+        SELECT COALESCE(SUM(je.debit - je.credit), 0) as exp_total
+        FROM journal_entries je
+        JOIN accounts a ON je.account_id = a.id
+        JOIN account_types at ON a.account_type_id = at.id
+        WHERE at.nature = 'EXPENSE'{je_date_clause}
+        "#
+    );
+    let exp_row: Option<(f64,)> = sqlx::query_as(&exp_sql).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+    let regular_expenses = exp_row.map(|r| r.0).unwrap_or(0.0);
+
+    // --- NEW: CALCULATE FIXED LIABILITIES ---
+    // 1. Calculate number of days in the range
+    let fd_str = filters.from_date.clone().unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+    let td_str = filters.to_date.clone().unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+    
+    let fd = chrono::NaiveDate::parse_from_str(&fd_str, "%Y-%m-%d").unwrap_or_else(|_| chrono::Local::now().naive_local().date());
+    let td = chrono::NaiveDate::parse_from_str(&td_str, "%Y-%m-%d").unwrap_or_else(|_| chrono::Local::now().naive_local().date());
+    
+    let mut days = (td - fd).num_days() + 1; // +1 to be inclusive
+    if days < 1 { days = 1; }
+
+    // 2. Fetch all fixed liabilities
+    let fl_rows: Vec<(String, f64, String)> = sqlx::query_as("SELECT name, amount, frequency FROM fixed_liabilities")
+        .fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let mut fixed_liabilities_total = 0.0;
+    for (_name, amount, frequency) in &fl_rows {
+        if frequency == "DAILY" {
+            fixed_liabilities_total += amount * (days as f64);
+        } else if frequency == "MONTHLY" {
+            // Pro-rate monthly (assuming 30 days per month)
+            fixed_liabilities_total += (amount / 30.0) * (days as f64);
+        }
+    }
+
+    let net_profit = gross_profit - regular_expenses - fixed_liabilities_total;
+
+    let mut report_rows = vec![
+        vec!["Sales".into(), "".into(), format!("{:.2}", sales)],
+        vec!["Sale Returns".into(), "".into(), format!("{:.2}", sale_returns)],
+        vec!["Purchases".into(), "".into(), format!("{:.2}", purchases)],
+        vec!["Purchase Returns".into(), "".into(), format!("{:.2}", purchase_returns)],
+        vec!["---".into(), "".into(), "---".into()],
+        vec!["Gross Profit".into(), "".into(), format!("{:.2}", gross_profit)],
+        vec!["---".into(), "".into(), "---".into()],
+        vec!["Regular Expenses".into(), "".into(), format!("{:.2}", regular_expenses)],
+    ];
+
+    for (name, amount, frequency) in &fl_rows {
+        let calc_amt = if frequency == "DAILY" { amount * (days as f64) } else { (amount / 30.0) * (days as f64) };
+        report_rows.push(vec![
+            format!("Fixed Liab: {} ({})", name, frequency), 
+            "".into(), 
+            format!("{:.2}", calc_amt)
+        ]);
+    }
+
+    report_rows.push(vec!["---".into(), "".into(), "---".into()]);
+    report_rows.push(vec!["NET PROFIT".into(), "".into(), format!("{:.2}", net_profit)]);
+
 
     Ok(ReportResult {
         title: "Profit Report".into(),
-        headers: vec!["Type".into(), "Transactions".into(), "Amount".into()],
+        headers: vec!["Description".into(), "".into(), "Amount".into()],
         rows: report_rows,
         totals: vec![
-            ReportTotal { label: "Net Sales".into(), value: net_sales },
-            ReportTotal { label: "Net Purchases".into(), value: net_purchases },
             ReportTotal { label: "Gross Profit".into(), value: gross_profit },
+            ReportTotal { label: "Net Profit".into(), value: net_profit },
         ],
     })
 }
-
-
 async fn run_asset_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
     let mut sql = String::from(r#"
         SELECT 
@@ -783,6 +832,7 @@ pub async fn generate_report(
     match normalized.as_str() {
         "LEDGER" | "LEDGER_REPORT" => run_ledger_report(&db, &filters).await,
         "CASHBOOK" | "CASH_BOOK" => run_cashbook_report(&db, &filters).await,
+        "BANKBOOK" | "BANK_BOOK" => run_bankbook_report(&db, &filters).await,
         "TRIAL" | "TRIAL_BALANCE" => run_trial_balance_report(&db, &filters).await,
         "SALES" | "SALES_REPORT" => run_sales_report(&db, &filters).await,
         "PURCHASE" | "PURCHASES" | "PURCHASE_REPORT" => run_purchase_report(&db, &filters).await,
@@ -800,7 +850,7 @@ pub async fn generate_report(
             run_adjustments_report(&from_date, &to_date, db).await
         },
         other => Err(format!(
-            "Unknown report type '{}'. Supported: Ledger, CashBook, Trial, Sales, Purchase, Stock, Profit, Assets, Expenses, Adjustments.",
+            "Unknown report type BANKBOOK supported '{}'. Supported: Ledger, CashBook, Trial, Sales, Purchase, Stock, Profit, Assets, Expenses, Adjustments.",
             other
         )),
     }
@@ -1110,6 +1160,36 @@ pub async fn get_financial_summary(db: State<'_, SqlitePool>) -> Result<Financia
         }
     }
 
+    // --- NEW: Calculate All-Time Fixed Liabilities ---
+    let first_date_opt: Option<(Option<String>,)> = sqlx::query_as("SELECT MIN(entry_date) FROM journal_entries")
+        .fetch_optional(&mut *conn).await.map_err(|e| e.to_string())?;
+    
+    let mut days = 1;
+    if let Some((Some(first_date_str),)) = first_date_opt {
+        // extract YYYY-MM-DD from first_date_str which might contain time
+        let fd_clean = first_date_str.split(' ').next().unwrap_or(&first_date_str);
+        if let Ok(fd) = chrono::NaiveDate::parse_from_str(fd_clean, "%Y-%m-%d") {
+            let td = chrono::Local::now().naive_local().date();
+            days = (td - fd).num_days() + 1;
+            if days < 1 { days = 1; }
+        }
+    }
+
+    let fl_rows: Vec<(String, f64, String)> = sqlx::query_as("SELECT name, amount, frequency FROM fixed_liabilities")
+        .fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+
+    let mut fixed_liabilities_total = 0.0;
+    for (_name, amount, frequency) in fl_rows {
+        if frequency == "DAILY" {
+            fixed_liabilities_total += amount * (days as f64);
+        } else if frequency == "MONTHLY" {
+            fixed_liabilities_total += (amount / 30.0) * (days as f64);
+        }
+    }
+
+    // Add fixed liabilities to total expenses
+    exp += fixed_liabilities_total;
+
     let net_profit = rev - exp;
     let total_equity = equ + net_profit;
 
@@ -1120,5 +1200,55 @@ pub async fn get_financial_summary(db: State<'_, SqlitePool>) -> Result<Financia
         total_assets: ast,
         total_liabilities: lia,
         total_equity,
+    })
+}
+
+
+async fn run_bankbook_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "je.entry_date");
+    
+    let sql = format!(
+        r#"
+        SELECT 
+            datetime(je.entry_date, 'localtime') as entry_date, 
+            je.voucher_type, 
+            je.ref_no,
+            je.narration, 
+            je.debit, 
+            je.credit 
+        FROM journal_entries je
+        WHERE je.account_id = 99 {date_clause}
+        ORDER BY je.id ASC
+        "#
+    );
+    
+    let raw_rows: Vec<(String, String, Option<String>, Option<String>, f64, f64)> = sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    
+    let mut rows = Vec::new();
+    let mut tot_dr = 0.0;
+    let mut tot_cr = 0.0;
+    
+    for (dt, vt, ref_no, nar, dr, cr) in raw_rows {
+        tot_dr += dr;
+        tot_cr += cr;
+        rows.push(vec![
+            dt,
+            ref_no.unwrap_or_default(),
+            vt,
+            nar.unwrap_or_default(),
+            format!("{:.2}", dr),
+            format!("{:.2}", cr),
+        ]);
+    }
+    
+    Ok(ReportResult {
+        title: "Bank Book (Accounts)".to_string(),
+        headers: vec!["Date".to_string(), "Ref No".to_string(), "Type".to_string(), "Narration".to_string(), "Debit (In)".to_string(), "Credit (Out)".to_string()],
+        rows,
+        totals: vec![
+            ReportTotal { label: "Total In (Rs)".to_string(), value: tot_dr },
+            ReportTotal { label: "Total Out (Rs)".to_string(), value: tot_cr },
+            ReportTotal { label: "Net Bank Balance (Rs)".to_string(), value: tot_dr - tot_cr },
+        ],
     })
 }

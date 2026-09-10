@@ -17,6 +17,7 @@ pub struct CashTransaction {
 }
 
 #[tauri::command]
+
 pub async fn process_cash_transaction(
     trans_type: String,
     account_id: i64,
@@ -38,30 +39,48 @@ pub async fn process_cash_transaction(
     let entry_date = trans_date.clone();
 
     let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    
+    // Check if the payment method implies Bank.
+    let mut is_bank = false;
+    if let Some(pm) = &_payment_method {
+        if pm.to_uppercase() == "BANK" {
+            is_bank = true;
+        }
+    }
+    // Also try to infer from narration if _payment_method wasn't passed accurately
+    if narration.to_uppercase().starts_with("BANK -") {
+        is_bank = true;
+    }
+
+    let treasury_account_id = if is_bank { 99 } else { accounts.cash };
+    let voucher_type = if is_bank {
+        if trans_type == "RECEIVE" { "BANK_RECEIPT" } else { "BANK_PAYMENT" }
+    } else {
+        if trans_type == "RECEIVE" { "CASH_RECEIPT" } else { "CASH_PAYMENT" }
+    };
 
     if trans_type == "RECEIVE" {
-        // Debit Cash Drawer [ID:1]
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, ?, ?, ?)")
-            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
+        // Debit Treasury
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, ?, ?, ?, ?, ?)")
+            .bind(treasury_account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         // Credit the account (reduces receivable)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, ?, ?, ?)")
-            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, ?, ?, ?, ?, ?)")
+            .bind(account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
     } else {
         // PAYMENT: Debit the account (expense / supplier reduction)
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'CASH_PAYMENT', ?, ?, ?, ?)")
-            .bind(account_id).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, ?, ?, ?, ?, ?)")
+            .bind(account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
-        // Credit Cash Drawer [ID:1]
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'CASH_PAYMENT', ?, ?, ?, ?)")
-            .bind(accounts.cash).bind(amount).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
+        // Credit Treasury
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, ?, ?, ?, ?, ?)")
+            .bind(treasury_account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
-
     tx.commit().await.map_err(|e| e.to_string())?;
 
     let audit_action = format!(

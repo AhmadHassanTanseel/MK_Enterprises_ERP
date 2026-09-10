@@ -671,3 +671,50 @@ pub async fn create_salesman(
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(id)
 }
+
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct FixedLiability {
+    pub id: i64,
+    pub name: String,
+    pub amount: f64,
+    pub frequency: String,
+}
+
+#[tauri::command]
+pub async fn get_fixed_liabilities(db: State<'_, SqlitePool>) -> Result<Vec<FixedLiability>, String> {
+    sqlx::query_as::<_, FixedLiability>("SELECT * FROM fixed_liabilities ORDER BY id DESC")
+        .fetch_all(&*db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_fixed_liability(
+    name: String,
+    amount: f64,
+    frequency: String,
+    db: State<'_, SqlitePool>
+) -> Result<String, String> {
+    sqlx::query("INSERT INTO fixed_liabilities (name, amount, frequency) VALUES (?, ?, ?)")
+        .bind(name)
+        .bind(amount)
+        .bind(frequency)
+        .execute(&*db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok("Fixed liability added successfully".into())
+}
+
+#[tauri::command]
+pub async fn delete_fixed_liability(
+    id: i64,
+    db: State<'_, SqlitePool>
+) -> Result<String, String> {
+    sqlx::query("DELETE FROM fixed_liabilities WHERE id = ?")
+        .bind(id)
+        .execute(&*db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok("Fixed liability deleted".into())
+}

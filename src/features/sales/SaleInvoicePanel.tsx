@@ -148,7 +148,7 @@ export const SaleInvoicePanel: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
         <div className="flex-1 overflow-auto">
           <table className="w-full min-w-[800px] text-left border-collapse">
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">

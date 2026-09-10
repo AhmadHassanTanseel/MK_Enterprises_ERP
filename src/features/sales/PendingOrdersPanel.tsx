@@ -138,7 +138,7 @@ export const PendingOrdersPanel: React.FC = () => {
         </button>
       </div>
 
-      <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px] text-left border-collapse">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm">

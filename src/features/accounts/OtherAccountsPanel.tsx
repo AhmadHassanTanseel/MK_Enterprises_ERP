@@ -8,7 +8,7 @@ import { useAppContext } from '../../app/context/AppContext';
 export const OtherAccountsPanel: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'assets');
-  const { companyAssets, addCompanyAsset, sellCompanyAsset } = useAppContext();
+  const { companyAssets, addCompanyAsset, sellCompanyAsset, fixedLiabilities, createFixedLiability, deleteFixedLiability } = useAppContext();
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -28,11 +28,33 @@ export const OtherAccountsPanel: React.FC = () => {
         { id: 'expenses', label: 'Expenses', icon: DollarSign },
         { id: 'adjustments', label: 'Adjustments', icon: FileText },
         { id: 'payables_receivables', label: 'Payables & Receivables', icon: Users },
+        { id: 'fixed_liabilities', label: 'Fixed Liabilities', icon: TrendingDown },
       ]
     }
   ];
 
   
+
+  // Fixed Liabilities State
+  const [flName, setFlName] = useState('');
+  const [flAmount, setFlAmount] = useState<number | ''>('');
+  const [flFrequency, setFlFrequency] = useState('MONTHLY');
+
+  const handleAddFixedLiability = async () => {
+    if (!flName || !flAmount) {
+      toast.error('Please fill name and amount');
+      return;
+    }
+    try {
+      await createFixedLiability(flName, Number(flAmount), flFrequency);
+      toast.success('Fixed Liability added successfully');
+      setFlName('');
+      setFlAmount('');
+    } catch (e: any) {
+      toast.error(e);
+    }
+  };
+
   // Assets state
   const [assetTab, setAssetTab] = useState<'list' | 'buy' | 'sell'>('list');
   const [assetName, setAssetName] = useState('');
@@ -936,6 +958,70 @@ export const OtherAccountsPanel: React.FC = () => {
             )}
           </div>
         );
+
+        case 'fixed_liabilities':
+          return (
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+              <h2 className="text-xl font-bold text-slate-800 mb-6">Fixed Liabilities</h2>
+              
+              <div className="grid grid-cols-4 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
+                  <input type="text" value={flName} onChange={e => setFlName(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" placeholder="e.g. Rent" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Amount (Rs.)</label>
+                  <input type="number" value={flAmount} onChange={e => setFlAmount(Number(e.target.value) || '')} className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Frequency</label>
+                  <select value={flFrequency} onChange={e => setFlFrequency(e.target.value)} className="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="DAILY">Daily</option>
+                    <option value="MONTHLY">Monthly</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button onClick={handleAddFixedLiability} className="w-full bg-blue-600 text-white font-medium py-2 px-4 rounded hover:bg-blue-700 transition-colors">
+                    Add Liability
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Name</th>
+                      <th className="px-4 py-3 font-medium">Frequency</th>
+                      <th className="px-4 py-3 font-medium">Amount</th>
+                      <th className="px-4 py-3 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {fixedLiabilities.length === 0 ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">No fixed liabilities configured.</td></tr>
+                    ) : (
+                      fixedLiabilities.map(fl => (
+                        <tr key={fl.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium">{fl.name}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 text-xs rounded-full font-medium ${fl.frequency === 'DAILY' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>
+                              {fl.frequency}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium">Rs. {fl.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                          <td className="px-4 py-3 text-right">
+                            <button onClick={() => deleteFixedLiability(fl.id)} className="text-red-500 hover:text-red-700 font-medium">Delete</button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+
       default:
         return <div>Select a section</div>;
     }

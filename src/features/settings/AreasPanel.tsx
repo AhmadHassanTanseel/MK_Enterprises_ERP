@@ -108,7 +108,7 @@ export const AreasPanel: React.FC = () => {
         </form>
       </div>
 
-      <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
           <h2 className="text-lg font-bold text-slate-800">Area Directory</h2>
           <div className="relative">

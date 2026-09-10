@@ -34,7 +34,7 @@ export const AccountTypesPanel: React.FC = () => {
   return (
     <div className="flex gap-6 h-full">
       {/* Left Panel: Form */}
-      <div className={`w-1/3 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col ${isAddMode ? 'block' : 'hidden md:hidden'}`}>
+      <div className={`w-1/3 min-w-[280px] shrink-0 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col ${isAddMode ? 'block' : 'hidden md:hidden'}`}>
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-bold text-slate-800">Add Account Type</h3>
           <button onClick={() => setIsAddMode(false)} className="text-slate-400 hover:text-slate-600">
@@ -93,7 +93,7 @@ export const AccountTypesPanel: React.FC = () => {
           )}
         </div>
 
-        <div className="flex-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm overflow-auto">
+        <div className="flex-1 min-w-0 bg-white p-6 rounded-xl border border-slate-200 shadow-sm overflow-auto">
           <div className="space-y-8">
             {Object.entries(groupedTypes).map(([groupName, types]) => (
               <div key={groupName}>

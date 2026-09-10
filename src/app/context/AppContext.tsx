@@ -13,6 +13,14 @@ export interface AccountType { id: number; name: string; nature: string; trial_b
 // Transaction Data
 export interface InvoiceLine { flavor?: string; sale_rate?: number; product_name?: string; product_id: number; qty: number; rate: number; discount_pct: number; amount: number; }
 export interface Invoice { id: number; type: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN'; ref_no: string; account_id: number; salesman_id?: number; date: string; lines: InvoiceLine[]; gross_amount: number; discount_amount: number; net_amount: number; amount_paid_cash: number; amount_paid_bank: number; }
+
+export interface FixedLiability {
+  id: number;
+  name: string;
+  amount: number;
+  frequency: string;
+}
+
 export interface LedgerEntry { id: number; date: string; account_id: number; dr_amount: number; cr_amount: number; description: string; ref_id?: number; ref_type?: string; }
 export interface InventoryMovement { id: number; date: string; product_id: number; qty_in: number; qty_out: number; type: string; ref_id?: number; }
 export interface CompanyAsset {
@@ -38,6 +46,12 @@ interface AppContextType {
   ledgerEntries: LedgerEntry[]; setLedgerEntries: React.Dispatch<React.SetStateAction<LedgerEntry[]>>;
   inventoryMovements: InventoryMovement[]; setInventoryMovements: React.Dispatch<React.SetStateAction<InventoryMovement[]>>;
   settings: AppSetting[]; setSettings: React.Dispatch<React.SetStateAction<AppSetting[]>>;
+
+  fixedLiabilities: FixedLiability[];
+  fetchFixedLiabilities: () => Promise<void>;
+  createFixedLiability: (name: string, amount: number, frequency: string) => Promise<void>;
+  deleteFixedLiability: (id: number) => Promise<void>;
+
   salesmen: Salesman[]; setSalesmen: React.Dispatch<React.SetStateAction<Salesman[]>>;
   createSalesman: (name: string, contact?: string, salary?: number, details?: string, area_ids?: number[]) => Promise<void>;
 
@@ -87,6 +101,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [salesmen, setSalesmen] = useState<Salesman[]>([]);
 
 
+
+  const [fixedLiabilities, setFixedLiabilities] = useState<FixedLiability[]>([]);
+
+  const fetchFixedLiabilities = async () => {
+    try {
+      const data: FixedLiability[] = await invoke('get_fixed_liabilities');
+      setFixedLiabilities(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const createFixedLiability = async (name: string, amount: number, frequency: string) => {
+    await invoke('create_fixed_liability', { name, amount, frequency });
+    await fetchFixedLiabilities();
+  };
+
+  const deleteFixedLiability = async (id: number) => {
+    await invoke('delete_fixed_liability', { id });
+    await fetchFixedLiabilities();
+  };
+
   const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>([]);
 
   const fetchCompanyAssets = async () => {
@@ -101,12 +137,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const addCompanyAsset = async (name: string, purchase_price: number, purchase_date: string) => {
     await invoke('add_company_asset', { name, purchasePrice: purchase_price, purchaseDate: purchase_date });
     await fetchCompanyAssets();
+      await fetchFixedLiabilities();
     await fetchData();
   };
 
   const sellCompanyAsset = async (id: number, sold_price: number, sold_date: string) => {
     await invoke('sell_company_asset', { id, soldPrice: sold_price, soldDate: sold_date });
     await fetchCompanyAssets();
+      await fetchFixedLiabilities();
     await fetchData();
   };
 
@@ -173,6 +211,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const dbSalesmen: Salesman[] = await invoke('get_salesmen');
       setSalesmen(dbSalesmen);
       await fetchCompanyAssets();
+      await fetchFixedLiabilities();
 
     } catch (error) {
       console.error("Failed to load initial data from Tauri backend:", error);
@@ -442,7 +481,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         companyAssets,
         fetchCompanyAssets,
         addCompanyAsset,
-        sellCompanyAsset
+        sellCompanyAsset,
+        fixedLiabilities,
+        fetchFixedLiabilities,
+        createFixedLiability,
+        deleteFixedLiability
       }}>
       {children}
     </AppContext.Provider>

@@ -199,13 +199,13 @@ export const SettingsPanel: React.FC = () => {
                   <div className="flex gap-3">
                     <button 
                       onClick={handleBackup}
-                      className="flex-1 bg-white border border-blue-200 text-blue-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 min-w-0 bg-white border border-blue-200 text-blue-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
                     >
                       <Download className="h-4 w-4" /> Backup
                     </button>
                     <button 
                       onClick={handleRestoreClick}
-                      className="flex-1 bg-white border border-slate-200 text-slate-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 min-w-0 bg-white border border-slate-200 text-slate-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
                     >
                       <Save className="h-4 w-4" /> Restore
                     </button>
@@ -235,7 +235,7 @@ export const SettingsPanel: React.FC = () => {
                     </button>
                     <button 
                       onClick={() => setShowDriveSetup(true)}
-                      className="flex-1 bg-white border border-slate-200 text-slate-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 min-w-0 bg-white border border-slate-200 text-slate-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
                     >
                       Restore
                     </button>

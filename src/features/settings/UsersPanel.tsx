@@ -170,7 +170,7 @@ export const UsersPanel: React.FC = () => {
         </form>
       </div>
 
-      <div className="flex-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+      <div className="flex-1 min-w-0 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <Shield className="h-5 w-5 text-indigo-500" /> System Users

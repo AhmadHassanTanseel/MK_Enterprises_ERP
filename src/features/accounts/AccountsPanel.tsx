@@ -117,8 +117,8 @@ export const AccountsPanel: React.FC = () => {
           )}
         </div>
         
-        <form onSubmit={handleSave} className="flex flex-col md:flex-row gap-4 items-end">
-          <div className="flex-1">
+        <form onSubmit={handleSave} className="flex flex-col md:flex-row flex-wrap gap-4 items-end">
+          <div className="flex-1 min-w-[250px]">
             <label className="block text-sm font-medium text-slate-700 mb-1">Account Name *</label>
             <input 
               type="text" required
@@ -128,7 +128,7 @@ export const AccountsPanel: React.FC = () => {
             />
           </div>
           
-          <div className="w-48">
+          <div className="w-full md:w-auto">
             <label className="block text-sm font-medium text-slate-700 mb-1">Account Type *</label>
             <div className="flex gap-4 p-2 border border-slate-300 rounded-md bg-slate-50">
               <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
@@ -152,7 +152,7 @@ export const AccountsPanel: React.FC = () => {
             </div>
           </div>
           
-          <div className="w-48">
+          <div className="w-full md:w-40">
             <label className="block text-sm font-medium text-slate-700 mb-1">Contact</label>
             <input 
               type="text" 
@@ -162,7 +162,7 @@ export const AccountsPanel: React.FC = () => {
             />
           </div>
 
-          <div className="w-64">
+          <div className="w-full md:w-48">
             <label className="block text-sm font-medium text-slate-700 mb-1">Opening Balance</label>
             <div className="flex">
               <input 
@@ -194,7 +194,7 @@ export const AccountsPanel: React.FC = () => {
       </div>
 
       {/* Bottom Panel: List */}
-      <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+      <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
         <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
           <h2 className="font-bold text-slate-700">Customers & Suppliers</h2>
           <div className="relative w-64">

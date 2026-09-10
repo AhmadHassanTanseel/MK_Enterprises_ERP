@@ -97,7 +97,7 @@ export const JournalVoucherPanel: React.FC = () => {
       </div>
 
       {/* Grid Panel */}
-      <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+      <div className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
         <div className="flex-1 overflow-auto">
           <table className="w-full min-w-[400px] text-left text-sm text-slate-600">
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-200 shadow-sm z-10">

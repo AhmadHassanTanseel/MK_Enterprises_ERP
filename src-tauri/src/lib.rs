@@ -58,6 +58,9 @@ pub fn run() {
             get_ledger_entries_by_ref,
 
             // Master data
+            get_fixed_liabilities,
+            create_fixed_liability,
+            delete_fixed_liability,
             get_categories,
             create_category,
             update_category,

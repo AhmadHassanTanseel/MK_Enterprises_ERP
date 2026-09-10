@@ -110,7 +110,7 @@ export const ProductsPanel: React.FC = () => {
   return (
     <div className="flex gap-6 h-full">
       {/* Left Panel: Form */}
-      <div className={`w-1/3 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col ${(isAddMode || formData.id) ? 'block' : 'hidden md:flex'}`}>
+      <div className={`w-1/3 min-w-[280px] shrink-0 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col ${(isAddMode || formData.id) ? 'block' : 'hidden md:flex'}`}>
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-bold text-slate-800">{formData.id ? 'Edit Product' : 'Add Product'}</h3>
           {formData.id && (
@@ -187,7 +187,7 @@ export const ProductsPanel: React.FC = () => {
       </div>
 
       {/* Right Panel: List */}
-      <div className="flex-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+      <div className="flex-1 min-w-0 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold text-slate-800">Products Inventory</h3>
           <button onClick={() => { setFormData({}); setIsAddMode(true); }} className="md:hidden flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm">
