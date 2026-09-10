@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { GlobalSearch } from './GlobalSearch';
 import { 
   LayoutDashboard, Wallet, Receipt, FileText, 
-  Package, List, Users, Settings, Search, Bell, User, ChevronDown, ChevronRight, Menu, MapPin, TrendingUp
+  Package, List, Users, Settings, Search, Bell, User, ChevronDown, ChevronRight, Menu, MapPin, TrendingUp, ArrowLeft, X
 } from 'lucide-react';
 
 interface AppNotification {
@@ -23,6 +23,19 @@ export const MainLayout: React.FC = () => {
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -176,6 +189,16 @@ export const MainLayout: React.FC = () => {
             >
               <Menu className="h-5 w-5" />
             </button>
+              {location.pathname !== '/dashboard' && (
+                <button 
+                  onClick={() => navigate('/dashboard')}
+                  className="p-2 text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
+                  title="Back to Dashboard"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+              )}
+
             <div className="flex flex-col">
               <span className="font-bold text-slate-800 text-lg leading-tight">M K Enterprises</span>
               <span className="text-xs text-slate-500 font-medium" dir="rtl">
@@ -187,8 +210,18 @@ export const MainLayout: React.FC = () => {
           <GlobalSearch />
 
           {/* Right: Notifications & Avatar */}
-          <div className="flex items-center gap-4">
-            <div className="relative">
+          
+              {location.pathname !== '/dashboard' && (
+                <button 
+                  onClick={() => navigate('/dashboard')}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors mr-2"
+                  title="Close to Dashboard"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              )}
+<div className="flex items-center gap-4">
+            <div className="relative" ref={notifRef}>
                 <button 
                   className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors"
                   onClick={() => setShowNotifications(!showNotifications)}

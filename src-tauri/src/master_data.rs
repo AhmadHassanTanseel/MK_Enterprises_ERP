@@ -810,7 +810,7 @@ pub async fn get_notifications(
                 });
             }
         }
-        Err(_) => {} // Ignore if query fails
+        Err(e) => { println!("Low stock query failed: {}", e); }
     }
 
     Ok(notifs)

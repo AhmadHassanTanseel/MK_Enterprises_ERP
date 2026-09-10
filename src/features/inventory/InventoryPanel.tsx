@@ -42,12 +42,12 @@ export const InventoryPanel: React.FC = () => {
 
   const rows = stockRows.map(row => {
     const product = productMeta.get(row.product_id);
-    const reorderLevel = 200; // Product specific reorder level override based on user request
+    const reorderLevel = product?.reorder_level || 200;
     return {
       ...row,
       uom: product?.uom ?? 'Piece',
       reorder_level: reorderLevel,
-      status: row.available_stock < 200 ? 'Low Stock' : 'Optimal',
+      status: row.available_stock <= reorderLevel ? 'Low Stock' : 'Optimal',
     };
   });
 
