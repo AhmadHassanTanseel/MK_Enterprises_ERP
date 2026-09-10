@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
-use tauri::State;
+use tauri::{State, AppHandle, Manager};
+use chrono::{Local, Datelike};
+use std::fs;
 
 // --- DATA STRUCTURES ---
 
@@ -717,4 +719,99 @@ pub async fn delete_fixed_liability(
         .await
         .map_err(|e| e.to_string())?;
     Ok("Fixed liability deleted".into())
+}
+
+
+
+
+
+
+
+#[derive(Serialize)]
+pub struct AppNotification {
+    pub id: String,
+    pub title: String,
+    pub message: String,
+    pub level: String, // "warning", "info", "danger"
+}
+
+#[derive(FromRow)]
+struct LowStockItem {
+    name: String,
+    available_stock: i64,
+    reorder_level: i64,
+}
+
+#[tauri::command]
+pub async fn get_notifications(
+    app_handle: AppHandle,
+    db: State<'_, SqlitePool>,
+) -> Result<Vec<AppNotification>, String> {
+    let mut notifs = Vec::new();
+
+    // 1. Check for missing daily backup
+    let mut backup_pending = true;
+    if let Ok(app_dir) = app_handle.path().app_data_dir() {
+        let backup_dir = app_dir.join("backups");
+        if backup_dir.exists() {
+            if let Ok(entries) = fs::read_dir(backup_dir) {
+                let today = Local::now().date_naive();
+                for entry in entries.flatten() {
+                    if let Ok(metadata) = entry.metadata() {
+                        if let Ok(modified) = metadata.modified() {
+                            let dt: chrono::DateTime<Local> = modified.into();
+                            if dt.date_naive() == today {
+                                backup_pending = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if backup_pending {
+        notifs.push(AppNotification {
+            id: "backup_pending".into(),
+            title: "Backup Pending".into(),
+            message: "Daily backup is pending! Please go to Settings and take a backup.".into(),
+            level: "warning".into(),
+        });
+    }
+
+    // 2. Check for low stock
+    // Using a quick query joining products and inventory_movements
+    let stock_query = r#"
+        SELECT 
+            p.name, 
+            COALESCE(SUM(im.quantity), 0) as available_stock,
+            p.reorder_level
+        FROM products p
+        LEFT JOIN inventory_movements im ON p.id = im.product_id
+        GROUP BY p.id
+        HAVING available_stock <= p.reorder_level
+    "#;
+
+    match sqlx::query_as::<_, LowStockItem>(stock_query).fetch_all(&*db).await {
+        Ok(items) => {
+            if !items.is_empty() {
+                let count = items.len();
+                let message = if count == 1 {
+                    format!("'{}' is running low on stock.", items[0].name)
+                } else {
+                    format!("{} products are below their reorder level.", count)
+                };
+                notifs.push(AppNotification {
+                    id: "low_stock".into(),
+                    title: "Low Stock Alert".into(),
+                    message,
+                    level: "danger".into(),
+                });
+            }
+        }
+        Err(_) => {} // Ignore if query fails
+    }
+
+    Ok(notifs)
 }

@@ -79,6 +79,7 @@ pub fn run() {
             delete_account,
             get_account_types,
             get_salesmen,
+            get_notifications,
             create_salesman,
             create_account_type,
 

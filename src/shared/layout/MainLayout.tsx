@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { GlobalSearch } from './GlobalSearch';
 import { 
@@ -6,12 +7,37 @@ import {
   Package, List, Users, Settings, Search, Bell, User, ChevronDown, ChevronRight, Menu, MapPin, TrendingUp
 } from 'lucide-react';
 
+interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  level: string;
+}
+
 export const MainLayout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [salesOpen, setSalesOpen] = useState(true);
   const [purchasesOpen, setPurchasesOpen] = useState(true);
+
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const notifs = await invoke<AppNotification[]>('get_notifications');
+        setNotifications(notifs);
+      } catch (err) {
+        console.error("Failed to fetch notifications", err);
+      }
+    };
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
 
   // New sidebar structure
   const navItems = [
@@ -162,9 +188,40 @@ export const MainLayout: React.FC = () => {
 
           {/* Right: Notifications & Avatar */}
           <div className="flex items-center gap-4">
-            <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
-              <Bell className="h-5 w-5" />
-            </button>
+            <div className="relative">
+                <button 
+                  className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors"
+                  onClick={() => setShowNotifications(!showNotifications)}
+                >
+                  <Bell className="h-5 w-5" />
+                  {notifications.length > 0 && (
+                    <span className="absolute top-1 right-1 h-2.5 w-2.5 bg-rose-500 rounded-full border-2 border-white"></span>
+                  )}
+                </button>
+
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
+                    <div className="bg-slate-50 p-3 border-b border-slate-200 flex justify-between items-center">
+                      <h4 className="font-bold text-slate-700">Notifications</h4>
+                      <span className="bg-rose-100 text-rose-700 text-xs font-bold px-2 py-0.5 rounded-full">{notifications.length} New</span>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="p-4 text-center text-slate-500 text-sm">No new notifications</div>
+                      ) : (
+                        notifications.map(notif => (
+                          <div key={notif.id} className="p-4 border-b border-slate-100 hover:bg-slate-50">
+                            <h5 className={`font-bold text-sm ${notif.level === 'danger' ? 'text-rose-600' : notif.level === 'warning' ? 'text-amber-600' : 'text-blue-600'} mb-1`}>
+                              {notif.title}
+                            </h5>
+                            <p className="text-slate-600 text-xs leading-relaxed">{notif.message}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             <div className="h-8 w-px bg-slate-200 mx-1"></div>
             <div className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-2 rounded" onClick={() => navigate('/settings')}>
               <div className="flex flex-col items-end">
