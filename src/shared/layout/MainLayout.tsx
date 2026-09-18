@@ -105,7 +105,7 @@ export const MainLayout: React.FC = () => {
       {sidebarOpen && (
         <div className="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20 transition-all duration-300">
           <div className="h-16 flex items-center px-6 bg-slate-950 border-b border-slate-800">
-            <h1 className="text-lg font-black tracking-wider text-white">MK ENTERPRISES</h1>
+            <h1 className="text-lg font-black tracking-wider text-white" dir="rtl">میاں خان ٹریڈرز</h1>
           </div>
           
           <div className="flex-1 overflow-y-auto py-4">
@@ -200,10 +200,8 @@ export const MainLayout: React.FC = () => {
               )}
 
             <div className="flex flex-col">
-              <span className="font-bold text-slate-800 text-lg leading-tight">M K Enterprises</span>
-              <span className="text-xs text-slate-500 font-medium" dir="rtl">
-                مکی انٹرپرائزز
-              </span>
+              <span className="font-bold text-slate-800 text-lg leading-tight">میاں خان ٹریڈرز</span>
+              <span className="text-xs text-slate-500 font-medium" dir="rtl">نزد نیشنل بینک جھنگ چنیوٹ روڈ بھوانہ</span>
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 {
-  "productName": "M K Enterprises Business Management System By Tanseel",
+  "productName": "Mian Khan Traders Business Management System By Tanseel",
   "version": "1.0.0",
   "identifier": "com.business-mgmt-system.dev",
   "build": {
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "M K Enterprises Business Management System",
+        "title": "میاں خان ٹریڈرز Business Management System",
         "width": 1200,
         "height": 800
       }
