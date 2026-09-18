@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 
 export const PurchaseInvoicePanel: React.FC = () => {
-  const { products, categories, accounts, postInvoice } = useAppContext();
+  const { settings, products, categories, accounts, postInvoice } = useAppContext();
   
   const [accountId, setAccountId] = useState<number | null>(null);
   const [lines, setLines] = useState<(InvoiceLine & { id: string })[]>([
@@ -274,7 +274,11 @@ export const PurchaseInvoicePanel: React.FC = () => {
                   discount: totalDiscount,
                   net: totalNet,
                   paid: amountReceivedCash + amountReceivedBank,
-                  balance: balance
+                  balance: balance,
+                  paymentMethod: (amountReceivedCash > 0 && amountReceivedBank > 0) ? 'Cash & Bank' : (amountReceivedBank > 0 ? 'Payment in Bank' : (amountReceivedCash > 0 ? 'Payment via Cash' : 'Credit')),
+                  bankName: settings.find(s => s.key === 'bank_name')?.value || '_________________',
+                  accountTitle: settings.find(s => s.key === 'bank_account_title')?.value || '_________________',
+                  accountNumber: settings.find(s => s.key === 'bank_account_number')?.value || '_________________'
                 });
             }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
               <Printer className="h-4 w-4" /> Print
