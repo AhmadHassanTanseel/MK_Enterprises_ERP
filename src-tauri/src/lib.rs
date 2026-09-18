@@ -43,6 +43,7 @@ pub fn run() {
             get_pending_dispatches,
             get_financial_summary,
             get_account_ledger,
+            get_product_purchase_history,
             process_sale,
 
             process_sale_return,
@@ -85,6 +86,7 @@ pub fn run() {
 
             // Reporting & inventory
             get_account_ledger,
+            get_product_purchase_history,
             get_product_ledger,
             get_live_stock,
             get_trial_balance,

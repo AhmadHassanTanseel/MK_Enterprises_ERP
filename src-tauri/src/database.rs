@@ -295,11 +295,16 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
         migration_007_features(pool).await?;
         record_migration(pool, 7).await?;
     }
-
-    // Handle migrations
-    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
-        .execute(pool)
-        .await;
+    
+    if current < 8 {
+        migration_008_fix_missing_columns(pool).await?;
+        record_migration(pool, 8).await?;
+    }
+    
+    if current < 9 {
+        migration_009_sale_rate(pool).await?;
+        record_migration(pool, 9).await?;
+    }
 
     Ok(())
 }
@@ -531,6 +536,9 @@ async fn migration_007_features(pool: &sqlx::SqlitePool) -> Result<(), String> {
     if !column_exists(pool, "invoice_items", "flavor").await? {
         sqlx::query("ALTER TABLE invoice_items ADD COLUMN flavor TEXT").execute(pool).await.map_err(|e| e.to_string())?;
     }
+    if !column_exists(pool, "invoice_items", "sale_rate").await? {
+        sqlx::query("ALTER TABLE invoice_items ADD COLUMN sale_rate REAL DEFAULT 0.0").execute(pool).await.map_err(|e| e.to_string())?;
+    }
     
     // Create dispatches tables
     sqlx::query(
@@ -563,5 +571,43 @@ async fn migration_007_features(pool: &sqlx::SqlitePool) -> Result<(), String> {
         "#
     ).execute(pool).await.map_err(|e| e.to_string())?;
 
+    Ok(())
+}
+
+async fn migration_008_fix_missing_columns(pool: &sqlx::SqlitePool) -> Result<(), String> {
+    if !column_exists(pool, "categories", "parent_id").await? {
+        sqlx::query("ALTER TABLE categories ADD COLUMN parent_id INTEGER").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "categories", "flavor").await? {
+        sqlx::query("ALTER TABLE categories ADD COLUMN flavor TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "categories", "margin_target").await? {
+        sqlx::query("ALTER TABLE categories ADD COLUMN margin_target REAL").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "areas", "active").await? {
+        sqlx::query("ALTER TABLE areas ADD COLUMN active INTEGER DEFAULT 1").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "areas", "account_count").await? {
+        sqlx::query("ALTER TABLE areas ADD COLUMN account_count INTEGER DEFAULT 0").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "invoices", "amount_paid").await? {
+        sqlx::query("ALTER TABLE invoices ADD COLUMN amount_paid REAL DEFAULT 0.0").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "accounts", "salary").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN salary REAL DEFAULT 0.0").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "accounts", "details").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN details TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "accounts", "status").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN status TEXT DEFAULT 'ACTIVE'").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+async fn migration_009_sale_rate(pool: &sqlx::SqlitePool) -> Result<(), String> {
+    if !column_exists(pool, "invoice_items", "sale_rate").await? {
+        sqlx::query("ALTER TABLE invoice_items ADD COLUMN sale_rate REAL DEFAULT 0.0").execute(pool).await.map_err(|e| e.to_string())?;
+    }
     Ok(())
 }

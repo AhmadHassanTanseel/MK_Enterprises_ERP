@@ -1187,8 +1187,9 @@ pub async fn get_financial_summary(db: State<'_, SqlitePool>) -> Result<Financia
         }
     }
 
-    // Add fixed liabilities to total expenses
+    // Add fixed liabilities to total expenses and total liabilities to keep balance sheet balanced
     exp += fixed_liabilities_total;
+    lia += fixed_liabilities_total;
 
     let net_profit = rev - exp;
     let total_equity = equ + net_profit;
@@ -1251,4 +1252,40 @@ async fn run_bankbook_report(pool: &SqlitePool, filters: &ReportFilters) -> Resu
             ReportTotal { label: "Net Bank Balance (Rs)".to_string(), value: tot_dr - tot_cr },
         ],
     })
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ProductPurchaseRow {
+    pub invoice_date: String,
+    pub invoice_no: String,
+    pub supplier_name: String,
+    pub qty: i64,
+    pub unit_price: f64,
+    pub total_price: f64,
+    pub sale_rate: f64,
+}
+
+#[tauri::command]
+pub async fn get_product_purchase_history(product_id: i64, db: tauri::State<'_, sqlx::SqlitePool>) -> Result<Vec<ProductPurchaseRow>, String> {
+    sqlx::query_as::<_, ProductPurchaseRow>(
+        r#"
+        SELECT 
+            COALESCE(i.invoice_date, datetime('now', 'localtime')) as invoice_date,
+            i.invoice_number as invoice_no,
+            a.name as supplier_name,
+            li.quantity as qty,
+            li.unit_price as unit_price,
+            li.total_price as total_price,
+            COALESCE(li.sale_rate, 0.0) as sale_rate
+        FROM invoice_items li
+        JOIN invoices i ON i.id = li.invoice_id
+        JOIN accounts a ON a.id = i.account_id
+        WHERE li.product_id = ? AND i.invoice_type = 'PURCHASE'
+        ORDER BY i.invoice_date DESC
+        "#
+    )
+    .bind(product_id)
+    .fetch_all(&*db)
+    .await
+    .map_err(|e| e.to_string())
 }

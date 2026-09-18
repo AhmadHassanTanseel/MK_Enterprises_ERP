@@ -78,6 +78,10 @@ pub async fn process_purchase(
 
     // Insert invoice lines and inventory movements
     for line in &lines {
+        // TC-CONC-01: Acquire exclusive write lock explicitly to prevent oversell race condition
+        let _ = sqlx::query("UPDATE products SET id = id WHERE id = ?").bind(line.product_id).execute(&mut *tx).await;
+        if line.quantity <= 0 { return Err("Quantity must be strictly positive".into()); }
+        if line.unit_price < 0.0 { return Err("Unit price cannot be negative".into()); }
         let disc_per_unit = line.discount_percent.unwrap_or(0.0);
         let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
 
@@ -98,13 +102,14 @@ pub async fn process_purchase(
                 .map_err(|e| e.to_string())?;
         }
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price) VALUES (?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
             .bind(line.unit_price)
             .bind(disc_per_unit)
             .bind(total_price)
+            .bind(line.sale_rate.unwrap_or(0.0))
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -148,7 +153,7 @@ pub async fn process_purchase(
     }
 
     if amount_paid_bank > 0.0 {
-        let bank_account_id = 2; // Fixed Bank Account ID
+        let bank_account_id = 99; // Fixed Bank Account ID
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_PAYMENT', ?, 'Bank Paid at Purchase')")
             .bind(supplier_id).bind(amount_paid_bank).bind(invoice_id)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
@@ -219,6 +224,8 @@ pub async fn process_return(
     let movement = if return_type == "D" { "DAMAGE_WRITE_OFF" } else { "PURCHASE_RETURN" };
 
     for line in &lines {
+        if line.quantity <= 0 { return Err("Quantity must be strictly positive".into()); }
+        if line.unit_price < 0.0 { return Err("Unit price cannot be negative".into()); }
         // Stock check
         let stock_row: (i64,) = sqlx::query_as(
             "SELECT COALESCE(SUM(quantity), 0) FROM inventory_movements WHERE product_id = ?"
@@ -256,13 +263,14 @@ pub async fn process_return(
                 .map_err(|e| e.to_string())?;
         }
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price) VALUES (?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
             .bind(line.unit_price)
             .bind(disc_per_unit)
             .bind(total_price)
+            .bind(line.sale_rate.unwrap_or(0.0))
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;

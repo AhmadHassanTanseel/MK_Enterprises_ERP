@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, Printer } from 'lucide-react';
+import { Plus, Trash2, Save, Printer, FileText } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
@@ -205,7 +205,7 @@ export const SaleInvoicePanel: React.FC = () => {
                       <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none focus:border-blue-500" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
                     </td>
                     <td className="px-4 py-2">
-                      <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none bg-slate-100 text-slate-500 cursor-not-allowed" value={line.rate || ''} readOnly title="Rate is auto-populated from product pricing" />
+                      <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none bg-slate-100 text-slate-500 cursor-not-allowed" value={line.rate === 0 ? 0 : line.rate || ''} readOnly title="Rate is auto-populated from product pricing" />
                     </td>
                     <td className="px-4 py-2">
                       <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none focus:border-blue-500" value={line.discount || ''} onChange={e => updateLine(line.id, 'discount', Number(e.target.value))} />
@@ -229,7 +229,8 @@ export const SaleInvoicePanel: React.FC = () => {
             <Plus className="h-4 w-4" /> Add Line
           </button>
           
-            <div className="flex flex-col md:flex-row gap-6 justify-end items-start md:items-end w-full">
+            <div className="w-full overflow-x-auto pb-2">
+            <div className="flex flex-row gap-6 justify-between items-end min-w-max w-full">
               
               <div className="flex flex-col gap-2 bg-white p-4 rounded border border-slate-200 shadow-sm flex-1 md:flex-none md:w-64">
                 <div className="flex justify-between text-sm">
@@ -275,11 +276,55 @@ export const SaleInvoicePanel: React.FC = () => {
             <div className="flex gap-2">
               <button onClick={() => {
                 const acc = accounts.find(a => a.id === customer_id);
-                // Note: local state printing only, backend not affected
-                const html = `...`; // removed to keep small
-                toast.success('Print dialog triggered');
+                const accName = acc ? acc.name : 'Walk-in Customer';
+                const date = new Date().toISOString().split('T')[0];
+                const html = `
+                  <div style="font-family: sans-serif; padding: 20px;">
+                    <h2 style="text-align: center; margin-bottom: 20px;">SALE INVOICE</h2>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                      <div><strong>Customer:</strong> ${accName}</div>
+                      <div><strong>Date:</strong> ${date}</div>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                      <thead>
+                        <tr style="background-color: #f8fafc;">
+                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: left;">Product</th>
+                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Qty</th>
+                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Rate</th>
+                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Discount</th>
+                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${lines.map((l: any) => `
+                          <tr>
+                            <td style="border: 1px solid #e2e8f0; padding: 8px;">${products.find(p => p.id === l.product_id)?.name || ''}</td>
+                            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">${l.qty}</td>
+                            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">${l.rate}</td>
+                            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">${l.discount}</td>
+                            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">${((l.qty||0)*(l.rate||0) - (l.discount||0))}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                    <div style="text-align: right; margin-top: 20px;">
+                      <div><strong>Gross:</strong> Rs. ${totalGross.toLocaleString()}</div>
+                      <div><strong>Discount:</strong> Rs. ${totalDiscount.toLocaleString()}</div>
+                      <div style="font-size: 1.2em; margin-top: 10px;"><strong>Net Total:</strong> Rs. ${totalNet.toLocaleString()}</div>
+                      <div style="margin-top: 10px;">Received: Rs. ${(amountReceivedCash + amountReceivedBank).toLocaleString()}</div>
+                      <div>Balance: Rs. ${balance.toLocaleString()}</div>
+                    </div>
+                  </div>
+                `;
+                printContent('Sale Invoice', html);
               }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
                 <Printer className="h-4 w-4" /> Print
+              </button>
+              <button onClick={() => {
+                const acc = accounts.find(a => a.id === customer_id);
+                generateInvoicePDF('SALE', `INV-${Date.now()}`, new Date().toISOString().split('T')[0], acc, lines as any, products, totalGross, totalDiscount, totalNet, (amountReceivedCash + amountReceivedBank));
+              }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
+                <FileText className="h-4 w-4" /> PDF
               </button>
               <button 
                 onClick={handleSave} 
@@ -290,6 +335,7 @@ export const SaleInvoicePanel: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>

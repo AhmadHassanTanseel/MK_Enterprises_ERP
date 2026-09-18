@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext, Product } from '../../app/context/AppContext';
-import { Plus, Edit2, Search, Filter, Trash2, X, Copy } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { Plus, Edit2, Search, Filter, Trash2, X, Copy, History } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 
@@ -12,6 +13,26 @@ export const ProductsPanel: React.FC = () => {
   const [formData, setFormData] = useState<Partial<Product>>({});
   
   
+  
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [purchaseHistory, setPurchaseHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const openHistory = async (prod: Product) => {
+    setSelectedProduct(prod);
+    setHistoryModalOpen(true);
+    setLoadingHistory(true);
+    try {
+      const data = await invoke('get_product_purchase_history', { productId: prod.id });
+      setPurchaseHistory(data as any[]);
+    } catch (err: any) {
+      toast.error(err.toString());
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -152,34 +173,7 @@ export const ProductsPanel: React.FC = () => {
                 onChange={e => setFormData({...formData, flavors: e.target.value})} 
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Unit of Measure</label>
-                <select 
-                  className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={formData.uom || 'Piece'}
-                  onChange={e => setFormData({...formData, uom: e.target.value})}
-                >
-                  <option value="Piece">Piece</option>
-                  <option value="Dozen">Dozen</option>
-                  <option value="Carton">Carton</option>
-                  <option value="Kg">Kg</option>
-                  <option value="Gram">Gram</option>
-                  <option value="Liter">Liter</option>
-                  <option value="Box">Box</option>
-                  <option value="Pack">Pack</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Reorder Level</label>
-                <input 
-                  type="number" 
-                  className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={formData.reorder_level || ''}
-                  onChange={e => setFormData({...formData, reorder_level: Number(e.target.value)})}
-                />
-              </div>
-            </div>
+
             <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-medium py-2 rounded-md hover:bg-blue-700 transition-colors disabled:bg-blue-400">
               {formData.id ? 'Update Product' : 'Save Product'}
             </button>
@@ -212,15 +206,14 @@ export const ProductsPanel: React.FC = () => {
         </div>
 
         <div className="flex-1 overflow-auto">
-          <table className="w-full min-w-[800px] text-left text-sm text-slate-600">
+          <table className="w-full min-w-max text-left text-sm text-slate-600">
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0">
               <tr>
                 <th className="px-4 py-3 font-medium">Code</th>
                 <th className="px-4 py-3 font-medium">Product Name</th>
                 <th className="px-4 py-3 font-medium text-right">Pur. Rate</th>
                 <th className="px-4 py-3 font-medium text-right">Sale Rate</th>
-                <th className="px-4 py-3 font-medium text-center">UoM</th>
-                <th className="px-4 py-3 font-medium text-center">Action</th>
+                                <th className="px-4 py-3 font-medium text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -230,10 +223,11 @@ export const ProductsPanel: React.FC = () => {
                   <td className="px-4 py-3 font-medium text-slate-800">{prod.name}</td>
                   <td className="px-4 py-3 text-right">{prod.purchase_price.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-emerald-600 font-medium">{prod.sale_price.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-center text-xs">
-                    <span className="bg-slate-100 px-2 py-1 rounded-md text-slate-600">{prod.uom}</span>
-                  </td>
+
                   <td className="px-4 py-3 text-center flex justify-center gap-2">
+                                        <button onClick={() => openHistory(prod)} className="text-amber-600 hover:text-amber-800 p-1 rounded-md hover:bg-amber-50 transition-colors" title="Purchase History">
+                      <History className="h-4 w-4" />
+                    </button>
                     <button onClick={() => handleDuplicate(prod)} className="text-teal-600 hover:text-teal-800 p-1 rounded-md hover:bg-teal-50 transition-colors" title="Duplicate">
                         <Copy className="h-4 w-4" />
                       </button>
@@ -256,6 +250,55 @@ export const ProductsPanel: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {historyModalOpen && (
+        <div className="fixed inset-0 bg-slate-800/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <h2 className="text-xl font-bold text-slate-800">Purchase History: {selectedProduct?.name}</h2>
+              <button onClick={() => setHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="p-6 overflow-auto flex-1 bg-slate-50">
+              {loadingHistory ? (
+                <div className="text-center py-8 text-slate-500">Loading history...</div>
+              ) : purchaseHistory.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">No purchase history found for this product.</div>
+              ) : (
+                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-100 text-slate-600 font-medium border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">Invoice No</th>
+                        <th className="px-4 py-3">Supplier</th>
+                        <th className="px-4 py-3 text-right">Qty</th>
+                        <th className="px-4 py-3 text-right">Unit Price</th>
+                        <th className="px-4 py-3 text-right">Sale Price</th>
+                        <th className="px-4 py-3 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {purchaseHistory.map((h, i) => (
+                        <tr key={i} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 text-slate-600">{new Date(h.invoice_date).toLocaleDateString()}</td>
+                          <td className="px-4 py-3 font-mono text-xs">{h.invoice_no}</td>
+                          <td className="px-4 py-3 text-slate-800 font-medium">{h.supplier_name}</td>
+                          <td className="px-4 py-3 text-right text-slate-800">{h.qty}</td>
+                          <td className="px-4 py-3 text-right text-slate-600">Rs. {h.unit_price.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right text-emerald-600">Rs. {h.sale_rate?.toLocaleString() || 0}</td>
+                          <td className="px-4 py-3 text-right text-slate-800 font-medium">Rs. {h.total_price.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

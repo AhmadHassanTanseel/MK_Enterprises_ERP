@@ -391,7 +391,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             product_id: l.product_id,
             quantity: l.qty,
             unit_price: l.rate,
-            discount_percent: l.discount_pct
+            discount_percent: l.discount_pct, flavor: l.flavor
           })),
           grossAmount: invoiceData.gross_amount,
           discountAmount: invoiceData.discount_amount,
@@ -408,7 +408,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             product_id: l.product_id,
             quantity: l.qty,
             unit_price: l.rate,
-            discount_percent: l.discount_pct
+            discount_percent: l.discount_pct, sale_rate: l.sale_rate, flavor: l.flavor
           })),
           grossAmount: invoiceData.gross_amount,
           discountAmount: invoiceData.discount_amount,

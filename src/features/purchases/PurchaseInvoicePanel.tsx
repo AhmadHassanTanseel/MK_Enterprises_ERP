@@ -115,49 +115,6 @@ export const PurchaseInvoicePanel: React.FC = () => {
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
         <div className="flex justify-between items-center pb-4 border-b border-slate-100">
           <h2 className="text-xl font-bold text-slate-800">Purchase Invoice (GRN)</h2>
-          <div className="flex gap-2">
-            <button onClick={() => {
-              const acc = accounts.find(a => a.id === accountId);
-              const accName = acc ? acc.name : 'Unknown Supplier';
-              const date = new Date().toISOString().split('T')[0];
-              const html = `
-                <div class="header-info">
-                  <span><strong>Supplier:</strong> ${accName}</span>
-                  <span><strong>Date:</strong> ${date}</span>
-                </div>
-                <table>
-                  <thead>
-                    <tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Gross</th><th class="text-right">Disc %</th><th class="text-right">Net</th></tr>
-                  </thead>
-                  <tbody>
-                    ${lines.map(l => {
-                      const p = products.find(prod => prod.id === l.product_id);
-                      return '<tr><td>' + (p ? p.name : '') + '</td><td class="text-right">' + l.qty + '</td><td class="text-right">' + l.rate + '</td><td class="text-right">' + (l.qty * l.rate) + '</td><td class="text-right">' + l.discount_pct + '</td><td class="text-right">' + calculateLineTotal(l) + '</td></tr>';
-                    }).join('')}
-                  </tbody>
-                </table>
-                <div class="totals">
-                  <div>Gross: Rs. ${totalGross.toLocaleString()}</div>
-                  <div>Discount: Rs. ${totalDiscount.toLocaleString()}</div>
-                  <div>Net Total: Rs. ${totalNet.toLocaleString()}</div>
-                  <div>Amount Paid: Rs. ${(amountPaidCash + amountPaidBank).toLocaleString()}</div>
-                  <div>Balance: Rs. ${balance.toLocaleString()}</div>
-                </div>
-              `;
-              printContent('Purchase Invoice (GRN)', html);
-            }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
-              <Printer className="h-4 w-4" /> Print
-            </button>
-            <button onClick={() => {
-              const acc = accounts.find(a => a.id === accountId);
-              generateInvoicePDF('PURCHASE', `PUR-${Date.now()}`, new Date().toISOString().split('T')[0], acc, lines as any, products, totalGross, totalDiscount, totalNet, (amountPaidCash + amountPaidBank));
-            }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
-              <FileText className="h-4 w-4" /> PDF
-            </button>
-            <button onClick={handleSave} disabled={isSubmitting} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50">
-              <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save Bill'}
-            </button>
-          </div>
         </div>
 
         <div className="grid grid-cols-4 gap-6">
@@ -204,7 +161,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
                         onChange={v => {
                           const p = products.find(prod => prod.id === v);
                           if (p) {
-                            setLines(lines.map(l => l.id === line.id ? { ...l, product_id: v, rate: p.purchase_price, sale_rate: p.sale_price } : l));
+                            setLines(lines.map(l => l.id === line.id ? { ...l, product_id: v, rate: 0, sale_rate: 0 } : l));
                           } else {
                             updateLine(line.id, 'product_id', v);
                           }
@@ -217,9 +174,15 @@ export const PurchaseInvoicePanel: React.FC = () => {
                   </td>
                   <td className="px-2 py-2 text-right">
                     <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.rate || ''} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
+                    {line.product_id ? (
+                      <div className="text-[10px] text-slate-400 mt-1 whitespace-nowrap">Last: Rs. {products.find(p => p.id === line.product_id)?.purchase_price || 0}</div>
+                    ) : null}
                   </td>
                   <td className="px-2 py-2 text-right">
                     <input type="number" min="0" className="w-full min-w-[80px] text-right border border-emerald-300 bg-emerald-50 rounded p-1 focus:ring-2 outline-none" value={line.sale_rate || ''} onChange={e => updateLine(line.id, 'sale_rate', Number(e.target.value))} />
+                    {line.product_id ? (
+                      <div className="text-[10px] text-emerald-600 mt-1 whitespace-nowrap">Last: Rs. {products.find(p => p.id === line.product_id)?.sale_price || 0}</div>
+                    ) : null}
                   </td>
                   <td className="px-2 py-2 text-right font-medium text-slate-700">{((line.qty || 0) * (line.rate || 0)).toLocaleString()}</td>
                   <td className="px-2 py-2 text-right">
@@ -243,55 +206,110 @@ export const PurchaseInvoicePanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Footer Panel */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col xl:flex-row gap-6 justify-between items-start xl:items-end">
-        <div className="w-full xl:w-1/3">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Remarks</label>
-          <textarea className="w-full border border-slate-300 rounded-md p-2 h-20 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Purchase notes..."></textarea>
-        </div>
-
-        <div className="flex flex-col md:flex-row gap-6 w-full xl:w-auto">
-          <div className="flex flex-col gap-2 w-full md:w-64 bg-slate-50 p-4 rounded-lg border border-slate-100">
+      {/* Footer actions */}
+      <div className="bg-slate-50 border-t border-slate-200 p-4">
+        <div className="w-full overflow-x-auto pb-2">
+            <div className="flex flex-row gap-6 justify-between items-end min-w-max w-full">
+          
+          <div className="flex flex-col gap-2 bg-white p-4 rounded border border-slate-200 shadow-sm flex-1 md:flex-none md:w-64">
             <div className="flex justify-between text-sm">
-              <span className="text-slate-600 font-medium">Gross Amount:</span>
+              <span className="text-slate-500">Gross Total:</span>
               <span className="text-slate-800 font-medium">Rs. {totalGross.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-slate-600 font-medium">Discount Amount:</span>
+              <span className="text-slate-500">Discount:</span>
               <span className="text-rose-600 font-medium">- Rs. {totalDiscount.toLocaleString()}</span>
             </div>
-            <div className="flex justify-between text-base pt-2 border-t border-slate-200 mt-2">
+            <div className="flex justify-between text-base border-t border-slate-100 mt-2 pt-2">
               <span className="text-slate-800 font-bold">Net Total:</span>
               <span className="text-slate-800 font-bold">Rs. {totalNet.toLocaleString()}</span>
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 w-full md:w-80 p-2">
-            <div className="flex items-center justify-between gap-4">
-              <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Cash Paid Now:</label>
-              <input 
-                type="number" 
-                className="w-32 text-right border-b-2 border-slate-300 bg-emerald-50 text-emerald-800 font-bold p-1 outline-none focus:border-emerald-500 rounded-t" 
-                value={amountPaidCash || ''}
-                onChange={e => setAmountPaidCash(Number(e.target.value))}
-              />
+          <div className="flex flex-col gap-2 bg-white p-4 rounded border border-slate-200 shadow-sm flex-1 md:flex-none md:w-80">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Cash Paid Now:</label>
+                <input 
+                  type="number" 
+                  className="w-32 text-right border-b-2 border-slate-300 bg-emerald-50 text-emerald-800 font-bold p-1 outline-none focus:border-emerald-500 rounded-t" 
+                  value={amountPaidCash || ''}
+                  onChange={e => setAmountPaidCash(Number(e.target.value))}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Bank Paid Now:</label>
+                <input 
+                  type="number" 
+                  className="w-32 text-right border-b-2 border-slate-300 bg-blue-50 text-blue-800 font-bold p-1 outline-none focus:border-blue-500 rounded-t" 
+                  value={amountPaidBank || ''}
+                  onChange={e => setAmountPaidBank(Number(e.target.value))}
+                />
+              </div>
             </div>
-            <div className="flex items-center justify-between gap-4">
-              <label className="text-sm font-bold text-slate-800 whitespace-nowrap">Bank Paid Now:</label>
-              <input 
-                type="number" 
-                className="w-32 text-right border-b-2 border-slate-300 bg-blue-50 text-blue-800 font-bold p-1 outline-none focus:border-blue-500 rounded-t" 
-                value={amountPaidBank || ''}
-                onChange={e => setAmountPaidBank(Number(e.target.value))}
-              />
-            </div>
-            <div className="flex justify-between text-sm mt-2 border-t border-slate-100 pt-2">
+            <div className="flex justify-between text-sm border-t border-slate-100 mt-2 pt-2">
               <span className="text-slate-600 font-medium">Balance Payable:</span>
               <span className={`font-bold ${balance > 0 ? 'text-amber-600' : 'text-slate-500'}`}>Rs. {balance.toLocaleString()}</span>
             </div>
           </div>
+
+          <div className="flex gap-2">
+            <button onClick={() => {
+              const acc = accounts.find(a => a.id === accountId);
+              const accName = acc ? acc.name : 'Unknown Supplier';
+              const date = new Date().toISOString().split('T')[0];
+              const html = `
+                <div style="font-family: sans-serif; padding: 20px;">
+                  <h2 style="text-align: center; margin-bottom: 20px;">PURCHASE INVOICE (GRN)</h2>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                    <div><strong>Supplier:</strong> ${accName}</div>
+                    <div><strong>Date:</strong> ${date}</div>
+                  </div>
+                  <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                    <thead>
+                      <tr style="background-color: #f8fafc;">
+                        <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: left;">Product</th>
+                        <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Qty</th>
+                        <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Rate</th>
+                        <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Gross</th>
+                        <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Disc %</th>
+                        <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Net</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${lines.map(l => {
+                        const p = products.find(prod => prod.id === l.product_id);
+                        return '<tr><td style="border: 1px solid #e2e8f0; padding: 8px;">' + (p ? p.name : '') + '</td><td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">' + l.qty + '</td><td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">' + l.rate + '</td><td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">' + ((l.qty||0)*(l.rate||0)) + '</td><td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">' + l.discount_pct + '</td><td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">' + calculateLineTotal(l) + '</td></tr>';
+                      }).join('')}
+                    </tbody>
+                  </table>
+                  <div style="text-align: right; margin-top: 20px;">
+                    <div><strong>Gross:</strong> Rs. ${totalGross.toLocaleString()}</div>
+                    <div><strong>Discount:</strong> Rs. ${totalDiscount.toLocaleString()}</div>
+                    <div style="font-size: 1.2em; margin-top: 10px;"><strong>Net Total:</strong> Rs. ${totalNet.toLocaleString()}</div>
+                    <div style="margin-top: 10px;">Paid: Rs. ${(amountPaidCash + amountPaidBank).toLocaleString()}</div>
+                    <div>Balance: Rs. ${balance.toLocaleString()}</div>
+                  </div>
+                </div>
+              `;
+              printContent('Purchase Invoice (GRN)', html);
+            }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
+              <Printer className="h-4 w-4" /> Print
+            </button>
+            <button onClick={() => {
+              const acc = accounts.find(a => a.id === accountId);
+              generateInvoicePDF('PURCHASE', `PUR-${Date.now()}`, new Date().toISOString().split('T')[0], acc, lines as any, products, totalGross, totalDiscount, totalNet, (amountPaidCash + amountPaidBank));
+            }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
+              <FileText className="h-4 w-4" /> PDF
+            </button>
+            <button onClick={handleSave} disabled={isSubmitting} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50">
+              <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save Bill'}
+            </button>
+          </div>
+        </div>
         </div>
       </div>
     </div>
   );
 };
+export default PurchaseInvoicePanel;

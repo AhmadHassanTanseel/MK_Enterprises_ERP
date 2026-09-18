@@ -27,6 +27,22 @@ pub async fn process_sale(
     amount_received_bank: f64,
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
+    process_sale_internal(account_id, salesman_id, invoice_number, invoice_date, lines, gross_amount, discount_amount, net_amount, amount_received_cash, amount_received_bank, &*db).await
+}
+
+pub async fn process_sale_internal(
+    account_id: i64,
+    salesman_id: Option<i64>,
+    invoice_number: Option<String>,
+    invoice_date: String,
+    lines: Vec<SaleLine>,
+    gross_amount: f64,
+    discount_amount: f64,
+    net_amount: f64,
+    amount_received_cash: f64,
+    amount_received_bank: f64,
+    db: &SqlitePool,
+) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
     let accounts = get_system_accounts(&db).await?;
 
@@ -75,6 +91,16 @@ pub async fn process_sale(
 
     // Insert lines and stock movements
     for line in &lines {
+        if line.quantity <= 0 {
+            return Err("Quantity must be strictly positive".into());
+        }
+        if line.unit_price < 0.0 {
+            return Err("Unit price cannot be negative".into());
+        }
+
+        // TC-CONC-01: Acquire exclusive write lock explicitly to prevent oversell race condition
+        let _ = sqlx::query("UPDATE products SET id = id WHERE id = ?").bind(line.product_id).execute(&mut *tx).await;
+
         // Stock check
         let stock_row: (i64,) = sqlx::query_as(
             "SELECT COALESCE(SUM(quantity), 0) FROM inventory_movements WHERE product_id = ?"
@@ -145,7 +171,7 @@ pub async fn process_sale(
     }
 
     if amount_received_bank > 0.0 {
-        let bank_account_id = 2; // Fixed Bank Account ID
+        let bank_account_id = 99; // Fixed Bank Account ID
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS')")
             .bind(bank_account_id).bind(amount_received_bank).bind(invoice_id)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
@@ -215,6 +241,13 @@ pub async fn process_sale_return(
 
     // Insert lines and stock movements
     for line in &lines {
+        if line.quantity <= 0 {
+            return Err("Quantity must be strictly positive".into());
+        }
+        if line.unit_price < 0.0 {
+            return Err("Unit price cannot be negative".into());
+        }
+
         let disc_per_unit = line.discount_percent.unwrap_or(0.0);
         let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
 
@@ -285,6 +318,7 @@ pub async fn create_dispatch(
     db: State<'_, SqlitePool>,
 ) -> Result<i64, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    let _ = sqlx::query("BEGIN IMMEDIATE").execute(&mut *tx).await;
 
     let dispatch_id = sqlx::query(
         "INSERT INTO dispatches (salesman_id, dispatch_date, status) VALUES (?, date('now'), 'PENDING')"
@@ -328,6 +362,7 @@ pub async fn settle_dispatch(
     db: State<'_, SqlitePool>,
 ) -> Result<i64, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    let _ = sqlx::query("BEGIN IMMEDIATE").execute(&mut *tx).await;
 
     // Update dispatch status
     sqlx::query("UPDATE dispatches SET status = 'SETTLED' WHERE id = ?")
