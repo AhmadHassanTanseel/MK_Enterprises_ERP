@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
 import { FileText, Printer, Download, RefreshCw } from 'lucide-react';
@@ -22,12 +22,29 @@ interface ReportResult {
 const BACKEND_REPORT_TYPES = ['LEDGER', 'CASHBOOK', 'BANKBOOK', 'TRIAL', 'SALES', 'PURCHASE', 'STOCK', 'PROFIT', 'ASSETS', 'EXPENSES', 'ADJUSTMENTS'];
 
 export const ReportPanel: React.FC = () => {
-  const { ledgerEntries, accounts } = useAppContext();
+  const { ledgerEntries, accounts, accountTypes } = useAppContext();
+
+
 
   const [reportType, setReportType] = useState('LEDGER');
   const [fromDate, setFromDate] = useState('2024-01-01');
   const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
   const [accountId, setAccountId] = useState<number | null>(null);
+
+  const filteredAccounts = React.useMemo(() => {
+    if (reportType === 'SALES') return accounts.filter(a => a.is_customer);
+    if (reportType === 'PURCHASE') return accounts.filter(a => a.is_supplier);
+    if (reportType === 'EXPENSES') {
+      const expTypeIds = accountTypes.filter(t => t.nature === 'EXPENSE').map(t => t.id);
+      return accounts.filter(a => expTypeIds.includes(a.account_type_id));
+    }
+    if (reportType === 'CASHBOOK' || reportType === 'BANKBOOK') {
+       // Typically you filter by bank/cash types, but let's just show assets or all for now
+       const assetTypeIds = accountTypes.filter(t => t.nature === 'ASSET').map(t => t.id);
+       return accounts.filter(a => assetTypeIds.includes(a.account_type_id));
+    }
+    return accounts;
+  }, [accounts, accountTypes, reportType]);
 
   const [backendReport, setBackendReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,7 +109,7 @@ export const ReportPanel: React.FC = () => {
         <div className="grid grid-cols-4 gap-4 items-end">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Report Type</label>
-            <select className="w-full border border-slate-300 rounded-md p-2" value={reportType} onChange={e => setReportType(e.target.value)}>
+            <select className="w-full border border-slate-300 rounded-md p-2" value={reportType} onChange={e => { setReportType(e.target.value); setAccountId(null); }}>
               <option value="LEDGER">Account Ledger</option>
               <option value="CASHBOOK">Cash Book (Drawer)</option>
                 <option value="BANKBOOK">Bank Book (Accounts)</option>
@@ -118,7 +135,7 @@ export const ReportPanel: React.FC = () => {
             <label className="block text-sm font-medium text-slate-700 mb-1">Account Filter</label>
             <select className="w-full border border-slate-300 rounded-md p-2" value={accountId || ''} onChange={e => setAccountId(Number(e.target.value) || null)}>
               <option value="">-- All Accounts --</option>
-              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {filteredAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
         </div>

@@ -228,6 +228,7 @@ pub async fn get_sales_history(db: State<'_, SqlitePool>) -> Result<Vec<SalesHis
 // --- UNIFIED REPORTING ENGINE ---
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReportFilters {
     pub from_date: Option<String>,
     pub to_date: Option<String>,
