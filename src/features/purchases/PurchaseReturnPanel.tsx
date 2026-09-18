@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppContext, InvoiceLine } from '../../app/context/AppContext';
 import { Plus, Trash2, Save, CornerUpRight, Printer, FileText, Search } from 'lucide-react';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
-import { printContent } from '../../utils/printHelper';
+import { printThermalReceipt } from '../../utils/receiptPrinter';
 import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 
@@ -125,29 +125,24 @@ export const PurchaseReturnPanel: React.FC = () => {
               const acc = accounts.find(a => a.id === accountId);
               const accName = acc ? acc.name : 'Unknown Supplier';
               const date = new Date().toISOString().split('T')[0];
-              const html = `
-                <div class="header-info">
-                  <span><strong>Supplier:</strong> ${accName}</span>
-                  <span><strong>Date:</strong> ${date}</span>
-                </div>
-                <table>
-                  <thead>
-                    <tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Gross</th><th class="text-right">Disc %</th><th class="text-right">Net</th></tr>
-                  </thead>
-                  <tbody>
-                    ${lines.map(l => {
-                      const p = products.find(prod => prod.id === l.product_id);
-                      return '<tr><td>' + (p ? p.name : '') + '</td><td class="text-right">' + l.qty + '</td><td class="text-right">' + l.rate + '</td><td class="text-right">' + (l.qty * l.rate) + '</td><td class="text-right">' + l.discount_pct + '</td><td class="text-right">' + calculateLineTotal(l) + '</td></tr>';
-                    }).join('')}
-                  </tbody>
-                </table>
-                <div class="totals">
-                  <div>Gross: Rs. ${totalGross.toLocaleString()}</div>
-                  <div>Discount: Rs. ${totalDiscount.toLocaleString()}</div>
-                  <div>Total Debit Note Amount: Rs. ${totalNet.toLocaleString()}</div>
-                </div>
-              `;
-              printContent('Purchase Return (Debit Note)', html);
+              printThermalReceipt({
+                  title: 'PURCHASE RETURN',
+                  refNo: '',
+                  date: new Date().toLocaleDateString(),
+                  accountLabel: 'Supplier',
+                  accountName: accName,
+                  lines: lines.map((l: any) => ({
+                    product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
+                    qty: l.qty || 0,
+                    rate: l.rate || 0,
+                    total: ((l.qty||0) * (l.rate||0)) - (l.discount||0)
+                  })),
+                  gross: totalGross,
+                  discount: totalDiscount,
+                  net: totalNet,
+                  paid: amountReceivedCash + amountReceivedBank,
+                  balance: balance
+                });
             }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
               <Printer className="h-4 w-4" /> Print
             </button>

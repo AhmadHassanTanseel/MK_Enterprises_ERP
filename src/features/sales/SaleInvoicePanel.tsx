@@ -3,7 +3,7 @@ import { Plus, Trash2, Save, Printer, FileText } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
-import { printContent } from '../../utils/printHelper';
+import { printThermalReceipt } from '../../utils/receiptPrinter';
 import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 
@@ -278,45 +278,24 @@ export const SaleInvoicePanel: React.FC = () => {
                 const acc = accounts.find(a => a.id === customer_id);
                 const accName = acc ? acc.name : 'Walk-in Customer';
                 const date = new Date().toISOString().split('T')[0];
-                const html = `
-                  <div style="font-family: sans-serif; padding: 20px;">
-                    <h2 style="text-align: center; margin-bottom: 20px;">SALE INVOICE</h2>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-                      <div><strong>Customer:</strong> ${accName}</div>
-                      <div><strong>Date:</strong> ${date}</div>
-                    </div>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                      <thead>
-                        <tr style="background-color: #f8fafc;">
-                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: left;">Product</th>
-                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Qty</th>
-                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Rate</th>
-                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Discount</th>
-                          <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${lines.map((l: any) => `
-                          <tr>
-                            <td style="border: 1px solid #e2e8f0; padding: 8px;">${products.find(p => p.id === l.product_id)?.name || ''}</td>
-                            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">${l.qty}</td>
-                            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">${l.rate}</td>
-                            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">${l.discount}</td>
-                            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: right;">${((l.qty||0)*(l.rate||0) - (l.discount||0))}</td>
-                          </tr>
-                        `).join('')}
-                      </tbody>
-                    </table>
-                    <div style="text-align: right; margin-top: 20px;">
-                      <div><strong>Gross:</strong> Rs. ${totalGross.toLocaleString()}</div>
-                      <div><strong>Discount:</strong> Rs. ${totalDiscount.toLocaleString()}</div>
-                      <div style="font-size: 1.2em; margin-top: 10px;"><strong>Net Total:</strong> Rs. ${totalNet.toLocaleString()}</div>
-                      <div style="margin-top: 10px;">Received: Rs. ${(amountReceivedCash + amountReceivedBank).toLocaleString()}</div>
-                      <div>Balance: Rs. ${balance.toLocaleString()}</div>
-                    </div>
-                  </div>
-                `;
-                printContent('Sale Invoice', html);
+                printThermalReceipt({
+                  title: 'SALE INVOICE',
+                  refNo: '',
+                  date: new Date().toLocaleDateString(),
+                  accountLabel: 'Customer',
+                  accountName: accName,
+                  lines: lines.map((l: any) => ({
+                    product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
+                    qty: l.qty || 0,
+                    rate: l.rate || 0,
+                    total: ((l.qty||0) * (l.rate||0)) - (l.discount||0)
+                  })),
+                  gross: totalGross,
+                  discount: totalDiscount,
+                  net: totalNet,
+                  paid: amountReceivedCash + amountReceivedBank,
+                  balance: balance
+                });
               }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
                 <Printer className="h-4 w-4" /> Print
               </button>

@@ -1,13 +1,24 @@
 import toast from 'react-hot-toast';
 
 export function printContent(title: string, contentHtml: string) {
-  const printWindow = window.open('', '_blank', 'width=800,height=600');
-  if (!printWindow) {
-    toast.error(`Could not prepare ${title} for printing: Browser blocked popup window.`);
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+  
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    toast.error(`Could not prepare ${title} for printing: Iframe failed.`);
+    document.body.removeChild(iframe);
     return;
   }
   
-  printWindow.document.write(`
+  doc.open();
+  doc.write(`
     <html>
     <head>
       <title>${title}</title>
@@ -31,11 +42,17 @@ export function printContent(title: string, contentHtml: string) {
     </body>
     </html>
   `);
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => { 
-    printWindow.print(); 
-    printWindow.close(); 
-    toast.success(`Sending ${title} to printer...`);
-  }, 250);
+  doc.close();
+  
+  const win = iframe.contentWindow;
+  if (win) {
+    win.focus();
+    setTimeout(() => { 
+      win.print(); 
+      toast.success(`Sending ${title} to printer...`);
+      setTimeout(() => document.body.removeChild(iframe), 1000);
+    }, 250);
+  } else {
+    document.body.removeChild(iframe);
+  }
 }
