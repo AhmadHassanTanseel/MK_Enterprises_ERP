@@ -58,14 +58,24 @@ export function printThermalReceipt(data: ReceiptData) {
       <title>${data.title}</title>
       <meta charset="UTF-8">
       <style>
-        @page { margin: 0; }
-        body { 
+        @page { 
+            margin: 0; 
+            size: auto; /* Lets the printer driver decide the cut length */
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            height: auto !important; /* Force auto height for continuous roll */
+          }
+          body { 
           font-family: 'Courier New', Courier, monospace; 
           width: 72mm; /* 80mm paper width minus small margins */
           margin: 0 auto;
           padding: 2mm 4mm;
           color: #000;
-          font-size: 12px;
+          font-size: 13px;
+            -webkit-font-smoothing: none;
+            font-weight: 600;
           line-height: 1.3;
         }
         .text-center { text-align: center; }
@@ -80,12 +90,17 @@ export function printThermalReceipt(data: ReceiptData) {
         .border-bottom { border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
         
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 2px 0; vertical-align: top; font-size: 11px; }
+        th, td { padding: 2px 0; vertical-align: top; font-size: 13px;
+            font-weight: 600; }
         
-        .item-name { width: 100%; display: block; font-size: 12px; font-weight: bold; margin-bottom: 1px; }
+        .item-name { width: 100%; display: block; font-size: 13px;
+            -webkit-font-smoothing: none;
+            font-weight: 600; font-weight: bold; margin-bottom: 1px; }
         
         .grid-2 { display: grid; grid-template-columns: auto auto; justify-content: space-between; row-gap: 2px; }
-        .totals-grid { display: grid; grid-template-columns: 1fr 1fr; row-gap: 3px; font-size: 12px; }
+        .totals-grid { display: grid; grid-template-columns: 1fr 1fr; row-gap: 3px; font-size: 13px;
+            -webkit-font-smoothing: none;
+            font-weight: 600; }
         
         .urdu-title {
           font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif;
@@ -130,7 +145,8 @@ export function printThermalReceipt(data: ReceiptData) {
           <span class="font-bold">Payment Method:</span> 
           <span>${data.paymentMethod || 'Cash'}</span>
         </div>
-        <div class="mt-1" style="font-size: 11px;">
+        <div class="mt-1" style="font-size: 13px;
+            font-weight: 600;">
           <div><strong>For online payment</strong></div>
           <div>Account: ${data.accountTitle && data.accountTitle !== '_________________' ? data.accountTitle : '_________________'}</div>
           <div>Bank: ${data.bankName && data.bankName !== '_________________' ? data.bankName : '_________________'}</div>
@@ -187,7 +203,8 @@ export function printThermalReceipt(data: ReceiptData) {
         <div class="text-right">${data.balance.toLocaleString()}</div>
       </div>
       
-      <div class="mt-2 mb-2" style="font-size: 11px;">
+      <div class="mt-2 mb-2" style="font-size: 13px;
+            font-weight: 600;">
         <span class="font-bold">Signature:</span> _________________ <span style="margin-left:10px;">${data.staffName ? '(' + data.staffName + ')' : ''}</span>
       </div>
 

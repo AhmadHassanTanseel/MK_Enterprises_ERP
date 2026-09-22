@@ -82,7 +82,16 @@ export const MainLayout: React.FC = () => {
     },
 
     // Journal Voucher
-    { id: 'general-voucher', label: 'Journal Voucher', icon: FileText },
+    {
+      id: 'finance',
+      label: 'Finance / Cash',
+      icon: Wallet,
+      children: [
+        { id: 'cash-in', label: 'Cash In (Receivable)' },
+        { id: 'cash-out', label: 'Cash Out (Payable)' },
+        { id: 'general-voucher', label: 'Journal Voucher' },
+      ]
+    },
     
     // Product
     { id: 'product', label: 'Product', icon: Package },

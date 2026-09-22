@@ -61,6 +61,14 @@ export const PendingOrdersPanel: React.FC = () => {
     if (!newSalesmanId) return toast.error('Select a salesman');
     const validLines = newLines.filter(l => l.product_id && l.qty > 0);
     if (validLines.length === 0) return toast.error('Add at least one product');
+    
+    // Strict stock validation
+    for (const line of validLines) {
+      const product = products.find(p => p.id === line.product_id);
+      if (product && line.qty > (product.available_stock || 0)) {
+        return toast.error(`Insufficient stock for ${product.name}. Available: ${product.available_stock || 0}, Requested: ${line.qty}`);
+      }
+    }
 
     setIsSubmitting(true);
     try {

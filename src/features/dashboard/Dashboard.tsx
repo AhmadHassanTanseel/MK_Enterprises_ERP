@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
-  FileText, ShoppingCart, PlusCircle, Users, 
+  FileText, ShoppingCart, PlusCircle, Users, ArrowDownRight, ArrowUpRight,
+
   Tags, Bookmark, CornerDownLeft, CornerUpRight,
   MapPin, Activity, DollarSign, Package, TrendingUp, Users as UsersIcon, Box
 } from 'lucide-react';
@@ -12,6 +13,7 @@ export const Dashboard: React.FC = () => {
 
   // The 8 specific shortcuts (removed Category)
   const quickNav = [
+    { label: "Payables & Receivables", icon: UsersIcon, to: "/other-accounts?tab=payables_receivables", color: "bg-emerald-100 text-emerald-700" },
     { label: "Sales Invoice", icon: FileText, to: "/sales", color: "bg-blue-100 text-blue-700" },
     { label: "Purchase", icon: ShoppingCart, to: "/purchases", color: "bg-teal-100 text-teal-700" },
     { label: "New Product", icon: PlusCircle, to: "/product?tab=products&new=true", color: "bg-purple-100 text-purple-700" },
@@ -19,7 +21,7 @@ export const Dashboard: React.FC = () => {
     { label: "Purchase Return", icon: CornerUpRight, to: "/purchase-return", color: "bg-indigo-100 text-indigo-700" },
     { label: "Stocks", icon: Box, to: "/inventory", color: "bg-slate-100 text-slate-700" },
     { label: "Expenses", icon: DollarSign, to: "/other-accounts?tab=expenses", color: "bg-rose-100 text-rose-700" },
-    { label: "Mulazmeen Attendance", icon: UsersIcon, to: "/other-accounts?tab=workers", color: "bg-emerald-100 text-emerald-700" },
+    { label: "Mulazmeen Attendance", icon: UsersIcon, to: "/other-accounts?tab=workers", color: "bg-sky-100 text-sky-700" },
   ];
 
   const todayStr = new Date().toISOString().split('T')[0];

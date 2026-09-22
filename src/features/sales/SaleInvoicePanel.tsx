@@ -84,6 +84,15 @@ export const SaleInvoicePanel: React.FC = () => {
       toast.error('Add at least one valid product line');
       return;
     }
+    
+    // Strict stock validation
+    for (const line of validLines) {
+      const product = products.find(p => p.id === line.product_id);
+      if (product && line.qty > (product.available_stock || 0)) {
+        toast.error(`Insufficient stock for ${product.name}. Available: ${product.available_stock || 0}, Requested: ${line.qty}`);
+        return;
+      }
+    }
 
     try {
       setLoading(true);
@@ -188,7 +197,7 @@ export const SaleInvoicePanel: React.FC = () => {
                           onChange={e => updateLine(line.id, 'flavor', e.target.value)}
                         >
                           <option value="">None</option>
-                          {(products.find(p => p.id === line.product_id)?.flavors || '').split(',').map(f => f.trim()).filter(f => f).map(f => (
+                          {(products.find(p => p.id === line.product_id)?.flavors || '').split(/[,،]/).map(f => f.trim()).filter(f => f).map(f => (
                             <option key={f} value={f}>{f}</option>
                           ))}
                         </select>

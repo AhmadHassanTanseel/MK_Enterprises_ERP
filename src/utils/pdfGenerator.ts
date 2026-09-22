@@ -105,7 +105,7 @@ export const generateInvoicePDF = async (
     await new Promise(r => setTimeout(r, 100));
     
     const canvas = await html2canvas(container.children[0] as HTMLElement, {
-      scale: 2, // High resolution
+      scale: 4, // Ultra High resolution to prevent blurriness
       useCORS: true,
       logging: false
     });
