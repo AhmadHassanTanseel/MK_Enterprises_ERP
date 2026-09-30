@@ -4,6 +4,7 @@ import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText } f
 import toast from 'react-hot-toast';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
+import { AttendanceComponent } from './AttendanceComponent';
 
 export const OtherAccountsPanel: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -357,13 +358,9 @@ export const OtherAccountsPanel: React.FC = () => {
             <h2 className="text-xl font-bold text-slate-800 mb-6">Workers & Attendance</h2>
             <div className="flex gap-4 mb-6 border-b border-slate-200 pb-2">
               <button className="font-bold text-blue-600 border-b-2 border-blue-600 pb-2 px-2">Attendance</button>
-              <button className="text-slate-500 hover:text-slate-700 px-2 pb-2">Salary</button>
+              
             </div>
-            <div className="space-y-4">
-              <input type="date" className="w-full border border-slate-300 rounded p-2" />
-              <div className="bg-slate-50 p-4 rounded text-center text-slate-500">Worker List (Placeholder)</div>
-              <button onClick={handleNotConnected} className="bg-emerald-600 text-white px-4 py-2 rounded font-medium hover:bg-emerald-700">Mark Attendance</button>
-            </div>
+            <AttendanceComponent />
           </div>
         );
       case 'assets':

@@ -13,18 +13,20 @@ pub mod treasury;
 pub mod procurement;
 pub mod sales;
 pub mod attachments;
+pub mod attendance;
 
 use master_data::*;
 use reporting::*;
 use procurement::*;
 use sales::*;
-use treasury::{process_cash_transaction, process_journal_voucher, get_cash_transaction_history, get_journal_vouchers, get_ledger_entries_by_ref};
+use treasury::*;
 use attachments::{save_attachment, get_attachments, get_attachment_path};
 use drm::*;
 use backup::*;
 use audit::*;
 use assets::*;
 use adjustments::*;
+use attendance::*;
 use tauri::Manager;
 
 
@@ -51,6 +53,16 @@ pub fn run() {
             process_return,
             process_cash_transaction,
             process_journal_voucher,
+            get_workers,
+            get_attendance,
+            mark_attendance,
+            quick_add_worker,
+            get_worker_attendance_history,
+            get_workers,
+            get_attendance,
+            mark_attendance,
+            quick_add_worker,
+            get_worker_attendance_history,
             get_cash_transaction_history,
             save_attachment,
             get_attachments,

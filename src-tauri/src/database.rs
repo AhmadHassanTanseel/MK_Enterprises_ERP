@@ -62,6 +62,7 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             name TEXT NOT NULL,
             contact TEXT,
             address TEXT,
+            designation TEXT,
             area_id INTEGER,
             salesman_id INTEGER,
             opening_balance REAL DEFAULT 0.0,
@@ -209,6 +210,16 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             value TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS attendance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            status TEXT NOT NULL,
+            remarks TEXT,
+            FOREIGN KEY(account_id) REFERENCES accounts(id),
+            UNIQUE(account_id, date)
+        );
+
         -- SEED ESSENTIAL ACCOUNT TYPES (Financial Tree Baseline)
         INSERT OR IGNORE INTO account_types (id, name, nature, trial_bal_type, trial_order) VALUES 
         (1, 'Cash & Bank', 'ASSET', 'DEBIT', 1),
@@ -219,7 +230,8 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         (6, 'Purchases Account', 'EXPENSE', 'DEBIT', 6),
         (7, 'Operating Expense', 'EXPENSE', 'DEBIT', 7),
         (8, 'Damaged Goods Expense', 'EXPENSE', 'DEBIT', 8),
-        (14, 'Salesman', 'ASSET', 'DEBIT', 14);
+        (14, 'Salesman', 'ASSET', 'DEBIT', 14),
+        (15, 'Staff / Employee', 'LIABILITY', 'CREDIT', 15);
 
         -- SEED DEFAULT SYSTEM ACCOUNTS
         INSERT OR IGNORE INTO accounts (id, account_type_id, name) VALUES 
