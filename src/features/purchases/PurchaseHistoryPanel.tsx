@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { generateInvoicePDF } from '../../utils/pdfGenerator';
+import { printThermalReceipt } from '../../utils/receiptPrinter';
 import { Search, Filter, History, Eye, Printer, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAppContext } from '../../app/context/AppContext';
 
 interface PurchaseHistoryRow {
   id: number;
@@ -18,9 +21,47 @@ interface PurchaseHistoryRow {
 
 export const PurchaseHistoryPanel: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const { accounts, products } = useAppContext();
   const [history, setHistory] = useState<PurchaseHistoryRow[]>([]);
   const [loading, setLoading] = useState(false);
   
+
+    const handleView = async (row: any) => {
+    try {
+      const lines = await invoke('get_invoice_lines', { invoiceId: row.id });
+      const acc = accounts.find(a => a.name === row.account_name);
+      generateInvoicePDF(row.invoice_type || 'PURCHASE', row.invoice_no, row.date, acc, lines as any, products, row.t_amount, row.discount, row.net_amount, row.net_amount);
+    } catch (e) {
+      toast.error('Failed to load invoice details: ' + e);
+    }
+  };
+
+  const handlePrint = async (row: any) => {
+    try {
+      const lines = await invoke('get_invoice_lines', { invoiceId: row.id });
+      printThermalReceipt({
+        title: 'PURCHASE INVOICE',
+        refNo: row.invoice_no,
+        date: row.date,
+        accountLabel: 'Supplier',
+        accountName: row.account_name,
+        lines: (lines as any).map((l: any) => ({
+          product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
+          flavor: l.flavor,
+          qty: l.qty || 0,
+          rate: l.rate || 0,
+          total: l.amount || (((l.qty||0) * (l.rate||0)) - (l.discount_pct||0))
+        })),
+        totalGross: row.t_amount,
+        totalDiscount: row.discount,
+        totalNet: row.net_amount,
+        amountReceived: row.net_amount,
+        balance: row.net_amount - row.net_amount
+      });
+    } catch (e) {
+      toast.error('Failed to load invoice details: ' + e);
+    }
+  };
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -119,12 +160,8 @@ export const PurchaseHistoryPanel: React.FC = () => {
                       )}
                     </td>
                     <td className="px-4 py-3 text-center flex justify-center gap-2">
-                      <button className="text-slate-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors">
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button className="text-slate-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors">
-                        <Printer className="h-4 w-4" />
-                      </button>
+                      <button onClick={() => handleView(inv)} className="text-slate-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors" title="View PDF"><Eye className="h-4 w-4" /></button>
+                      <button onClick={() => handlePrint(inv)} className="text-slate-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors" title="Print Thermal"><Printer className="h-4 w-4" /></button>
                     </td>
                   </tr>
                 );

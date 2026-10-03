@@ -119,14 +119,16 @@ export const OtherAccountsPanel: React.FC = () => {
   const [settleAction, setSettleAction] = useState<'receive' | 'pay'>('receive');
   const [settleAmount, setSettleAmount] = useState<number | ''>('');
   const [settleNotes, setSettleNotes] = useState('');
+  const [settleMethod, setSettleMethod] = useState<'CASH' | 'BANK'>('CASH');
 
 
 
   const handleOpenSettle = (account: any, suggestedAction: 'receive' | 'pay') => {
     setSettleAccount(account);
     setSettleAction(suggestedAction);
-    setSettleAmount(Math.abs(account.current_balance));
-    setSettleNotes(`Settlement for ${account.name}`);
+    setSettleAmount('');
+      setSettleMethod('CASH');
+    setSettleNotes('');
     setSettleModalOpen(true);
   };
 
@@ -142,7 +144,7 @@ export const OtherAccountsPanel: React.FC = () => {
           amount: Number(settleAmount),
           transDate: new Date().toISOString().split('T')[0],
           description: settleNotes,
-          paymentMethod: 'CASH',
+          paymentMethod: settleMethod,
           refNo: null,
           attachmentPath: null
         });
@@ -154,7 +156,7 @@ export const OtherAccountsPanel: React.FC = () => {
           amount: Number(settleAmount),
           transDate: new Date().toISOString().split('T')[0],
           description: settleNotes,
-          paymentMethod: 'CASH',
+          paymentMethod: settleMethod,
           refNo: null,
           attachmentPath: null
         });
@@ -909,20 +911,51 @@ export const OtherAccountsPanel: React.FC = () => {
                     <button onClick={() => setSettleModalOpen(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
                   </div>
                   <div className="p-6 space-y-4">
-                    <div className="flex bg-slate-100 p-1 rounded">
-                      <button 
-                        className={`flex-1 py-1 text-sm font-medium rounded ${settleAction === 'receive' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}
-                        onClick={() => setSettleAction('receive')}
-                      >
-                        Receive Cash
-                      </button>
-                      <button 
-                        className={`flex-1 py-1 text-sm font-medium rounded ${settleAction === 'pay' ? 'bg-white shadow text-rose-600' : 'text-slate-500'}`}
-                        onClick={() => setSettleAction('pay')}
-                      >
-                        Pay Cash
-                      </button>
-                    </div>
+                    
+                      <div className="flex justify-between items-center bg-slate-100 p-3 rounded-lg border border-slate-200">
+                        <span className="text-sm font-medium text-slate-600">Current Balance:</span>
+                        <span className={`text-lg font-bold ${settleAccount.current_balance > 0 ? 'text-emerald-600' : settleAccount.current_balance < 0 ? 'text-rose-600' : 'text-slate-600'}`}>
+                          Rs. {Math.abs(settleAccount.current_balance).toLocaleString()} {settleAccount.current_balance > 0 ? '(Receivable)' : settleAccount.current_balance < 0 ? '(Payable)' : ''}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Direction</label>
+                          <div className="flex bg-slate-100 p-1 rounded border border-slate-200">
+                            <button 
+                              className={`flex-1 py-1 text-sm font-medium rounded ${settleAction === 'receive' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}
+                              onClick={() => setSettleAction('receive')}
+                            >
+                              Receive
+                            </button>
+                            <button 
+                              className={`flex-1 py-1 text-sm font-medium rounded ${settleAction === 'pay' ? 'bg-white shadow text-rose-600' : 'text-slate-500'}`}
+                              onClick={() => setSettleAction('pay')}
+                            >
+                              Pay
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Method</label>
+                          <div className="flex bg-slate-100 p-1 rounded border border-slate-200">
+                            <button 
+                              className={`flex-1 py-1 text-sm font-medium rounded ${settleMethod === 'CASH' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}
+                              onClick={() => setSettleMethod('CASH')}
+                            >
+                              Cash
+                            </button>
+                            <button 
+                              className={`flex-1 py-1 text-sm font-medium rounded ${settleMethod === 'BANK' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}
+                              onClick={() => setSettleMethod('BANK')}
+                            >
+                              Bank
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
 
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Amount</label>

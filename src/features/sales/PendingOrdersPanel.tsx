@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Fragment, useRef } from 'react';
+import { useGridNavigation } from '../../utils/useGridNavigation';
 import { Plus, CheckCircle, Clock } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
@@ -14,12 +15,15 @@ interface DispatchItem {
   qty_sold: number;
   qty_returned: number;
   sale_price: number;
+  flavor?: string | null;
 }
 
 interface Dispatch {
   id: number;
   salesman_id: number;
-  salesman_name: string;
+  salesman_name: string | null;
+  customer_id: number;
+  customer_name: string | null;
   dispatch_date: string;
   status: string;
   items: DispatchItem[];
@@ -35,14 +39,25 @@ export const PendingOrdersPanel: React.FC = () => {
   const [currentDispatch, setCurrentDispatch] = useState<Dispatch | null>(null);
 
   // Create Form State
+  
+  
+  const [dispatchType, setDispatchType] = useState<'salesman' | 'customer'>('salesman');
   const [newSalesmanId, setNewSalesmanId] = useState<number | null>(null);
-  const [newLines, setNewLines] = useState<{product_id: number | null, qty: number}[]>([
+
+  const [newCustomerId, setNewCustomerId] = useState<number | null>(null);
+  const [newLines, setNewLines] = useState<{product_id: number | null, qty: number, flavor?: string}[]>([
     { product_id: null, qty: 1 }
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const createContainerRef = useRef<HTMLDivElement>(null);
+  useGridNavigation(createContainerRef, () => setNewLines([...newLines, {product_id: null, qty: 1}]), () => handleCreateDispatch());
 
   // Settle Form State
   const [settleLines, setSettleLines] = useState<{dispatch_item_id: number, product_id: number, qty_sold: number, qty_returned: number, unit_price: number, discount_percent: number}[]>([]);
+  const [amountReceivedCash, setAmountReceivedCash] = useState<number | ''>('');
+  const [amountReceivedBank, setAmountReceivedBank] = useState<number | ''>('');
+  const settleContainerRef = useRef<HTMLDivElement>(null);
+  useGridNavigation(settleContainerRef, () => {}, () => handleSettleDispatch());
 
   useEffect(() => {
     loadDispatches();
@@ -58,22 +73,23 @@ export const PendingOrdersPanel: React.FC = () => {
   };
 
   const handleCreateDispatch = async () => {
-    if (!newSalesmanId) return toast.error('Select a salesman');
+    
     const validLines = newLines.filter(l => l.product_id && l.qty > 0);
     if (validLines.length === 0) return toast.error('Add at least one product');
     
     // Strict stock validation
     for (const line of validLines) {
       const product = products.find(p => p.id === line.product_id);
-      if (product && line.qty > (product.available_stock || 0)) {
-        return toast.error(`Insufficient stock for ${product.name}. Available: ${product.available_stock || 0}, Requested: ${line.qty}`);
+      if (product && line.qty > (product.current_stock || 0)) {
+        return toast.error(`Insufficient stock for ${product.name}. Available: ${product.current_stock || 0}, Requested: ${line.qty}`);
       }
     }
 
     setIsSubmitting(true);
     try {
       await invoke('create_dispatch', {
-        salesmanId: newSalesmanId,
+        salesmanId: dispatchType === 'salesman' ? newSalesmanId : 0,
+        customerId: dispatchType === 'customer' ? newCustomerId : 0,
         lines: validLines
       });
       toast.success('Dispatch created successfully');
@@ -116,9 +132,10 @@ export const PendingOrdersPanel: React.FC = () => {
     setIsSubmitting(true);
     try {
       await invoke('settle_dispatch', {
-        dispatchId: currentDispatch.id,
-        lines: settleLines
-      });
+          dispatchId: currentDispatch.id,
+          lines: settleLines,
+          amountReceivedCash: amountReceivedCash === '' ? null : Number(amountReceivedCash), amountReceivedBank: amountReceivedBank === '' ? null : Number(amountReceivedBank)
+        });
       toast.success('Dispatch settled and Sale Invoice generated');
       setIsSettleModalOpen(false);
       setCurrentDispatch(null);
@@ -199,21 +216,41 @@ export const PendingOrdersPanel: React.FC = () => {
       {/* Create Modal */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]" ref={createContainerRef}>
             <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
-              <h2 className="text-xl font-bold text-slate-800">New Salesman Dispatch</h2>
+              <h2 className="text-xl font-bold text-slate-800">New Pending Dispatch / Order</h2>
               <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
             </div>
             
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Salesman</label>
-                <EntitySelect 
-                  type="salesman" 
-                  value={newSalesmanId || 0} 
-                  onChange={setNewSalesmanId} 
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Dispatch To</label>
+                  <div className="flex gap-4 mb-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" checked={dispatchType === 'salesman'} onChange={() => setDispatchType('salesman')} className="text-blue-600" />
+                      <span className="text-sm font-medium text-slate-700">Salesman (Van Loading)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" checked={dispatchType === 'customer'} onChange={() => setDispatchType('customer')} className="text-blue-600" />
+                      <span className="text-sm font-medium text-slate-700">Buyer (Pending Pickup)</span>
+                    </label>
+                  </div>
+                  
+                  {dispatchType === 'salesman' ? (
+                    <EntitySelect autoFocus 
+                      type="salesman" 
+                      value={newSalesmanId || 0} 
+                      onChange={setNewSalesmanId} 
+                    />
+                  ) : (
+                    <EntitySelect 
+                      type="account"
+                      filter={(a: any) => a.is_customer}
+                      value={newCustomerId || 0} 
+                      onChange={setNewCustomerId} 
+                    />
+                  )}
+                </div>
               
               <div>
                 <div className="flex justify-between items-center mb-2">
@@ -223,33 +260,61 @@ export const PendingOrdersPanel: React.FC = () => {
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {newLines.map((line, idx) => (
-                    <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
-                      <div className="flex-1">
-                        <EntitySelect 
-                          type="product" 
-                          value={line.product_id || 0} 
-                          onChange={(v) => {
-                            const l = [...newLines]; l[idx].product_id = v; setNewLines(l);
-                          }}
-                        />
+                  {newLines.map((line, idx) => {
+                      const selectedProduct = products.find(p => p.id === line.product_id);
+                      const flavors = selectedProduct?.flavors ? selectedProduct.flavors.split(/[,\u060C]/).map(f => f.trim()).filter(f => f.length > 0) : [];
+                      
+                      return (
+                      <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
+                        <div className="flex-1 flex gap-2">
+                          <div className="flex-1">
+                            <EntitySelect 
+                              type="product" 
+                              value={line.product_id || 0} 
+                              onChange={(v) => {
+                                const l = [...newLines]; 
+                                l[idx].product_id = v; 
+                                l[idx].flavor = undefined;
+                                setNewLines(l);
+                              }}
+                            />
+                          </div>
+                          
+                            <div className="w-1/3">
+                              <select 
+                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                                value={line.flavor || ''}
+                                onChange={e => {
+                                  const l = [...newLines];
+                                  l[idx].flavor = e.target.value;
+                                  setNewLines(l);
+                                }}
+                                disabled={flavors.length === 0}
+                              >
+                                <option value="">{flavors.length > 0 ? "Select Flavor" : "No Flavors"}</option>
+                                {flavors.map(f => (
+                                  <option key={f} value={f}>{f}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                        </div>
+                        <div className="w-24">
+                          <input 
+                            type="number" min="1"
+                            className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none text-center"
+                            value={line.qty || ''}
+                            onChange={e => {
+                              const l = [...newLines]; l[idx].qty = Number(e.target.value); setNewLines(l);
+                            }}
+                            placeholder="Qty"
+                          />
+                        </div>
+                        <button onClick={() => setNewLines(newLines.filter((_, i) => i !== idx))} className="text-red-500 p-2 hover:bg-red-50 rounded">
+                          &times;
+                        </button>
                       </div>
-                      <div className="w-24">
-                        <input 
-                          type="number" min="1"
-                          className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none text-center"
-                          value={line.qty || ''}
-                          onChange={(e) => {
-                            const l = [...newLines]; l[idx].qty = Number(e.target.value); setNewLines(l);
-                          }}
-                          placeholder="Qty"
-                        />
-                      </div>
-                      <button onClick={() => setNewLines(newLines.filter((_, i) => i !== idx))} className="text-red-500 p-2 hover:bg-red-50 rounded">
-                        &times;
-                      </button>
-                    </div>
-                  ))}
+                    )})}
                 </div>
               </div>
             </div>
@@ -267,7 +332,7 @@ export const PendingOrdersPanel: React.FC = () => {
       {/* Settle Modal */}
       {isSettleModalOpen && currentDispatch && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col max-h-[90vh]" ref={settleContainerRef}>
             <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-emerald-50 rounded-t-xl">
               <h2 className="text-xl font-bold text-emerald-800">Settle Dispatch (DISP-{currentDispatch.id})</h2>
               <button onClick={() => setIsSettleModalOpen(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
@@ -280,103 +345,130 @@ export const PendingOrdersPanel: React.FC = () => {
               </div>
 
               <table className="w-full min-w-[800px] text-left border-collapse border border-slate-200">
-                <thead className="bg-slate-100 text-slate-600 text-sm">
-                  <tr>
-                    <th className="p-3 border-b border-slate-200">Product</th>
-                    <th className="p-3 border-b border-slate-200 text-center w-24">Dispatched</th>
-                    <th className="p-3 border-b border-slate-200 w-32">Qty Sold</th>
-                    <th className="p-3 border-b border-slate-200 w-32">Qty Returned</th>
-                    <th className="p-3 border-b border-slate-200 w-32">Sale Rate</th>
-                    <th className="p-3 border-b border-slate-200 w-24">Disc %</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {currentDispatch.items.map(item => {
-                    const lineIdx = settleLines.findIndex(l => l.dispatch_item_id === item.id);
-                    const line = settleLines[lineIdx];
-                    if (!line) return null;
-
-                    return (
-                      <tr key={item.id} className="hover:bg-slate-50">
-                        <td className="p-3 font-medium text-slate-700">{item.product_name}</td>
-                        <td className="p-3 text-center text-slate-500 font-bold">{item.qty_dispatched}</td>
-                        <td className="p-3">
-                          <input 
-                            type="number" min="0" max={item.qty_dispatched}
-                            className="w-full p-2 border border-slate-300 rounded focus:border-emerald-500 outline-none text-center bg-emerald-50 font-bold"
-                            value={line.qty_sold === 0 && line.qty_returned > 0 ? 0 : line.qty_sold}
-                            onChange={e => {
-                              const val = Number(e.target.value);
-                              const newLines = [...settleLines];
-                              newLines[lineIdx].qty_sold = val;
-                              newLines[lineIdx].qty_returned = item.qty_dispatched - val;
-                              setSettleLines(newLines);
-                            }}
-                          />
-                        </td>
-                        <td className="p-3">
-                          <input 
-                            type="number" min="0" max={item.qty_dispatched}
-                            className="w-full p-2 border border-slate-300 rounded focus:border-amber-500 outline-none text-center bg-amber-50 font-bold"
-                            value={line.qty_returned === 0 && line.qty_sold > 0 ? 0 : line.qty_returned}
-                            onChange={e => {
-                              const val = Number(e.target.value);
-                              const newLines = [...settleLines];
-                              newLines[lineIdx].qty_returned = val;
-                              newLines[lineIdx].qty_sold = item.qty_dispatched - val;
-                              setSettleLines(newLines);
-                            }}
-                          />
-                        </td>
-                        <td className="p-3">
-                          <input 
-                            type="number" min="0" step="any"
-                            className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none text-right"
-                            value={line.unit_price}
-                            onChange={e => {
-                              const newLines = [...settleLines];
-                              newLines[lineIdx].unit_price = Number(e.target.value);
-                              setSettleLines(newLines);
-                            }}
-                          />
-                        </td>
-                        <td className="p-3">
-                          <input 
-                            type="number" min="0" max="100"
-                            className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none text-right"
-                            value={line.discount_percent}
-                            onChange={e => {
-                              const newLines = [...settleLines];
-                              newLines[lineIdx].discount_percent = Number(e.target.value);
-                              setSettleLines(newLines);
-                            }}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              
-              <div className="mt-4 flex justify-end">
-                <div className="text-right">
-                  <div className="text-sm text-slate-500">Estimated Total Revenue</div>
-                  <div className="text-2xl font-bold text-emerald-600">
-                    Rs. {settleLines.reduce((sum, l) => sum + (l.qty_sold * l.unit_price * (1 - l.discount_percent/100)), 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                  </div>
-                </div>
+                  <thead className="bg-slate-100 text-slate-600 text-sm">
+                    <tr>
+                      <th className="p-3 border-b border-slate-200">Product</th>
+                      <th className="p-3 border-b border-slate-200 text-center w-24">Dispatched</th>
+                      <th className="p-3 border-b border-slate-200 w-32">Qty Sold</th>
+                      <th className="p-3 border-b border-slate-200 w-32">Qty Returned</th>
+                      <th className="p-3 border-b border-slate-200 w-32">Sale Rate</th>
+                      <th className="p-3 border-b border-slate-200 w-24">Disc %</th>
+                      <th className="p-3 border-b border-slate-200 w-32 text-right">Cash Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {currentDispatch.items.map(item => {
+                      const lineIdx = settleLines.findIndex(l => l.dispatch_item_id === item.id);
+                      const line = settleLines[lineIdx];
+                      if (!line) return null;
+  
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50">
+                          <td className="p-3 font-medium text-slate-700">{item.product_name} {item.flavor && <span className="text-indigo-600 text-xs font-bold ml-1">[{item.flavor}]</span>}</td>
+                          <td className="p-3 text-center text-slate-500 font-bold">{item.qty_dispatched}</td>
+                          <td className="p-3">
+                            <input 
+                              type="number" min="0" max={item.qty_dispatched}
+                              className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none text-center font-bold text-indigo-700"
+                              value={line.qty_sold}
+                              onChange={e => {
+                                const newLines = [...settleLines];
+                                const sold = Math.min(item.qty_dispatched, Number(e.target.value));
+                                newLines[lineIdx].qty_sold = sold;
+                                newLines[lineIdx].qty_returned = item.qty_dispatched - sold;
+                                setSettleLines(newLines);
+                              }}
+                            />
+                          </td>
+                          <td className="p-3">
+                            <input 
+                              type="number" min="0" max={item.qty_dispatched}
+                              className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none text-center"
+                              value={line.qty_returned}
+                              onChange={e => {
+                                const newLines = [...settleLines];
+                                const ret = Math.min(item.qty_dispatched, Number(e.target.value));
+                                newLines[lineIdx].qty_returned = ret;
+                                newLines[lineIdx].qty_sold = item.qty_dispatched - ret;
+                                setSettleLines(newLines);
+                              }}
+                            />
+                          </td>
+                          <td className="p-3">
+                            <input 
+                              type="number" min="0" step="0.01"
+                              className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none text-right"
+                              value={line.unit_price}
+                              onChange={e => {
+                                const newLines = [...settleLines];
+                                newLines[lineIdx].unit_price = Number(e.target.value);
+                                setSettleLines(newLines);
+                              }}
+                            />
+                          </td>
+                          <td className="p-3">
+                            <input 
+                              type="number" min="0" max="100"
+                              className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none text-right"
+                              value={line.discount_percent}
+                              onChange={e => {
+                                const newLines = [...settleLines];
+                                newLines[lineIdx].discount_percent = Number(e.target.value);
+                                setSettleLines(newLines);
+                              }}
+                            />
+                          </td>
+                          <td className="p-3 text-right font-bold text-slate-700 bg-slate-50">
+                            {(line.qty_sold * line.unit_price * (1 - line.discount_percent/100)).toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 border-t-2 border-slate-300">
+                      <td colSpan={6} className="p-4 text-right font-bold text-slate-700 text-lg">Total Bill:</td>
+                      <td className="p-4 text-right font-bold text-emerald-700 text-xl">
+                        {settleLines.reduce((sum, l) => sum + (l.qty_sold * l.unit_price * (1 - l.discount_percent/100)), 0).toLocaleString()}
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-50">
+                      <td colSpan={6} className="p-4 text-right font-bold text-slate-700 text-lg">Cash Received:</td>
+                      <td className="p-3">
+                        <input 
+                          type="number"
+                          placeholder="Auto (Full)"
+                          className="w-full p-2 border-2 border-emerald-400 rounded-lg focus:ring-2 focus:ring-emerald-500 text-right font-bold text-lg"
+                          value={amountReceivedCash}
+                          onChange={(e) => setAmountReceivedCash(e.target.value === '' ? '' : Number(e.target.value))}
+                        />
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-50">
+                      <td colSpan={6} className="p-4 text-right font-bold text-slate-700 text-lg">Bank Received:</td>
+                      <td className="p-3">
+                        <input 
+                          type="number"
+                          placeholder="0"
+                          className="w-full p-2 border-2 border-emerald-400 rounded-lg focus:ring-2 focus:ring-emerald-500 text-right font-bold text-lg"
+                          value={amountReceivedBank}
+                          onChange={(e) => setAmountReceivedBank(e.target.value === '' ? '' : Number(e.target.value))}
+                        />
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+  
+              <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 rounded-b-xl">
+                <button onClick={() => setIsSettleModalOpen(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+                <button onClick={handleSettleDispatch} disabled={isSubmitting} className="px-6 py-2 bg-emerald-600 text-white font-medium hover:bg-emerald-700 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50">
+                  <CheckCircle className="h-5 w-5" /> {isSubmitting ? 'Settling...' : 'Confirm Settlement'}
+                </button>
               </div>
             </div>
-
-            <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 rounded-b-xl">
-              <button onClick={() => setIsSettleModalOpen(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
-              <button onClick={handleSettleDispatch} disabled={isSubmitting} className="px-6 py-2 bg-emerald-600 text-white font-medium hover:bg-emerald-700 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50">
-                <CheckCircle className="h-5 w-5" /> {isSubmitting ? 'Settling...' : 'Confirm Settlement'}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
+        )}
+      </div>
+    );
 };

@@ -319,10 +319,10 @@ export const SettingsPanel: React.FC = () => {
           <div className="p-6">
             <h2 className="text-xl font-bold text-slate-800 mb-4">About</h2>
             <div className="space-y-2 text-sm text-slate-600">
-              <p><span className="font-medium">Software:</span> MK Enterprises Business Management System</p>
-              <p><span className="font-medium">Version:</span> v2.0.0 Production Build</p>
-              <p><span className="font-medium">Developed For:</span> Mian Khan Enterprises</p>
-              <p className="pt-4 text-xs text-slate-400">© 2026 MK Enterprises. All rights reserved.</p>
+              <p><span className="font-medium">Software:</span> Software By Ahmad Hassan Tanseel Contact-03107464349</p>
+              <p><span className="font-medium">Version:</span> v4.1.2 Production Build</p>
+              <p><span className="font-medium">Developed For:</span> Mian Khan Traders</p>
+              <p className="pt-4 text-xs text-slate-400">© MIAS Solutions. All rights reserved.</p>
             </div>
           </div>
         </div>

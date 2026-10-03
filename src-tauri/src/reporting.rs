@@ -492,6 +492,13 @@ async fn run_ledger_report(pool: &SqlitePool, filters: &ReportFilters) -> Result
     
     let raw_rows: Vec<(String, String, String, Option<String>, Option<String>, f64, f64)> = sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
     
+    let mut account_name_for_title = "All Accounts".to_string();
+    if let Some(aid) = filters.account_id {
+        if let Ok(Some(n)) = sqlx::query_scalar::<_, String>("SELECT name FROM accounts WHERE id = ?").bind(aid).fetch_optional(pool).await {
+            account_name_for_title = n;
+        }
+    }
+
     let mut rows = Vec::new();
     let mut tot_dr = 0.0;
     let mut tot_cr = 0.0;
@@ -511,7 +518,7 @@ async fn run_ledger_report(pool: &SqlitePool, filters: &ReportFilters) -> Result
     }
     
     Ok(ReportResult {
-        title: "Account Ledger".to_string(),
+        title: format!("Account Ledger - {}", account_name_for_title),
         headers: vec!["Date".into(), "Account".into(), "Ref No".into(), "Voucher Type".into(), "Description".into(), "Debit".into(), "Credit".into()],
         rows,
         totals: vec![
@@ -865,6 +872,7 @@ pub struct InvoiceLineRaw {
     pub rate: f64,
     pub discount_pct: f64,
     pub amount: f64,
+    pub flavor: Option<String>,
 }
 
 #[tauri::command]
@@ -876,7 +884,8 @@ pub async fn get_invoice_lines(invoice_id: i64, db: State<'_, SqlitePool>) -> Re
             quantity as qty,
             unit_price as rate,
             discount_percent as discount_pct,
-            total_price as amount
+            total_price as amount,
+            flavor
         FROM invoice_items
         WHERE invoice_id = ?
         "#
@@ -1124,18 +1133,40 @@ pub struct FinancialSummary {
 }
 
 #[tauri::command]
-pub async fn get_financial_summary(db: State<'_, SqlitePool>) -> Result<FinancialSummary, String> {
+pub async fn get_financial_summary(
+    start_date: Option<String>,
+    end_date: Option<String>,
+    db: State<'_, SqlitePool>
+) -> Result<FinancialSummary, String> {
     let mut conn = db.acquire().await.map_err(|e| e.to_string())?;
 
+    // Default dates if none provided
+    let sd = start_date.unwrap_or_else(|| "1970-01-01".to_string());
+    let ed = end_date.unwrap_or_else(|| "2999-12-31".to_string());
+
+    // For Revenue and Expenses, we use the date range.
+    // For Assets, Liabilities, and Equity, we sum everything up to the end_date.
     let rows = sqlx::query(
         r#"
-        SELECT at.nature, SUM(je.debit) as total_debit, SUM(je.credit) as total_credit
+        SELECT at.nature, 
+               SUM(CASE WHEN at.nature IN ('REVENUE', 'EXPENSE') THEN 
+                       CASE WHEN date(je.entry_date) BETWEEN date(?) AND date(?) THEN je.debit ELSE 0 END
+                   ELSE 
+                       CASE WHEN date(je.entry_date) <= date(?) THEN je.debit ELSE 0 END
+                   END) as total_debit,
+               SUM(CASE WHEN at.nature IN ('REVENUE', 'EXPENSE') THEN 
+                       CASE WHEN date(je.entry_date) BETWEEN date(?) AND date(?) THEN je.credit ELSE 0 END
+                   ELSE 
+                       CASE WHEN date(je.entry_date) <= date(?) THEN je.credit ELSE 0 END
+                   END) as total_credit
         FROM journal_entries je
         JOIN accounts a ON a.id = je.account_id
         JOIN account_types at ON at.id = a.account_type_id
         GROUP BY at.nature
         "#
     )
+    .bind(&sd).bind(&ed).bind(&ed)
+    .bind(&sd).bind(&ed).bind(&ed)
     .fetch_all(&mut *conn)
     .await
     .map_err(|e| e.to_string())?;

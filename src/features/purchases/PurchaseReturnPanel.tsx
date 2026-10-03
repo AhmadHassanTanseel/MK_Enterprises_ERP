@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { useGridNavigation } from '../../utils/useGridNavigation';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext, InvoiceLine } from '../../app/context/AppContext';
 import { Plus, Trash2, Save, CornerUpRight, Printer, FileText, Search } from 'lucide-react';
@@ -49,6 +50,9 @@ export const PurchaseReturnPanel: React.FC = () => {
       toast.error('No invoice found with that number');
     }
   };
+  const containerRef = useRef<HTMLDivElement>(null);
+  useGridNavigation(containerRef, () => addLine(), () => handleSave(false, false));
+
   const addLine = () => setLines([...lines, { id: Math.random().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
   const removeLine = (id: string) => lines.length > 1 && setLines(lines.filter(l => l.id !== id));
 
@@ -79,7 +83,7 @@ export const PurchaseReturnPanel: React.FC = () => {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = async (printAfter: boolean = false, isPDF: boolean = false) => {
     
     if (!accountId) { toast.error("Please select a supplier"); return; }
     if (lines.length === 0) { toast.error("Please add at least one line."); return; }
@@ -113,7 +117,7 @@ export const PurchaseReturnPanel: React.FC = () => {
   const uniqueBrands = Array.from(new Set(products.map(p => p.name).filter(Boolean)));
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-4" ref={containerRef}>
       
       
       {/* Header */}
@@ -133,7 +137,8 @@ export const PurchaseReturnPanel: React.FC = () => {
                   accountName: accName,
                   lines: lines.map((l: any) => ({
                     product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
-                    qty: l.qty || 0,
+                flavor: l.flavor,
+                qty: l.qty || 0,
                     rate: l.rate || 0,
                     total: ((l.qty||0) * (l.rate||0)) - (l.discount||0)
                   })),
@@ -218,7 +223,7 @@ export const PurchaseReturnPanel: React.FC = () => {
                           {line.product_id ? (<select className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none" value={line.flavor || ''} onChange={e => updateLine(line.id, 'flavor', e.target.value)}><option value="">None</option>{(products.find(p => p.id === line.product_id)?.flavors || '').split(/[,،]/).map(f => f.trim()).filter(f => f).map(f => (<option key={f} value={f}>{f}</option>))}</select>) : (<span className="text-slate-400 text-sm">Select product</span>)}
                         </td>
                         <td className="px-4 py-2 w-64">
-                      <EntitySelect type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)}  className="w-full" />
+                      <EntitySelect autoFocus type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)}  className="w-full" />
                     </td>
                     <td className="px-4 py-2 text-right">
                       <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 focus:border-blue-500 outline-none" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />

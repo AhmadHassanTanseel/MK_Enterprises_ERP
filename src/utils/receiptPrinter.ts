@@ -167,12 +167,12 @@ export function printThermalReceipt(data: ReceiptData) {
           <tbody>
             ${data.lines.map(l => `
               <tr>
-                <td colspan="3" class="item-name">${l.product}</td>
+                <td colspan="3" class="item-name">${l.product} ${l.flavor && l.flavor !== 'None' ? '(' + l.flavor + ')' : ''}</td>
               </tr>
               <tr>
                 <td></td>
-                <td class="text-center">${l.qty} x ${l.rate.toLocaleString()}</td>
-                <td class="text-right">${l.total.toLocaleString()}</td>
+                <td class="text-center">${l.qty} x ${l.rate?.toLocaleString() || "0"}</td>
+                <td class="text-right">${l.total?.toLocaleString() || "0"}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -188,19 +188,19 @@ export function printThermalReceipt(data: ReceiptData) {
         <div class="text-right">${totalQty}</div>
         
         <div>Net Bill:</div>
-        <div class="text-right">${data.gross.toLocaleString()}</div>
+        <div class="text-right">${(data.gross || data.totalGross)?.toLocaleString() || "0"}</div>
         
         <div>Discount:</div>
-        <div class="text-right">${data.discount.toLocaleString()}</div>
+        <div class="text-right">${(data.discount || data.totalDiscount)?.toLocaleString() || "0"}</div>
         
         <div class="font-bold mt-1" style="font-size: 14px;">TOTAL BILL:</div>
-        <div class="text-right font-bold mt-1" style="font-size: 14px;">${data.net.toLocaleString()}</div>
+        <div class="text-right font-bold mt-1" style="font-size: 14px;">${(data.net || data.totalNet)?.toLocaleString() || "0"}</div>
         
         <div class="mt-1">Total Paid:</div>
-        <div class="text-right mt-1">${data.paid.toLocaleString()}</div>
+        <div class="text-right mt-1">${(data.paid || data.amountReceived || data.amountPaid)?.toLocaleString() || "0"}</div>
         
         <div>Bakaya:</div>
-        <div class="text-right">${data.balance.toLocaleString()}</div>
+        <div class="text-right">${(data.balance)?.toLocaleString() || "0"}</div>
       </div>
       
       <div class="mt-2 mb-2" style="font-size: 13px;
@@ -209,9 +209,10 @@ export function printThermalReceipt(data: ReceiptData) {
       </div>
 
       <div class="text-center mt-2 border-top" style="padding-top: 6px; font-size: 10px;">
-        Thank you for your business!
+        <div style="font-family: 'Jameel Noori Nastaleeq', 'Nafees Web Naskh', 'Arial Unicode MS', sans-serif; direction: rtl; margin-bottom: 4px;">نوٹ: کھلے اور خراب ہونے والے پروڈکٹس اور رسید کے بغیر پروڈکٹ کا کوئی کلیم نہیں ہوگا۔</div>
+          Thank you for your business!
         <br/>
-        Software by Antigravity
+        Software by Ahmad Hassan Tanseel
       </div>
     </body>
     </html>

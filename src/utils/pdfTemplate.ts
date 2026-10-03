@@ -56,10 +56,10 @@ export const getA4InvoiceHtml = (data: any) => {
           ${data.lines.map((l: any, i: number) => `
             <tr style="border-bottom: 1px solid #eee;">
               <td style="padding: 10px 5px;">${i + 1}</td>
-              <td style="padding: 10px 5px;">${l.product}</td>
+              <td style="padding: 10px 5px;">${l.product} ${l.flavor && l.flavor !== 'None' ? '(' + l.flavor + ')' : ''}</td>
               <td style="padding: 10px 5px; text-align: center;">${l.qty}</td>
-              <td style="padding: 10px 5px; text-align: right;">${l.rate.toLocaleString()}</td>
-              <td style="padding: 10px 5px; text-align: right;">${l.total.toLocaleString()}</td>
+              <td style="padding: 10px 5px; text-align: right;">${l.rate?.toLocaleString() || "0"}</td>
+              <td style="padding: 10px 5px; text-align: right;">${l.total?.toLocaleString() || "0"}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -78,24 +78,24 @@ export const getA4InvoiceHtml = (data: any) => {
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Gross Total:</span>
-            <span>${data.gross.toLocaleString()}</span>
+            <span>${data.gross?.toLocaleString() || "0"}</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Discount:</span>
-            <span>${data.discount.toLocaleString()}</span>
+            <span>${data.discount?.toLocaleString() || "0"}</span>
           </div>
           <hr style="border: 0; border-top: 2px solid #000; margin: 10px 0;" />
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; font-size: 16px;">
             <span>TOTAL BILL:</span>
-            <span>${data.net.toLocaleString()}</span>
+            <span>${data.net?.toLocaleString() || "0"}</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Total Paid:</span>
-            <span>${data.paid.toLocaleString()}</span>
+            <span>${data.paid?.toLocaleString() || "0"}</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Bakaya:</span>
-            <span>${data.balance.toLocaleString()}</span>
+            <span>${data.balance?.toLocaleString() || "0"}</span>
           </div>
         </div>
       </div>
@@ -107,8 +107,9 @@ export const getA4InvoiceHtml = (data: any) => {
             <p style="margin: 0 0 5px;">Signature: _______________________</p>
           </div>
           <div style="text-align: right; color: #555;">
-            <p style="margin: 0 0 3px;">Thank you for your business!</p>
-            <p style="margin: 0; font-size: 12px;">Software by Antigravity</p>
+            <p style="margin: 0 0 3px; font-family: 'Jameel Noori Nastaleeq', 'Nafees Web Naskh', 'Arial Unicode MS', sans-serif; font-size: 14px;" dir="rtl">نوٹ: کھلے اور خراب ہونے والے پروڈکٹس اور رسید کے بغیر پروڈکٹ کا کوئی کلیم نہیں ہوگا۔</p>
+              <p style="margin: 0 0 3px;">Thank you for your business!</p>
+            <p style="margin: 0; font-size: 12px;">Software by Ahmad Hassan Tanseel</p>
           </div>
         </div>
       </div>

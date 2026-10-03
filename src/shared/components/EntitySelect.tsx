@@ -5,37 +5,30 @@ import { QuickCreateModal } from './QuickCreateModal';
 interface EntitySelectProps {
   type: 'account' | 'product' | 'category' | 'area' | 'salesman';
   value: number | null | undefined;
-  onChange: (id: number) => void;
+  onChange: (id: number | null) => void;
   filter?: (entity: any) => boolean;
   className?: string;
   disabled?: boolean;
+  autoFocus?: boolean;
 }
 
-export const EntitySelect: React.FC<EntitySelectProps> = ({ type, value, onChange, filter, className, disabled }) => {
+export const EntitySelect: React.FC<EntitySelectProps> = ({ type, value, onChange, filter, className, disabled, autoFocus }) => {
   const { accounts = [], products = [], categories = [], areas = [], salesmen = [], fetchData } = useAppContext();
   const [showQuickCreate, setShowQuickCreate] = useState(false);
 
   const options = useMemo(() => {
     switch (type) {
       case 'account':
-        return (filter ? (accounts || []).filter(filter) : (accounts || [])).map(a => {
-          const area = areas.find(ar => ar.id === a.area_id)?.name;
-          const extras = [
-            `#${a.id}`,
-            area,
-            a.contact,
-            `Bal: ${a.current_balance}`
-          ].filter(Boolean).join(', ');
-          
-          return {
-            id: a.id,
-            label: `${a.name} (${extras})`
-          };
-        });
+          return (filter ? (accounts || []).filter(filter) : (accounts || [])).map(a => {
+            return {
+              id: a.id,
+              label: a.name
+            };
+          });
       case 'product':
         return (filter ? (products || []).filter(filter) : (products || [])).map(p => ({
           id: p.id,
-          label: `${p.name} (${p.code})`
+          label: `${p.name} ${p.flavor ? `[${p.flavor}] ` : ``}(${p.code})`
         }));
       case 'category':
         return (filter ? (categories || []).filter(filter) : (categories || [])).map(c => ({
@@ -60,6 +53,7 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({ type, value, onChang
   return (
     <div className={`relative ${className || ''}`}>
       <select
+        autoFocus={autoFocus}
         value={value ?? ''}
         onChange={(e) => {
           if (e.target.value === 'ADD_NEW') {

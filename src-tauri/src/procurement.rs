@@ -39,7 +39,7 @@ pub async fn process_purchase(
         Some(no) => no,
         None => {
             let row: Option<(String,)> = sqlx::query_as(
-                "SELECT invoice_number FROM invoices WHERE invoice_type = 'PURCHASE' ORDER BY id DESC LIMIT 1"
+                "SELECT invoice_number FROM invoices WHERE invoice_type = 'PURCHASE' AND invoice_number LIKE 'PUR-%' ORDER BY id DESC LIMIT 1"
             )
             .fetch_optional(&mut *tx)
             .await
@@ -102,7 +102,7 @@ pub async fn process_purchase(
                 .map_err(|e| e.to_string())?;
         }
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate, flavor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
@@ -110,6 +110,7 @@ pub async fn process_purchase(
             .bind(disc_per_unit)
             .bind(total_price)
             .bind(line.sale_rate.unwrap_or(0.0))
+            .bind(&line.flavor)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -164,7 +165,7 @@ pub async fn process_purchase(
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
-    Ok(format!("Purchase Invoice {} posted with id {}", inv_no, invoice_id))
+    Ok(inv_no.clone())
 }
 
 // 2. The MS Access "D vs R" Return Engine
@@ -263,7 +264,7 @@ pub async fn process_return(
                 .map_err(|e| e.to_string())?;
         }
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate, flavor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
@@ -271,6 +272,7 @@ pub async fn process_return(
             .bind(disc_per_unit)
             .bind(total_price)
             .bind(line.sale_rate.unwrap_or(0.0))
+            .bind(&line.flavor)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -301,5 +303,5 @@ pub async fn process_return(
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
-    Ok(format!("Processed successfully as {}!", if return_type == "D" { "Damage Write-off" } else { "Supplier Return" }))
+    Ok(inv_no.clone())
 }

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useGridNavigation } from '../../utils/useGridNavigation';
 import { useAppContext, InvoiceLine } from '../../app/context/AppContext';
 import { Plus, Trash2, Printer, Save, FileText } from 'lucide-react';
 import { generateInvoicePDF } from '../../utils/pdfGenerator';
@@ -23,15 +24,12 @@ export const PurchaseInvoicePanel: React.FC = () => {
 
   const supplierAccounts = accounts.filter(a => a.account_type_id === 4 || a.account_type_id === 1); // Suppliers & Cash
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  useGridNavigation(containerRef, () => addLine(), () => handleSave(false, false));
+
   const addLine = () => {
     setLines([...lines, { id: Math.random().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
   };
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.ctrlKey && e.key === 'Enter') {
-      addLine();
-    }
-  };
-
   const removeLine = (id: string) => {
     if (lines.length > 1) {
       setLines(lines.filter(l => l.id !== id));
@@ -71,7 +69,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = async (printAfter: boolean = false, isPDF: boolean = false) => {
     
     if (!accountId) { toast.error("Please select a supplier"); return; }
     if (lines.length === 0) { toast.error("Please add at least one line."); return; }
@@ -107,7 +105,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-4" ref={containerRef}>
       
       
 
@@ -120,7 +118,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
         <div className="grid grid-cols-4 gap-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Supplier *</label>
-            <EntitySelect type="account" value={accountId || 0} onChange={setAccountId} filter={a => a.is_supplier} />
+            <EntitySelect autoFocus type="account" value={accountId || 0} onChange={setAccountId} filter={a => a.is_supplier} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
@@ -150,7 +148,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
                 <th className="px-2 py-3 font-medium w-12 text-center">Del</th>
               </tr>
             </thead>
-                        <tbody className="divide-y divide-slate-100" onKeyDown={handleKeyDown}>
+                        <tbody className="divide-y divide-slate-100">
               {lines.map((line, index) => (
                 <tr key={line.id} className="hover:bg-slate-50">
                   <td className="px-2 py-2 text-center text-slate-400">{index + 1}</td>
@@ -254,43 +252,14 @@ export const PurchaseInvoicePanel: React.FC = () => {
           </div>
 
           <div className="flex gap-2">
-            <button onClick={() => {
-              const acc = accounts.find(a => a.id === accountId);
-              const accName = acc ? acc.name : 'Unknown Supplier';
-              const date = new Date().toISOString().split('T')[0];
-              printThermalReceipt({
-                  title: 'PURCHASE INVOICE',
-                  refNo: '',
-                  date: new Date().toLocaleDateString(),
-                  accountLabel: 'Supplier',
-                  accountName: accName,
-                  lines: lines.map(l => ({
-                    product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
-                    qty: l.qty || 0,
-                    rate: l.rate || 0,
-                    total: calculateLineTotal(l)
-                  })),
-                  gross: totalGross,
-                  discount: totalDiscount,
-                  net: totalNet,
-                  paid: amountReceivedCash + amountReceivedBank,
-                  balance: balance,
-                  paymentMethod: (amountReceivedCash > 0 && amountReceivedBank > 0) ? 'Cash & Bank' : (amountReceivedBank > 0 ? 'Payment in Bank' : (amountReceivedCash > 0 ? 'Payment via Cash' : 'Credit')),
-                  bankName: settings.find(s => s.key === 'bank_name')?.value || '_________________',
-                  accountTitle: settings.find(s => s.key === 'bank_account_title')?.value || '_________________',
-                  accountNumber: settings.find(s => s.key === 'bank_account_number')?.value || '_________________'
-                });
-            }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
-              <Printer className="h-4 w-4" /> Print
+            <button onClick={() => handleSave(true, false)} disabled={isSubmitting} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
+              <Printer className="h-4 w-4" /> Save & Print
             </button>
-            <button onClick={() => {
-              const acc = accounts.find(a => a.id === accountId);
-              generateInvoicePDF('PURCHASE', `PUR-${Date.now()}`, new Date().toISOString().split('T')[0], acc, lines as any, products, totalGross, totalDiscount, totalNet, (amountPaidCash + amountPaidBank));
-            }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
-              <FileText className="h-4 w-4" /> PDF
+            <button onClick={() => handleSave(true, true)} disabled={isSubmitting} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
+              <FileText className="h-4 w-4" /> Save & PDF
             </button>
-            <button onClick={handleSave} disabled={isSubmitting} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50">
-              <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save Bill'}
+            <button onClick={() => handleSave(false, false)} disabled={isSubmitting} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50">
+              <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save Only'}
             </button>
           </div>
         </div>

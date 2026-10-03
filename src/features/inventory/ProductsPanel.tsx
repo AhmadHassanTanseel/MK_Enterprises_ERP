@@ -18,11 +18,13 @@ export const ProductsPanel: React.FC = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [purchaseHistory, setPurchaseHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyFilterLimit, setHistoryFilterLimit] = useState<string>('all');
 
   const openHistory = async (prod: Product) => {
     setSelectedProduct(prod);
     setHistoryModalOpen(true);
     setLoadingHistory(true);
+    setHistoryFilterLimit('all');
     try {
       const data = await invoke('get_product_purchase_history', { productId: prod.id });
       setPurchaseHistory(data as any[]);
@@ -260,6 +262,43 @@ export const ProductsPanel: React.FC = () => {
                 <X className="h-6 w-6" />
               </button>
             </div>
+            
+            {!loadingHistory && purchaseHistory.length > 0 && (
+              <div className="px-6 py-4 bg-white flex flex-row justify-between items-center border-b border-slate-100 shadow-sm z-10 relative">
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-semibold text-slate-600">Average of:</label>
+                  <select 
+                    value={historyFilterLimit} 
+                    onChange={e => setHistoryFilterLimit(e.target.value)}
+                    className="p-1.5 border border-slate-300 rounded text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">All Previous Orders</option>
+                    <option value="5">Last 5 Orders</option>
+                    <option value="10">Last 10 Orders</option>
+                    <option value="20">Last 20 Orders</option>
+                  </select>
+                </div>
+                
+                {(() => {
+                  const limit = historyFilterLimit === 'all' ? purchaseHistory.length : Number(historyFilterLimit);
+                  const filtered = purchaseHistory.slice(0, limit);
+                  let totalQty = 0;
+                  let totalCost = 0;
+                  filtered.forEach(h => {
+                    totalQty += h.qty;
+                    totalCost += h.unit_price * h.qty;
+                  });
+                  const avg = totalQty > 0 ? (totalCost / totalQty) : 0;
+                  
+                  return (
+                    <div className="flex flex-col items-end">
+                      <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Weighted Average Unit Price</span>
+                      <span className="text-xl font-bold text-emerald-600">Rs. {avg.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
             <div className="p-6 overflow-auto flex-1 bg-slate-50">
               {loadingHistory ? (
                 <div className="text-center py-8 text-slate-500">Loading history...</div>
@@ -280,7 +319,7 @@ export const ProductsPanel: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {purchaseHistory.map((h, i) => (
+                      {(historyFilterLimit === 'all' ? purchaseHistory : purchaseHistory.slice(0, Number(historyFilterLimit))).map((h, i) => (
                         <tr key={i} className="hover:bg-slate-50">
                           <td className="px-4 py-3 text-slate-600">{new Date(h.invoice_date).toLocaleDateString()}</td>
                           <td className="px-4 py-3 font-mono text-xs">{h.invoice_no}</td>

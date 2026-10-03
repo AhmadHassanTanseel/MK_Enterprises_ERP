@@ -135,6 +135,7 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             unit_price REAL NOT NULL,
             discount_percent REAL DEFAULT 0.0,
             total_price REAL NOT NULL,
+            flavor TEXT,
             FOREIGN KEY(invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
             FOREIGN KEY(product_id) REFERENCES products(id)
         );

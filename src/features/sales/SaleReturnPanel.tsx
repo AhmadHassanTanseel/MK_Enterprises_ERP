@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { useGridNavigation } from '../../utils/useGridNavigation';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext, InvoiceLine } from '../../app/context/AppContext';
 import { Plus, Trash2, Save, CornerDownLeft, Printer, FileText, Search } from 'lucide-react';
@@ -52,6 +53,9 @@ export const SaleReturnPanel: React.FC = () => {
         toast.error('No invoice found with that number');
       }
     };
+  const containerRef = useRef<HTMLDivElement>(null);
+  useGridNavigation(containerRef, () => addLine(), () => handleSave(false, false));
+
   const addLine = () => setLines([...lines, { id: Math.random().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
   const removeLine = (id: string) => lines.length > 1 && setLines(lines.filter(l => l.id !== id));
 
@@ -84,7 +88,7 @@ export const SaleReturnPanel: React.FC = () => {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = async (printAfter: boolean = false, isPDF: boolean = false) => {
     
     if (!accountId) { toast.error("Please select a customer"); return; }
     if (lines.length === 0) { toast.error("Please add at least one line."); return; }
@@ -116,7 +120,7 @@ export const SaleReturnPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-4" ref={containerRef}>
       
       
       {/* Header */}
@@ -136,7 +140,8 @@ export const SaleReturnPanel: React.FC = () => {
                   accountName: accName,
                   lines: lines.map((l: any) => ({
                     product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
-                    qty: l.qty || 0,
+                flavor: l.flavor,
+                qty: l.qty || 0,
                     rate: l.rate || 0,
                     total: ((l.qty||0) * (l.rate||0)) - (l.discount||0)
                   })),
@@ -184,7 +189,7 @@ export const SaleReturnPanel: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Customer *</label>
-            <EntitySelect type="account" value={accountId || 0} onChange={setAccountId} filter={a => a.is_customer} />
+            <EntitySelect autoFocus type="account" value={accountId || 0} onChange={setAccountId} filter={a => a.is_customer} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useGridNavigation } from '../../utils/useGridNavigation';
 import { Plus, Trash2, Save, Printer, FileText } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
@@ -23,6 +24,15 @@ export const SaleInvoicePanel: React.FC = () => {
   const [customer_id, setCustomerId] = useState<number | null>(null);
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [salesman_id, setSalesmanId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (customer_id === null && accounts && accounts.length > 0) {
+      const walkIn = accounts.find(a => a.name.toLowerCase().includes('walk-in'));
+      if (walkIn) {
+        setCustomerId(walkIn.id);
+      }
+    }
+  }, [accounts]);
   
   const [lines, setLines] = useState<InvoiceLine[]>([
     { id: '1', product_id: null, qty: 1, rate: 0, discount: 0 }
@@ -43,14 +53,11 @@ export const SaleInvoicePanel: React.FC = () => {
   
   const balance = totalNet - (amountReceivedCash + amountReceivedBank);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  useGridNavigation(containerRef, () => addLine(), () => handleSave(false, false));
+
   const addLine = () => {
     setLines([...lines, { id: Date.now().toString(), product_id: null, qty: 1, rate: 0, discount: 0 }]);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.ctrlKey && e.key === 'Enter') {
-      addLine();
-    }
   };
 
   const removeLine = (id: string) => {
@@ -74,7 +81,7 @@ export const SaleInvoicePanel: React.FC = () => {
     }));
   };
 
-  const handleSave = async () => {
+  const handleSave = async (printAfter: boolean = false, isPDF: boolean = false) => {
     if (!customer_id) {
       toast.error('Customer is required');
       return;
@@ -88,15 +95,15 @@ export const SaleInvoicePanel: React.FC = () => {
     // Strict stock validation
     for (const line of validLines) {
       const product = products.find(p => p.id === line.product_id);
-      if (product && line.qty > (product.available_stock || 0)) {
-        toast.error(`Insufficient stock for ${product.name}. Available: ${product.available_stock || 0}, Requested: ${line.qty}`);
+      if (product && line.qty > (product.current_stock || 0)) {
+        toast.error(`Insufficient stock for ${product.name}. Available: ${product.current_stock || 0}, Requested: ${line.qty}`);
         return;
       }
     }
 
     try {
       setLoading(true);
-      await invoke('process_sale', {
+      const generatedInvNo: string = await invoke('process_sale', {
           accountId: customer_id,
           salesmanId: salesman_id,
           invoiceNumber: null,
@@ -112,10 +119,49 @@ export const SaleInvoicePanel: React.FC = () => {
             discount_percent: l.discount || 0, flavor: l.flavor
           }))
         });
-      toast.success('Sale Invoice Saved');
+      toast.success('Sale Invoice Saved: ' + generatedInvNo);
+      
+      
+        const bankName = settings.find(s => s.key === 'bank_name')?.value || '';
+        const accountTitle = settings.find(s => s.key === 'bank_account_title')?.value || '';
+        const accountNumber = settings.find(s => s.key === 'bank_account_number')?.value || '';
+        const paymentMethod = (typeof amountReceivedBank !== 'undefined' ? amountReceivedBank : (typeof amountPaidBank !== 'undefined' ? amountPaidBank : 0)) > 0 ? 'Bank' : 'Cash';
+
+        if (printAfter) {
+        const acc = accounts.find(a => a.id === customer_id);
+        const accName = acc ? acc.name : 'Walk-in Customer';
+        if (isPDF) {
+          generateInvoicePDF('SALE', generatedInvNo, invoiceDate, acc, lines as any, products, totalGross, totalDiscount, totalNet, (amountReceivedCash + amountReceivedBank), paymentMethod, bankName, accountTitle, accountNumber);
+        } else {
+          printThermalReceipt({
+            title: 'SALE INVOICE',
+            refNo: generatedInvNo,
+            date: invoiceDate,
+            accountLabel: 'Customer',
+            accountName: accName,
+            lines: lines.map((l: any) => ({
+              product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
+                flavor: l.flavor,
+                qty: l.qty || 0,
+              rate: l.rate || 0,
+              total: ((l.qty||0) * (l.rate||0)) - (l.discount||0)
+            })),
+            totalGross: totalGross,
+            totalDiscount: totalDiscount,
+            totalNet: totalNet,
+            amountReceived: amountReceivedCash + amountReceivedBank,
+            balance: totalNet - (amountReceivedCash + amountReceivedBank),
+              paymentMethod,
+              bankName,
+              accountTitle,
+              accountNumber
+            });
+        }
+      }
       
       // Reset form
-      setCustomerId(null);
+      const walkIn = accounts.find(a => a.name.toLowerCase().includes('walk-in'));
+      setCustomerId(walkIn ? walkIn.id : null);
       setSalesmanId(null);
       setLines([{ id: Date.now().toString(), product_id: null, qty: 1, rate: 0, discount: 0 }]);
       setAmountReceivedCash(0);
@@ -134,13 +180,13 @@ export const SaleInvoicePanel: React.FC = () => {
   const uniqueBrands = Array.from(new Set(products.map(p => p.name).filter(Boolean)));
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-4" ref={containerRef}>
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
         <h2 className="text-lg font-bold text-slate-800 mb-4">New Sale Invoice</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Customer / Walk-in *</label>
-            <EntitySelect type="account" value={customer_id || 0} onChange={setCustomerId} filter={a => a.is_customer} />
+            <EntitySelect autoFocus type="account" value={customer_id || 0} onChange={setCustomerId} filter={a => a.is_customer} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
@@ -173,7 +219,7 @@ export const SaleInvoicePanel: React.FC = () => {
                 <th className="px-4 py-2 font-semibold text-slate-600 text-center w-16">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100" onKeyDown={handleKeyDown}>
+            <tbody className="divide-y divide-slate-100">
               {lines.map((line, index) => {
                 const stock = products.find(p => p.id === line.product_id)?.current_stock || 0;
                 const lineTotal = (line.rate - (line.discount || 0)) * line.qty;
@@ -214,7 +260,7 @@ export const SaleInvoicePanel: React.FC = () => {
                       <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none focus:border-blue-500" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
                     </td>
                     <td className="px-4 py-2">
-                      <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none bg-slate-100 text-slate-500 cursor-not-allowed" value={line.rate === 0 ? 0 : line.rate || ''} readOnly title="Rate is auto-populated from product pricing" />
+                      <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none focus:border-blue-500" value={line.rate === 0 ? 0 : line.rate || ''} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
                     </td>
                     <td className="px-4 py-2">
                       <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none focus:border-blue-500" value={line.discount || ''} onChange={e => updateLine(line.id, 'discount', Number(e.target.value))} />
@@ -283,47 +329,14 @@ export const SaleInvoicePanel: React.FC = () => {
                 </div>
               </div>
             <div className="flex gap-2">
-              <button onClick={() => {
-                const acc = accounts.find(a => a.id === customer_id);
-                const accName = acc ? acc.name : 'Walk-in Customer';
-                const date = new Date().toISOString().split('T')[0];
-                printThermalReceipt({
-                  title: 'SALE INVOICE',
-                  refNo: '',
-                  date: new Date().toLocaleDateString(),
-                  accountLabel: 'Customer',
-                  accountName: accName,
-                  lines: lines.map((l: any) => ({
-                    product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
-                    qty: l.qty || 0,
-                    rate: l.rate || 0,
-                    total: ((l.qty||0) * (l.rate||0)) - (l.discount||0)
-                  })),
-                  gross: totalGross,
-                  discount: totalDiscount,
-                  net: totalNet,
-                  paid: amountReceivedCash + amountReceivedBank,
-                  balance: balance,
-                  paymentMethod: (amountReceivedCash > 0 && amountReceivedBank > 0) ? 'Cash & Bank' : (amountReceivedBank > 0 ? 'Payment in Bank' : (amountReceivedCash > 0 ? 'Payment via Cash' : 'Credit')),
-                  bankName: settings.find(s => s.key === 'bank_name')?.value || '_________________',
-                  accountTitle: settings.find(s => s.key === 'bank_account_title')?.value || '_________________',
-                  accountNumber: settings.find(s => s.key === 'bank_account_number')?.value || '_________________'
-                });
-              }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
-                <Printer className="h-4 w-4" /> Print
+              <button onClick={() => handleSave(true, false)} disabled={loading} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
+                <Printer className="h-4 w-4" /> Save & Print
               </button>
-              <button onClick={() => {
-                const acc = accounts.find(a => a.id === customer_id);
-                generateInvoicePDF('SALE', `INV-${Date.now()}`, new Date().toISOString().split('T')[0], acc, lines as any, products, totalGross, totalDiscount, totalNet, (amountReceivedCash + amountReceivedBank));
-              }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
-                <FileText className="h-4 w-4" /> PDF
+              <button onClick={() => handleSave(true, true)} disabled={loading} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors">
+                <FileText className="h-4 w-4" /> Save & PDF
               </button>
-              <button 
-                onClick={handleSave} 
-                disabled={loading}
-                className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
-              >
-                <Save className="h-4 w-4" /> {loading ? 'Saving...' : 'Save Invoice'}
+              <button onClick={() => handleSave(false, false)} disabled={loading} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50">
+                <Save className="h-4 w-4" /> Save Only
               </button>
             </div>
           </div>

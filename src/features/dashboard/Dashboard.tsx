@@ -13,9 +13,9 @@ export const Dashboard: React.FC = () => {
 
   // The 8 specific shortcuts (removed Category)
   const quickNav = [
-    { label: "Payables & Receivables", icon: UsersIcon, to: "/other-accounts?tab=payables_receivables", color: "bg-emerald-100 text-emerald-700" },
     { label: "Sales Invoice", icon: FileText, to: "/sales", color: "bg-blue-100 text-blue-700" },
     { label: "Purchase", icon: ShoppingCart, to: "/purchases", color: "bg-teal-100 text-teal-700" },
+    { label: "Payables & Receivables", icon: UsersIcon, to: "/other-accounts?tab=payables_receivables", color: "bg-emerald-100 text-emerald-700" },
     { label: "New Product", icon: PlusCircle, to: "/product?tab=products&new=true", color: "bg-purple-100 text-purple-700" },
     { label: "Sales Return", icon: CornerDownLeft, to: "/sale-return", color: "bg-red-100 text-red-700" },
     { label: "Purchase Return", icon: CornerUpRight, to: "/purchase-return", color: "bg-indigo-100 text-indigo-700" },

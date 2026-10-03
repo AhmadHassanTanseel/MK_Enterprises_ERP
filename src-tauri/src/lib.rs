@@ -117,6 +117,7 @@ pub fn run() {
             // Admin & utilities
             // Backup
             get_hardware_id,
+            verify_license,
             perform_backup,
             restore_database,
             create_system_backup,

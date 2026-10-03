@@ -75,22 +75,25 @@ export const generateInvoicePDF = async (
       bankName,
       accountTitle,
       accountNumber,
-      lines: lines.map((line) => {
-        const product = products.find(p => p.id === line.product_id);
-        const gross = line.qty * line.rate;
-        const net = gross - (gross * (line.discount_pct / 100));
-        return {
-          product: product ? product.name : 'Unknown Product',
-          qty: line.qty,
-          rate: line.rate,
-          total: net
-        };
-      }),
-      gross: grossAmount,
-      discount: discountAmount,
-      net: netAmount,
-      paid: amountPaid,
-      balance: netAmount - amountPaid
+      lines: lines.map((line: any) => {
+          const product = products.find((p: any) => p.id === line.product_id);
+          const lineQty = line.qty || line.quantity || 0;
+          const lineRate = line.rate || line.pur_rate || line.unit_price || 0;
+          const lineDiscount = line.discount_pct || line.discount || line.discount_percent || 0;
+          const gross = lineQty * lineRate;
+          const net = line.amount || line.net || line.total_price || (gross - (gross * (lineDiscount / 100)));
+          return {
+            product: product ? product.name : 'Unknown Product',
+            qty: lineQty,
+            rate: lineRate,
+            total: net
+          };
+        }),
+      gross: grossAmount || 0,
+        discount: discountAmount || 0,
+        net: netAmount || 0,
+        paid: amountPaid || 0,
+        balance: (netAmount || 0) - (amountPaid || 0)
     };
     
     // Create hidden div
@@ -230,3 +233,79 @@ export const generateGenericReportPDF = async (
 
   await savePdf(doc, `${report.title.replace(/ /g, '_')}_${fromDate}_to_${toDate}.pdf`, 'Document');
 };
+
+export async function generateFinancialStatementPDF(
+  summary: any,
+  startDate: string,
+  endDate: string
+) {
+  const doc = new jsPDF({ format: 'a4', unit: 'mm' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  
+  // Header
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Mian Khan Traders', pageWidth / 2, 20, { align: 'center' });
+  
+  doc.setFontSize(16);
+  doc.text('Financial Statement', pageWidth / 2, 30, { align: 'center' });
+  
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  let dateText = 'For all time';
+  if (startDate && endDate) dateText = `For the period: ${startDate} to ${endDate}`;
+  else if (startDate) dateText = `From ${startDate}`;
+  else if (endDate) dateText = `Up to ${endDate}`;
+  doc.text(dateText, pageWidth / 2, 38, { align: 'center' });
+
+  // Income Statement
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Income Statement (Profit & Loss)', 14, 55);
+
+  autoTable(doc, {
+    startY: 60,
+    head: [['Description', 'Amount (Rs)']],
+    body: [
+      ['Total Revenue', summary.total_revenue.toLocaleString()],
+      ['Total Expenses', summary.total_expenses.toLocaleString()],
+    ],
+    foot: [
+      ['Net Profit', summary.net_profit.toLocaleString()]
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: [41, 128, 185], fontStyle: 'bold' },
+    footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+  });
+
+  // Balance Sheet
+  let finalY = (doc as any).lastAutoTable.finalY || 60;
+  
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Balance Sheet', 14, finalY + 15);
+
+  autoTable(doc, {
+    startY: finalY + 20,
+    head: [['Assets', 'Amount (Rs)', 'Liabilities & Equity', 'Amount (Rs)']],
+    body: [
+      ['Total Assets', summary.total_assets.toLocaleString(), 'Total Liabilities', summary.total_liabilities.toLocaleString()],
+      ['', '', 'Total Equity (incl. Net Profit)', summary.total_equity.toLocaleString()],
+    ],
+    foot: [
+      ['Total', summary.total_assets.toLocaleString(), 'Total', (summary.total_liabilities + summary.total_equity).toLocaleString()]
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: [41, 128, 185], fontStyle: 'bold' },
+    footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+  });
+  
+  const generatedAt = new Date().toLocaleString();
+  finalY = (doc as any).lastAutoTable.finalY || 150;
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'italic');
+  doc.text(`Generated automatically by Business Management System on ${generatedAt}`, 14, finalY + 20);
+
+  const safeDate = new Date().toISOString().split('T')[0];
+  await savePdf(doc, `Financial_Statement_${safeDate}.pdf`, 'Financial Statement');
+}
