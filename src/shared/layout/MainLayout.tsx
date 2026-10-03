@@ -171,7 +171,7 @@ export const MainLayout: React.FC = () => {
             </nav>
           </div>
           <div className="p-4 bg-slate-950 text-xs text-slate-500 text-center border-t border-slate-800">
-            v2.0.0 Production Build
+            v4.1.2 © MIAS Solutions. All rights reserved.
           </div>
         </div>
       )}
