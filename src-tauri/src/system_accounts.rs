@@ -2,6 +2,7 @@ use sqlx::SqlitePool;
 
 pub struct SystemAccounts {
     pub cash: i64,
+    pub bank: i64,
     pub sales_revenue: i64,
     pub purchases: i64,
     pub damage_loss: i64,
@@ -25,6 +26,7 @@ async fn config_account_id(pool: &SqlitePool, key: &str, default: i64) -> Result
 pub async fn get_system_accounts(pool: &SqlitePool) -> Result<SystemAccounts, String> {
     Ok(SystemAccounts {
         cash: config_account_id(pool, "cash_account_id", 1).await?,
+        bank: config_account_id(pool, "bank_account_id", 6).await?,
         sales_revenue: config_account_id(pool, "sales_revenue_account_id", 3).await?,
         purchases: config_account_id(pool, "purchases_account_id", 4).await?,
         damage_loss: config_account_id(pool, "damage_loss_account_id", 5).await?,

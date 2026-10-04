@@ -172,9 +172,9 @@ pub async fn process_sale_internal(
     }
 
     if amount_received_bank > 0.0 {
-        let bank_account_id = 99; // Fixed Bank Account ID
+        
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS')")
-            .bind(bank_account_id).bind(amount_received_bank).bind(invoice_id)
+            .bind(accounts.bank).bind(amount_received_bank).bind(invoice_id)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
         
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS')")
@@ -480,9 +480,9 @@ pub async fn settle_dispatch(
 
         // Handle Bank Received
         if bank_val > 0.0 {
-            let bank_account_id = 99; // Fixed Bank Account ID
+            
             sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Received at Settlement')")
-                .bind(bank_account_id).bind(bank_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+                .bind(accounts.bank).bind(bank_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
             
             sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'BANK_RECEIPT', ?, 'Bank Received at Settlement')")
                 .bind(target_account).bind(bank_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;

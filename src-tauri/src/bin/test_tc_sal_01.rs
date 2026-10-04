@@ -41,7 +41,7 @@ async fn main() {
 
     let mut passed = false;
     for (acc, deb, _cred) in &rows {
-        if *acc == 99 && *deb == 100.0 {
+        if *acc == 6 && *deb == 100.0 {
             passed = true;
         }
     }

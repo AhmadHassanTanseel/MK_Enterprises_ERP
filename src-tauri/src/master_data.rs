@@ -558,7 +558,7 @@ pub async fn create_system_backup(
     app_handle: tauri::AppHandle,
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
-    let result = crate::backup::perform_backup(app_handle)?;
+    let result = crate::backup::perform_backup(app_handle, &*db).await?;
     crate::audit::log_audit(&db, &format!("Database backup created"), "Admin").await?;
     Ok(result)
 }

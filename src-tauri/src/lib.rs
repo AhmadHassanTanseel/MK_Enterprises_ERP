@@ -118,7 +118,6 @@ pub fn run() {
             // Backup
             get_hardware_id,
             verify_license,
-            perform_backup,
             restore_database,
             create_system_backup,
             execute_factory_reset,
@@ -127,7 +126,8 @@ pub fn run() {
             add_company_asset,
             sell_company_asset,
             get_settings,
-            save_setting
+            save_setting,
+            restart_app
         ])
         .setup(|mut app| {
             let _ = trial::enforce_trial(&mut app);

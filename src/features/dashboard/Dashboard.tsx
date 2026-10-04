@@ -104,7 +104,7 @@ export const Dashboard: React.FC = () => {
         if (isToday) cashToday += net;
         if (isWeek) cashWeek += net;
         if (isMonth) cashMonth += net;
-      } else if (entry.account_id === 99) {
+      } else if (entry.account_id === 6) {
         bankAllTime += net;
         if (isToday) bankToday += net;
         if (isWeek) bankWeek += net;

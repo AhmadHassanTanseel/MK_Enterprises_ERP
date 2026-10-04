@@ -2,8 +2,10 @@ use std::fs;
 use tauri::AppHandle;
 use tauri::Manager;
 
-#[tauri::command]
-pub fn perform_backup(app_handle: AppHandle) -> Result<String, String> {
+pub async fn perform_backup(app_handle: AppHandle, db: &sqlx::SqlitePool) -> Result<String, String> {
+    // Force WAL checkpoint before backup so the .db file contains all data
+    let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE);").execute(db).await;
+
     let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
     let db_path = app_dir.join("mk_enterprises_v2.db");
     let backup_dir = app_dir.join("backups");
@@ -37,7 +39,7 @@ pub async fn restore_database(
     }
 
     // Backup current DB
-    perform_backup(app_handle.clone())?;
+    let _ = perform_backup(app_handle.clone(), &*db).await;
 
     let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
     let db_path = app_dir.join("mk_enterprises_v2.db");

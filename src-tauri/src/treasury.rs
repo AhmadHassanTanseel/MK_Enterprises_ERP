@@ -52,7 +52,7 @@ pub async fn process_cash_transaction(
         is_bank = true;
     }
 
-    let treasury_account_id = if is_bank { 99 } else { accounts.cash };
+    let treasury_account_id = if is_bank { accounts.bank } else { accounts.cash };
     let voucher_type = if is_bank {
         if trans_type == "RECEIVE" { "BANK_RECEIPT" } else { "BANK_PAYMENT" }
     } else {

@@ -1238,6 +1238,8 @@ pub async fn get_financial_summary(
 
 
 async fn run_bankbook_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
+    let accounts = crate::system_accounts::get_system_accounts(pool).await?;
+    let bank_id = accounts.bank;
     let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "je.entry_date");
     
     let sql = format!(
@@ -1250,7 +1252,7 @@ async fn run_bankbook_report(pool: &SqlitePool, filters: &ReportFilters) -> Resu
             je.debit, 
             je.credit 
         FROM journal_entries je
-        WHERE je.account_id = 99 {date_clause}
+        WHERE je.account_id = {bank_id} {date_clause}
         ORDER BY je.id ASC
         "#
     );

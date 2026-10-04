@@ -24,6 +24,27 @@ pub async fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Sqlite
     create_full_schema(&pool).await?;
     run_migrations(&pool).await?;
 
+    // ENFORCE SYSTEM ACCOUNTS EXISTENCE REGARDLESS OF MIGRATION STATE
+    // This protects against half-wiped databases that lost data but kept migration records
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO accounts (id, account_type_id, name, is_customer, is_supplier) VALUES 
+        (1, 1, 'Cash in Drawer', 0, 0),
+        (2, 2, 'Walk-in Customer', 1, 0),
+        (3, 5, 'General Sales Revenue', 0, 0),
+        (4, 6, 'General Purchases', 0, 1),
+        (5, 8, 'Damage Loss Account', 0, 0),
+        (6, 1, 'Default Bank Account', 0, 0);"
+    ).execute(&pool).await;
+
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO system_config (key, value) VALUES 
+        ('cash_account_id', '1'),
+        ('bank_account_id', '6'),
+        ('sales_revenue_account_id', '3'),
+        ('purchases_account_id', '4'),
+        ('damage_loss_account_id', '5');"
+    ).execute(&pool).await;
+
     Ok(pool)
 }
 
@@ -235,12 +256,13 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         (15, 'Staff / Employee', 'LIABILITY', 'CREDIT', 15);
 
         -- SEED DEFAULT SYSTEM ACCOUNTS
-        INSERT OR IGNORE INTO accounts (id, account_type_id, name) VALUES 
-        (1, 1, 'Cash in Drawer'),
-        (2, 2, 'Walk-in Customer'),
-        (3, 5, 'General Sales Revenue'),
-        (4, 6, 'General Purchases'),
-        (5, 8, 'Damage Loss Account');
+        INSERT OR IGNORE INTO accounts (id, account_type_id, name, is_customer, is_supplier) VALUES 
+        (1, 1, 'Cash in Drawer', 0, 0),
+        (2, 2, 'Walk-in Customer', 1, 0),
+        (3, 5, 'General Sales Revenue', 0, 0),
+        (4, 6, 'General Purchases', 0, 1),
+        (5, 8, 'Damage Loss Account', 0, 0),
+        (6, 1, 'Default Bank Account', 0, 0);
     "#;
 
     sqlx::query(schema)
@@ -317,6 +339,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
     if current < 9 {
         migration_009_sale_rate(pool).await?;
         record_migration(pool, 9).await?;
+    }
+    
+    if current < 10 {
+        migration_010_bank_account(pool).await?;
+        record_migration(pool, 10).await?;
+    }
+    
+    if current < 11 {
+        migration_011_dispatch_customer_id(pool).await?;
+        record_migration(pool, 11).await?;
+    }
+    
+    if current < 12 {
+        migration_012_fix_system_accounts(pool).await?;
+        record_migration(pool, 12).await?;
     }
 
     Ok(())
@@ -559,6 +596,7 @@ async fn migration_007_features(pool: &sqlx::SqlitePool) -> Result<(), String> {
         CREATE TABLE IF NOT EXISTS dispatches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             salesman_id INTEGER NOT NULL,
+            customer_id INTEGER DEFAULT 0,
             dispatch_date DATETIME DEFAULT CURRENT_TIMESTAMP,
             status TEXT NOT NULL DEFAULT 'PENDING',
             notes TEXT,
@@ -622,5 +660,28 @@ async fn migration_009_sale_rate(pool: &sqlx::SqlitePool) -> Result<(), String> 
     if !column_exists(pool, "invoice_items", "sale_rate").await? {
         sqlx::query("ALTER TABLE invoice_items ADD COLUMN sale_rate REAL DEFAULT 0.0").execute(pool).await.map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+async fn migration_010_bank_account(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query("INSERT OR IGNORE INTO accounts (id, account_type_id, name) VALUES (6, 1, 'Default Bank Account')")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+        
+    sqlx::query("INSERT OR IGNORE INTO system_config (key, value) VALUES ('bank_account_id', '6')")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+        
+    Ok(())
+}
+
+async fn migration_011_dispatch_customer_id(pool: &SqlitePool) -> Result<(), String> {
+    if !column_exists(pool, "dispatches", "customer_id").await? {
+        sqlx::query("ALTER TABLE dispatches ADD COLUMN customer_id INTEGER DEFAULT 0").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+async fn migration_012_fix_system_accounts(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query("UPDATE accounts SET is_customer = 1 WHERE id = 2").execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE accounts SET is_supplier = 1 WHERE id = 4").execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
