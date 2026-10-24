@@ -18,9 +18,15 @@ export const PurchaseInvoicePanel: React.FC = () => {
   const [amountPaidCash, setAmountPaidCash] = useState<number>(0);
   const [amountPaidBank, setAmountPaidBank] = useState<number>(0);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
-  
-  
-  
+
+  useEffect(() => {
+    if (!selectedBankId && accounts.length > 0) {
+      const defaultBank = accounts.find(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name);
+      if (defaultBank) {
+        setSelectedBankId(defaultBank.id);
+      }
+    }
+  }, [accounts, selectedBankId]);
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [supplierRef, setSupplierRef] = useState<string>('');
 
@@ -244,14 +250,12 @@ export const PurchaseInvoicePanel: React.FC = () => {
                   onChange={e => setAmountPaidBank(Number(e.target.value))}
                 />
               </div>
-              {amountPaidBank > 0 && (
                 <div className="pt-2 border-t border-slate-200">
                   <BankAccountSelect 
                     value={selectedBankId} 
                     onChange={setSelectedBankId} 
                   />
                 </div>
-              )}
             </div>
             <div className="flex justify-between text-sm border-t border-slate-100 mt-2 pt-2">
               <span className="text-slate-600 font-medium">Balance Payable:</span>

@@ -140,20 +140,6 @@ export function printThermalReceipt(data: ReceiptData) {
         ${data.deliveryDate ? `<div><span class="font-bold">Delivery Date:</span> ${data.deliveryDate}</div>` : ''}
       </div>
 
-      <div class="mb-2 border-top border-bottom">
-        <div class="grid-2">
-          <span class="font-bold">Payment Method:</span> 
-          <span>${data.paymentMethod || 'Cash'}</span>
-        </div>
-        <div class="mt-1" style="font-size: 13px;
-            font-weight: 600;">
-          <div><strong>For online payment</strong></div>
-          <div>Account: ${data.accountTitle && data.accountTitle !== '_________________' ? data.accountTitle : '_________________'}</div>
-          <div>Bank: ${data.bankName && data.bankName !== '_________________' ? data.bankName : '_________________'}</div>
-          <div>Account number: ${data.accountNumber && data.accountNumber !== '_________________' ? data.accountNumber : '_________________'}</div>
-        </div>
-      </div>
-      
       <!-- Line Items -->
       <div class="border-bottom">
         <table>

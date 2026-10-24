@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
 import { AttendanceComponent } from './AttendanceComponent';
+import { BankAccountSelect } from '../../shared/components/BankAccountSelect';
 
 export const OtherAccountsPanel: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -197,6 +198,7 @@ export const OtherAccountsPanel: React.FC = () => {
   const [settleAmount, setSettleAmount] = useState<number | ''>('');
   const [settleNotes, setSettleNotes] = useState('');
   const [settleMethod, setSettleMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [settleBankId, setSettleBankId] = useState<number | null>(null);
 
 
 
@@ -205,6 +207,7 @@ export const OtherAccountsPanel: React.FC = () => {
     setSettleAction(suggestedAction);
     setSettleAmount('');
       setSettleMethod('CASH');
+    setSettleBankId(null);
     setSettleNotes('');
     setSettleModalOpen(true);
   };
@@ -213,31 +216,17 @@ export const OtherAccountsPanel: React.FC = () => {
     if (!settleAccount || !settleAmount || Number(settleAmount) <= 0) return;
     setIsSubmitting(true);
     try {
-      if (settleAction === 'receive') {
-        // We receive cash: Debit Cash, Credit Account
-        await invoke('process_cash_transaction', {
-          transType: 'RECEIVE',
-          accountId: settleAccount.id,
-          amount: Number(settleAmount),
-          transDate: new Date().toISOString().split('T')[0],
-          description: settleNotes,
-          paymentMethod: settleMethod,
-          refNo: null,
-          attachmentPath: null
-        });
-      } else {
-        // We pay cash: Credit Cash, Debit Account
-        await invoke('process_cash_transaction', {
-          transType: 'PAYMENT',
-          accountId: settleAccount.id,
-          amount: Number(settleAmount),
-          transDate: new Date().toISOString().split('T')[0],
-          description: settleNotes,
-          paymentMethod: settleMethod,
-          refNo: null,
-          attachmentPath: null
-        });
-      }
+      await invoke('process_cash_transaction', {
+        transType: settleAction === 'receive' ? 'RECEIVE' : 'PAYMENT',
+        accountId: settleAccount.id,
+        amount: Number(settleAmount),
+        transDate: new Date().toISOString().split('T')[0],
+        description: settleNotes,
+        paymentMethod: settleMethod,
+        refNo: null,
+        attachmentPath: null,
+        bankAccountId: settleMethod === 'BANK' ? settleBankId : null
+      });
       toast.success('Settlement saved successfully!');
       setSettleModalOpen(false);
       await fetchData();
@@ -318,6 +307,8 @@ export const OtherAccountsPanel: React.FC = () => {
   const [expCategory, setExpCategory] = useState('');
   const [expAmount, setExpAmount] = useState<number | ''>('');
   const [expDesc, setExpDesc] = useState('');
+  const [expPaymentMethod, setExpPaymentMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [expBankId, setExpBankId] = useState<number | null>(null);
   const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -408,14 +399,13 @@ export const OtherAccountsPanel: React.FC = () => {
         await fetchData(); // Refresh accounts in context
       }
       
-      // Cash Account is usually ID 1 (Cash Drawer)
-      const cashAccountId = 1;
+      const creditAccountId = expPaymentMethod === 'BANK' && expBankId ? expBankId : 1;
       
       await postJournalEntry(
         expDate,
         [
           { accountId: accId as number, entryType: 'DR', amount: Number(expAmount), description: expDesc },
-          { accountId: cashAccountId, entryType: 'CR', amount: Number(expAmount), description: expDesc }
+          { accountId: creditAccountId, entryType: 'CR', amount: Number(expAmount), description: expDesc }
         ],
         `Expense: ${expCategory} - ${expDesc}`
       );
@@ -702,6 +692,34 @@ export const OtherAccountsPanel: React.FC = () => {
                     className="w-full border border-slate-300 rounded p-2 outline-none focus:border-blue-500" 
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method (ادائیگی کا طریقہ)</label>
+                  <div className="flex bg-slate-100 p-1 rounded border border-slate-200">
+                    <button 
+                      type="button"
+                      className={`flex-1 py-1.5 text-sm font-medium rounded ${expPaymentMethod === 'CASH' ? 'bg-white shadow text-emerald-600 font-bold' : 'text-slate-500'}`}
+                      onClick={() => setExpPaymentMethod('CASH')}
+                    >
+                      Cash (کیش دراز)
+                    </button>
+                    <button 
+                      type="button"
+                      className={`flex-1 py-1.5 text-sm font-medium rounded ${expPaymentMethod === 'BANK' ? 'bg-white shadow text-blue-600 font-bold' : 'text-slate-500'}`}
+                      onClick={() => setExpPaymentMethod('BANK')}
+                    >
+                      Bank (بینک کھاتہ)
+                    </button>
+                  </div>
+                </div>
+
+                {expPaymentMethod === 'BANK' && (
+                  <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                    <BankAccountSelect 
+                      value={expBankId} 
+                      onChange={setExpBankId} 
+                    />
+                  </div>
+                )}
                 <button 
                   onClick={handleAddExpense} 
                   disabled={isSubmitting}
@@ -1328,6 +1346,15 @@ export const OtherAccountsPanel: React.FC = () => {
                           </div>
                         </div>
                       </div>
+
+                      {settleMethod === 'BANK' && (
+                        <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                          <BankAccountSelect 
+                            value={settleBankId} 
+                            onChange={setSettleBankId} 
+                          />
+                        </div>
+                      )}
 
 
                     <div>

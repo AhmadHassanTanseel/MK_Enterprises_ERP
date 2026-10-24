@@ -1234,36 +1234,44 @@ pub async fn get_financial_summary(
 
 
 async fn run_bankbook_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
-    let accounts = crate::system_accounts::get_system_accounts(pool).await?;
-    let bank_id = accounts.bank;
     let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "je.entry_date");
     
+    let (account_filter, title_suffix) = if let Some(aid) = filters.account_id {
+        let acc_name: Option<String> = sqlx::query_scalar("SELECT name FROM accounts WHERE id = ?").bind(aid).fetch_optional(pool).await.unwrap_or(None);
+        (format!("je.account_id = {aid}"), format!(" - {}", acc_name.unwrap_or_else(|| format!("Account #{}", aid))))
+    } else {
+        ("((a.account_type_id = 1 AND a.id != 1) OR a.bank_name IS NOT NULL)".to_string(), " - All Banks".to_string())
+    };
+
     let sql = format!(
         r#"
         SELECT 
             datetime(je.entry_date, 'localtime') as entry_date, 
+            a.name as bank_name,
             je.voucher_type, 
             je.ref_no,
             je.narration, 
             je.debit, 
             je.credit 
         FROM journal_entries je
-        WHERE je.account_id = {bank_id} {date_clause}
+        JOIN accounts a ON a.id = je.account_id
+        WHERE {account_filter} {date_clause}
         ORDER BY je.id ASC
         "#
     );
     
-    let raw_rows: Vec<(String, String, Option<String>, Option<String>, f64, f64)> = sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let raw_rows: Vec<(String, String, String, Option<String>, Option<String>, f64, f64)> = sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
     
     let mut rows = Vec::new();
     let mut tot_dr = 0.0;
     let mut tot_cr = 0.0;
     
-    for (dt, vt, ref_no, nar, dr, cr) in raw_rows {
+    for (dt, bank, vt, ref_no, nar, dr, cr) in raw_rows {
         tot_dr += dr;
         tot_cr += cr;
         rows.push(vec![
             dt,
+            bank,
             ref_no.unwrap_or_default(),
             vt,
             nar.unwrap_or_default(),
@@ -1273,13 +1281,13 @@ async fn run_bankbook_report(pool: &SqlitePool, filters: &ReportFilters) -> Resu
     }
     
     Ok(ReportResult {
-        title: "Bank Book (Accounts)".to_string(),
-        headers: vec!["Date".to_string(), "Ref No".to_string(), "Type".to_string(), "Narration".to_string(), "Debit (In)".to_string(), "Credit (Out)".to_string()],
+        title: format!("Bank Book{}", title_suffix),
+        headers: vec!["Date".to_string(), "Bank Account".to_string(), "Ref No".to_string(), "Type".to_string(), "Narration".to_string(), "Deposit (In)".to_string(), "Withdrawal (Out)".to_string()],
         rows,
         totals: vec![
-            ReportTotal { label: "Total In (Rs)".to_string(), value: tot_dr },
-            ReportTotal { label: "Total Out (Rs)".to_string(), value: tot_cr },
-            ReportTotal { label: "Net Bank Balance (Rs)".to_string(), value: tot_dr - tot_cr },
+            ReportTotal { label: "Total Inflows (Rs)".to_string(), value: tot_dr },
+            ReportTotal { label: "Total Outflows (Rs)".to_string(), value: tot_cr },
+            ReportTotal { label: "Net Closing Balance (Rs)".to_string(), value: tot_dr - tot_cr },
         ],
     })
 }

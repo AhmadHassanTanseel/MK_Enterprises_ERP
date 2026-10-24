@@ -4,9 +4,8 @@ export const getA4InvoiceHtml = (data: any) => {
       
       <!-- Header -->
       <div style="text-align: center; margin-bottom: 20px;">
-        <h1 style="margin: 0; font-size: 32px; font-weight: bold; font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', serif;" dir="rtl">میاں خان ٹریڈرز</h1>
-        <p style="margin: 5px 0 0; font-size: 14px;" dir="rtl">نزد نیشنل بینک جھنگ چنیوٹ روڈ بھوانہ</p>
-        <p style="margin: 5px 0 0; font-size: 14px;" dir="rtl">حاجی میاں خان 5973612-0345</p>
+        <h1 style="margin: 0; font-size: 32px; font-weight: bold; font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', serif;" dir="rtl">زوار ٹریڈرز</h1>
+        <p style="margin: 5px 0 0; font-size: 14px;" dir="rtl">ہول سیل ڈیلر اینڈ جنرل آرڈر سپلائر</p>
       </div>
 
       <hr style="border: 0; border-top: 2px solid #000; margin: 20px 0;" />

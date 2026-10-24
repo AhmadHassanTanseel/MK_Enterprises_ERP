@@ -38,10 +38,11 @@ export const ReportPanel: React.FC = () => {
       const expTypeIds = accountTypes.filter(t => t.nature === 'EXPENSE').map(t => t.id);
       return accounts.filter(a => expTypeIds.includes(a.account_type_id));
     }
-    if (reportType === 'CASHBOOK' || reportType === 'BANKBOOK') {
-       // Typically you filter by bank/cash types, but let's just show assets or all for now
-       const assetTypeIds = accountTypes.filter(t => t.nature === 'ASSET').map(t => t.id);
-       return accounts.filter(a => assetTypeIds.includes(a.account_type_id));
+    if (reportType === 'BANKBOOK') {
+      return accounts.filter(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name);
+    }
+    if (reportType === 'CASHBOOK') {
+      return accounts.filter(a => a.account_type_id === 1 && a.id === 1);
     }
     return accounts;
   }, [accounts, accountTypes, reportType]);
@@ -132,10 +133,16 @@ export const ReportPanel: React.FC = () => {
             <input type="date" className="w-full border border-slate-300 rounded-md p-2" value={toDate} onChange={e => setToDate(e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Account Filter</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {reportType === 'BANKBOOK' ? 'Bank Account Filter (بینک کھاتہ)' : 'Account Filter'}
+            </label>
             <select className="w-full border border-slate-300 rounded-md p-2" value={accountId || ''} onChange={e => setAccountId(Number(e.target.value) || null)}>
-              <option value="">-- All Accounts --</option>
-              {filteredAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              <option value="">{reportType === 'BANKBOOK' ? '-- All Bank Accounts (تمام بینک کھاتے) --' : '-- All Accounts --'}</option>
+              {filteredAccounts.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.bank_name ? `${a.bank_name} - ${a.name}` : a.name}
+                </option>
+              ))}
             </select>
           </div>
         </div>

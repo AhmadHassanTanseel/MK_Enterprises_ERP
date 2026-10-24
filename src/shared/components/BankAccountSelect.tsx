@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
 import { useAppContext } from '../../app/context/AppContext';
 
@@ -28,6 +28,12 @@ export const BankAccountSelect: React.FC<BankAccountSelectProps> = ({
     }
     return bankAccounts[0];
   }, [value, bankAccounts]);
+
+  useEffect(() => {
+    if (!value && bankAccounts.length > 0) {
+      onChange(bankAccounts[0].id);
+    }
+  }, [value, bankAccounts, onChange]);
 
   return (
     <div className={`space-y-1.5 ${className}`}>

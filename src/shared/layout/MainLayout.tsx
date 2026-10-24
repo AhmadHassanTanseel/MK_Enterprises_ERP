@@ -200,8 +200,8 @@ export const MainLayout: React.FC = () => {
               )}
 
             <div className="flex flex-col">
-              <span className="font-bold text-slate-800 text-lg leading-tight">میاں خان ٹریڈرز</span>
-              <span className="text-xs text-slate-500 font-medium" dir="rtl">نزد نیشنل بینک جھنگ چنیوٹ روڈ بھوانہ</span>
+              <span className="font-bold text-slate-800 text-lg leading-tight">زوار ٹریڈرز</span>
+              <span className="text-xs text-slate-500 font-medium" dir="rtl">ہول سیل ڈیلر اینڈ جنرل آرڈر سپلائر</span>
             </div>
           </div>
 

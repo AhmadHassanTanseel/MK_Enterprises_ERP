@@ -43,6 +43,15 @@ export const SaleInvoicePanel: React.FC = () => {
   const [amountReceivedCash, setAmountReceivedCash] = useState<number>(0);
   const [amountReceivedBank, setAmountReceivedBank] = useState<number>(0);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!selectedBankId && accounts.length > 0) {
+      const defaultBank = accounts.find(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name);
+      if (defaultBank) {
+        setSelectedBankId(defaultBank.id);
+      }
+    }
+  }, [accounts, selectedBankId]);
   
   
 
@@ -309,14 +318,12 @@ export const SaleInvoicePanel: React.FC = () => {
                       onChange={e => setAmountReceivedBank(Number(e.target.value))}
                     />
                   </div>
-                  {amountReceivedBank > 0 && (
-                    <div className="pt-2 border-t border-slate-200">
-                      <BankAccountSelect 
-                        value={selectedBankId} 
-                        onChange={setSelectedBankId} 
-                      />
-                    </div>
-                  )}
+                  <div className="pt-2 border-t border-slate-200">
+                    <BankAccountSelect 
+                      value={selectedBankId} 
+                      onChange={setSelectedBankId} 
+                    />
+                  </div>
                 </div>
                 <div className="flex justify-between text-sm border-t border-slate-100 mt-2 pt-2">
                   <span className="text-slate-600 font-medium">Balance (Bakaya):</span>

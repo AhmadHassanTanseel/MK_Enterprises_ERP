@@ -5,7 +5,7 @@ import { open as openShell } from '@tauri-apps/plugin-shell';
 import { useNavigate } from 'react-router-dom';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppContext } from '../../app/context/AppContext';
-import { Settings, Shield, Database, Users, Download, Trash2, AlertTriangle, Building, Save, X } from 'lucide-react';
+import { Settings, Shield, Database, Users, Download, Trash2, AlertTriangle, Building, Save, X, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { exit } from '@tauri-apps/plugin-process';
 
@@ -34,7 +34,49 @@ export const SettingsPanel: React.FC = () => {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [restoreFile, setRestoreFile] = useState<{path: string, size: number, date: Date} | null>(null);
   const [restoreConfirmText, setRestoreConfirmText] = useState("");
-  const [showDriveSetup, setShowDriveSetup] = useState(false);
+  const [driveBackupPath, setDriveBackupPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke('get_drive_backup_path')
+      .then((res: any) => {
+        if (res) setDriveBackupPath(res);
+      })
+      .catch((e) => console.error("Error fetching drive backup path:", e));
+  }, []);
+
+  const handleSelectDriveFolder = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Select Google Drive / Cloud Sync Folder'
+      });
+      if (selected && typeof selected === 'string') {
+        await invoke('set_drive_backup_path', { path: selected });
+        setDriveBackupPath(selected);
+        toast.success(`Drive backup folder set to: ${selected}`);
+      }
+    } catch (e: any) {
+      toast.error(`Failed to select folder: ${e.toString()}`);
+    }
+  };
+
+  const handleDriveBackup = async () => {
+    try {
+      if (!driveBackupPath) {
+        toast.error("Please select a Drive backup folder first.");
+        await handleSelectDriveFolder();
+        return;
+      }
+      setIsSubmitting(true);
+      const res: string = await invoke('backup_to_drive', { customPath: driveBackupPath });
+      toast.success(res);
+    } catch (e: any) {
+      toast.error(`Drive backup failed: ${e.toString()}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const nameSetting = settings.find(s => s.key === 'company_name');
@@ -285,28 +327,50 @@ export const SettingsPanel: React.FC = () => {
               {/* Drive Backup Section */}
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M7.71 3.5L1.15 15l3.43 6l6.55-11.5M9.73 3.5l-3.43 6L12.86 21h6.85M13.72 13.5l-4.57 8h13.7l4.57-8"/>
                   </svg>
-                  Google Drive
+                  Google Drive / Cloud Backup & Restore
                 </h3>
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <p className="text-sm text-slate-600 mb-4">Connect your Google Drive account to securely backup and restore your data to the cloud.</p>
-                  <div className="flex gap-3">
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                  <p className="text-xs text-slate-600">
+                    Connect your Google Drive or Cloud sync folder to automatically create and restore timestamped cloud backups.
+                  </p>
+
+                  <div className="bg-white p-2.5 rounded border border-slate-200 text-xs">
+                    <div className="font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Drive Backup Folder:</span>
+                      <button 
+                        type="button" 
+                        onClick={handleSelectDriveFolder}
+                        className="text-blue-600 hover:text-blue-800 underline font-medium"
+                      >
+                        {driveBackupPath ? 'Change Folder' : 'Select Folder'}
+                      </button>
+                    </div>
+                    <div className="font-mono text-slate-600 truncate bg-slate-50 p-1.5 rounded border border-slate-100">
+                      {driveBackupPath || '⚠️ No folder selected (e.g. G:\\My Drive\\Zawar_Backups)'}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-1">
                     <button 
-                      onClick={() => setShowDriveSetup(true)}
-                      className="flex-1 bg-blue-600 text-white font-medium py-2 px-3 rounded shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                      type="button"
+                      onClick={handleDriveBackup}
+                      disabled={isSubmitting}
+                      className="flex-1 bg-blue-600 text-white font-medium py-2 px-3 rounded shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50"
                     >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M7.71 3.5L1.15 15l3.43 6l6.55-11.5M9.73 3.5l-3.43 6L12.86 21h6.85M13.72 13.5l-4.57 8h13.7l4.57-8"/>
-                      </svg>
-                      Setup Drive
+                      <Download className="h-4 w-4" />
+                      Backup to Drive
                     </button>
                     <button 
-                      onClick={() => setShowDriveSetup(true)}
-                      className="flex-1 min-w-0 bg-white border border-slate-200 text-slate-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                      type="button"
+                      onClick={handleRestoreClick}
+                      disabled={isSubmitting}
+                      className="flex-1 min-w-0 bg-white border border-slate-200 text-slate-700 font-medium py-2 px-3 rounded shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50"
                     >
-                      Restore
+                      <RefreshCw className="h-4 w-4" />
+                      Restore from Drive
                     </button>
                   </div>
                 </div>
@@ -321,7 +385,7 @@ export const SettingsPanel: React.FC = () => {
             <div className="space-y-2 text-sm text-slate-600">
               <p><span className="font-medium">Software:</span> Software By Ahmad Hassan Tanseel Contact-03107464349</p>
               <p><span className="font-medium">Version:</span> v4.1.2 Production Build</p>
-              <p><span className="font-medium">Developed For:</span> Mian Khan Traders</p>
+              <p><span className="font-medium">Developed For:</span> Zawar Traders</p>
               <p className="pt-4 text-xs text-slate-400">© MIAS Solutions. All rights reserved.</p>
             </div>
           </div>
@@ -359,62 +423,7 @@ export const SettingsPanel: React.FC = () => {
         </div>
       )}
 
-      {showDriveSetup && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 relative">
-            <button onClick={() => setShowDriveSetup(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
-              <X className="h-5 w-5" />
-            </button>
-            <h3 className="text-xl font-bold text-slate-800 mb-2 flex items-center gap-2">
-              <svg className="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M7.71 3.5L1.15 15l3.43 6l6.55-11.5M9.73 3.5l-3.43 6L12.86 21h6.85M13.72 13.5l-4.57 8h13.7l4.57-8"/>
-              </svg>
-              Google Drive Backup
-            </h3>
-            <p className="text-slate-600 text-sm mb-6">
-              Connect your Google account to enable automatic backups and cloud restores.
-            </p>
-            
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Google Email Address</label>
-                <input 
-                  type="email" 
-                  placeholder="admin@example.com"
-                  className="w-full border border-slate-300 rounded p-2 outline-none focus:border-blue-500" 
-                />
-              </div>
-              <p className="text-xs text-slate-500">
-                You will be redirected to Google to authorize access to Google Drive.
-              </p>
-            </div>
 
-            <div className="bg-amber-50 text-amber-800 p-3 rounded-lg text-sm border border-amber-200 mb-6">
-              <span className="font-bold flex items-center gap-1 mb-1"><AlertTriangle className="h-4 w-4" /> Developer Note:</span>
-              To make this fully functional, an OAuth Client ID must be configured in Google Cloud Console. Until configured, Drive backups will save locally.
-            </div>
-
-            <div className="flex gap-3 justify-end">
-              <button 
-                onClick={() => setShowDriveSetup(false)}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded hover:bg-slate-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                onClick={() => {
-                  toast.success("OAuth configuration required. Saved as local backup for now.");
-                  setShowDriveSetup(false);
-                  handleBackup();
-                }}
-              >
-                Connect Drive
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
