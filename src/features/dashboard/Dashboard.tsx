@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { 
   FileText, ShoppingCart, PlusCircle, Users, ArrowDownRight, ArrowUpRight,
@@ -10,6 +11,18 @@ import { useAppContext } from '../../app/context/AppContext';
 
 export const Dashboard: React.FC = () => {
   const { invoices, accounts, ledgerEntries } = useAppContext();
+
+  const [hideCashBank, setHideCashBank] = useState<boolean>(() => {
+    return localStorage.getItem('hide_dashboard_cash_bank') === 'true';
+  });
+
+  const toggleHideCashBank = () => {
+    setHideCashBank(prev => {
+      const next = !prev;
+      localStorage.setItem('hide_dashboard_cash_bank', String(next));
+      return next;
+    });
+  };
 
   // The 8 specific shortcuts (removed Category)
   const quickNav = [
@@ -99,12 +112,16 @@ export const Dashboard: React.FC = () => {
       
       const net = entry.dr_amount - entry.cr_amount;
       
+      const bankAccountIds = new Set(
+        accounts.filter(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name).map(a => a.id)
+      );
+
       if (entry.account_id === 1) {
         cashAllTime += net;
         if (isToday) cashToday += net;
         if (isWeek) cashWeek += net;
         if (isMonth) cashMonth += net;
-      } else if (entry.account_id === 6) {
+      } else if (bankAccountIds.has(entry.account_id) || entry.account_id === 6) {
         bankAllTime += net;
         if (isToday) bankToday += net;
         if (isWeek) bankWeek += net;
@@ -124,6 +141,26 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {/* Header bar with Hide/Show Cash & Bank Flow button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+        <h2 className="text-base font-bold text-slate-800">کاروباری خلاصہ / Business Overview</h2>
+        <button
+          type="button"
+          onClick={toggleHideCashBank}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border shadow-sm ${
+            hideCashBank
+              ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900'
+          }`}
+          title={hideCashBank ? "Show Cash & Bank Balances" : "Hide Cash & Bank Balances"}
+        >
+          {hideCashBank ? <Eye className="h-4 w-4 text-blue-600" /> : <EyeOff className="h-4 w-4 text-slate-500" />}
+          <span>{hideCashBank ? "Show Cash & Bank Flow (بیلنس دکھائیں)" : "Hide Cash & Bank Flow (بیلنس چھپائیں)"}</span>
+          {hideCashBank && (
+            <span className="ml-1 px-1.5 py-0.2 bg-amber-200 text-amber-900 rounded text-[10px]">Hidden</span>
+          )}
+        </button>
+      </div>
       
       {/* 5 Summary Sections */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
@@ -202,23 +239,47 @@ export const Dashboard: React.FC = () => {
             <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
               <DollarSign className="h-5 w-5 text-emerald-600" /> Cash Flow
             </h3>
+            <button
+              type="button"
+              onClick={toggleHideCashBank}
+              className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              title={hideCashBank ? "Show Cash Flow" : "Hide Cash Flow"}
+            >
+              {hideCashBank ? <Eye className="h-4 w-4 text-emerald-600" /> : <EyeOff className="h-4 w-4" />}
+            </button>
           </div>
           <div className="mb-2 pb-2 border-b border-slate-100 flex justify-between items-center">
             <span className="text-xs font-bold text-slate-600">Total in Hand</span>
-            <span className={`text-base font-bold ${metrics.cashAllTime >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashAllTime.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            {hideCashBank ? (
+              <span className="text-sm font-black tracking-widest text-slate-400 font-mono">••••••••</span>
+            ) : (
+              <span className={`text-base font-bold ${metrics.cashAllTime >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashAllTime.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            )}
           </div>
           <div className="space-y-1">
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-500">Today</span>
-              <span className={`font-bold ${metrics.cashToday >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashToday.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              {hideCashBank ? (
+                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+              ) : (
+                <span className={`font-bold ${metrics.cashToday >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashToday.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              )}
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-500">This Week</span>
-              <span className={`font-bold ${metrics.cashWeek >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashWeek.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              {hideCashBank ? (
+                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+              ) : (
+                <span className={`font-bold ${metrics.cashWeek >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashWeek.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              )}
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-500">This Month</span>
-              <span className={`font-bold ${metrics.cashMonth >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashMonth.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              {hideCashBank ? (
+                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+              ) : (
+                <span className={`font-bold ${metrics.cashMonth >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashMonth.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              )}
             </div>
           </div>
         </div>
@@ -229,23 +290,47 @@ export const Dashboard: React.FC = () => {
             <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
               <Activity className="h-5 w-5 text-blue-600" /> Bank Flow
             </h3>
+            <button
+              type="button"
+              onClick={toggleHideCashBank}
+              className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              title={hideCashBank ? "Show Bank Flow" : "Hide Bank Flow"}
+            >
+              {hideCashBank ? <Eye className="h-4 w-4 text-blue-600" /> : <EyeOff className="h-4 w-4" />}
+            </button>
           </div>
           <div className="mb-2 pb-2 border-b border-slate-100 flex justify-between items-center">
             <span className="text-xs font-bold text-slate-600">Total in Bank</span>
-            <span className={`text-base font-bold ${metrics.bankAllTime >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankAllTime.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            {hideCashBank ? (
+              <span className="text-sm font-black tracking-widest text-slate-400 font-mono">••••••••</span>
+            ) : (
+              <span className={`text-base font-bold ${metrics.bankAllTime >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankAllTime.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            )}
           </div>
           <div className="space-y-1">
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-500">Today</span>
-              <span className={`font-bold ${metrics.bankToday >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankToday.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              {hideCashBank ? (
+                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+              ) : (
+                <span className={`font-bold ${metrics.bankToday >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankToday.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              )}
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-500">This Week</span>
-              <span className={`font-bold ${metrics.bankWeek >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankWeek.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              {hideCashBank ? (
+                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+              ) : (
+                <span className={`font-bold ${metrics.bankWeek >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankWeek.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              )}
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-500">This Month</span>
-              <span className={`font-bold ${metrics.bankMonth >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankMonth.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              {hideCashBank ? (
+                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+              ) : (
+                <span className={`font-bold ${metrics.bankMonth >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankMonth.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              )}
             </div>
           </div>
         </div>
