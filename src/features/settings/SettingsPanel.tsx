@@ -110,6 +110,29 @@ export const SettingsPanel: React.FC = () => {
     }
   };
 
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+
+  const testWebhookConnection = async () => {
+    if (!inputCloudUrl.trim()) {
+      toast.error("Please enter a Google Apps Script Webhook URL first.");
+      return;
+    }
+    setIsTestingWebhook(true);
+    toast.loading("Testing connection to Google Drive...", { id: 'testWebhook' });
+    try {
+      const resp = await fetch(inputCloudUrl.trim());
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      toast.success("Connection Successful! Google Drive is ready to receive backups.", { id: 'testWebhook', duration: 5000 });
+    } catch (err: any) {
+      toast.error("Access Denied or Blocked: Please ensure 'Who has access' is set to 'Anyone' in your script.google.com deployment.", { id: 'testWebhook', duration: 8000 });
+    } finally {
+      setIsTestingWebhook(false);
+    }
+  };
+
   const handleSaveCloudConfig = async () => {
     try {
       await invoke('set_cloud_config', {
@@ -224,7 +247,12 @@ function doGet(e) {
       setCloudConfig(prev => ({ ...prev, last_sync: nowStr }));
       toast.success(`Cloud backup successfully saved to Google Drive! (${payload.filename})`, { id: 'cloudBackup' });
     } catch (err: any) {
-      toast.error(`Google Drive backup failed: ${err.message || err.toString()}`, { id: 'cloudBackup' });
+      const msg = err.message || err.toString();
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        toast.error("Google Drive connection failed: Please verify that in script.google.com, 'Who has access' is set to 'Anyone'.", { id: 'cloudBackup', duration: 8000 });
+      } else {
+        toast.error(`Google Drive backup failed: ${msg}`, { id: 'cloudBackup' });
+      }
     } finally {
       setIsCloudSyncing(false);
     }
@@ -774,6 +802,10 @@ function doGet(e) {
                 </ol>
               </div>
 
+              <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-[11px] text-amber-900 font-medium">
+                ⚠️ <strong>اہم ترین قدم:</strong> گوگل اسکرپٹ کو Deploy کرتے وقت <strong>"Who has access"</strong> کو لازمی <strong>"Anyone"</strong> منتخب کریں (ورنہ گوگل لاگ ان کا پوچھے گا اور بیک اپ بلاک ہو جائے گا)۔
+              </div>
+
               <div className="pt-2 border-t border-slate-100">
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Option 2: Direct Google OAuth Access Token (Optional)
@@ -788,21 +820,31 @@ function doGet(e) {
               </div>
             </div>
 
-            <div className="flex gap-3 justify-end pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
               <button 
                 type="button"
-                onClick={() => setShowCloudSetup(false)}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded text-xs font-medium hover:bg-slate-50"
+                onClick={testWebhookConnection}
+                disabled={isTestingWebhook || !inputCloudUrl}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold border border-slate-300 transition-colors disabled:opacity-50 flex items-center gap-1.5"
               >
-                Cancel
+                <Globe className="h-3.5 w-3.5 text-blue-600" /> Test Connection (رابطہ چیک کریں)
               </button>
-              <button 
-                type="button"
-                onClick={handleSaveCloudConfig}
-                className="px-5 py-2 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-700 shadow-sm"
-              >
-                Save Cloud Settings (محفوظ کریں)
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  type="button"
+                  onClick={() => setShowCloudSetup(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded text-xs font-medium hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button"
+                  onClick={handleSaveCloudConfig}
+                  className="px-5 py-2 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-700 shadow-sm"
+                >
+                  Save Cloud Settings (محفوظ کریں)
+                </button>
+              </div>
             </div>
           </div>
         </div>
