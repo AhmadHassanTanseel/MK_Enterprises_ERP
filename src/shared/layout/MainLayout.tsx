@@ -256,7 +256,7 @@ export const MainLayout: React.FC = () => {
             <div className="h-8 w-px bg-slate-200 mx-1"></div>
             <div className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-2 rounded" onClick={() => navigate('/settings')}>
               <div className="flex flex-col items-end">
-                <span className="text-sm font-bold text-slate-700">Guest</span>
+                <span className="text-sm font-bold text-slate-700">Admin</span>
                 <span className="text-xs text-slate-500">Administrator</span>
               </div>
               <div className="h-9 w-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold border border-blue-200">
