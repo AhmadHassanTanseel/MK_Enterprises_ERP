@@ -73,6 +73,11 @@ pub struct Account {
     pub status: String,
     pub is_customer: bool,
     pub is_supplier: bool,
+    pub bank_name: Option<String>,
+    pub account_title: Option<String>,
+    pub account_number: Option<String>,
+    pub wage_type: Option<String>,
+    pub salary_rate: Option<f64>,
     pub created_at: String,
 }
 
@@ -297,7 +302,7 @@ pub async fn delete_product(
 #[tauri::command]
 pub async fn get_accounts(db: State<'_, SqlitePool>) -> Result<Vec<Account>, String> {
     sqlx::query_as::<_, Account>(
-          "SELECT id, account_type_id, name, contact, address, area_id, salesman_id, opening_balance, opening_balance_type, status, is_customer, is_supplier, datetime(created_at, 'localtime') as created_at 
+          "SELECT id, account_type_id, name, contact, address, area_id, salesman_id, opening_balance, opening_balance_type, status, is_customer, is_supplier, bank_name, account_title, account_number, wage_type, salary_rate, datetime(created_at, 'localtime') as created_at 
            FROM accounts WHERE status = 'ACTIVE' ORDER BY name ASC"
     )
     .fetch_all(&*db)
@@ -316,6 +321,11 @@ pub async fn create_account(
     opening_balance_type: String,
     is_customer: bool,
     is_supplier: bool,
+    bank_name: Option<String>,
+    account_title: Option<String>,
+    account_number: Option<String>,
+    wage_type: Option<String>,
+    salary_rate: Option<f64>,
     db: State<'_, SqlitePool>,
 ) -> Result<i64, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
@@ -326,8 +336,8 @@ pub async fn create_account(
     };
 
     let account_id = sqlx::query(
-        "INSERT INTO accounts (account_type_id, name, contact, address, area_id, opening_balance, opening_balance_type, is_customer, is_supplier) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO accounts (account_type_id, name, contact, address, area_id, opening_balance, opening_balance_type, is_customer, is_supplier, bank_name, account_title, account_number, wage_type, salary_rate) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(account_type_id)
     .bind(&name)
@@ -338,6 +348,11 @@ pub async fn create_account(
     .bind(&opening_balance_type)
     .bind(is_customer)
     .bind(is_supplier)
+    .bind(bank_name)
+    .bind(account_title)
+    .bind(account_number)
+    .bind(wage_type)
+    .bind(salary_rate)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?
@@ -369,6 +384,35 @@ pub async fn create_account(
 }
 
 #[tauri::command]
+pub async fn create_bank_account(
+    name: String,
+    bank_name: String,
+    account_title: String,
+    account_number: String,
+    opening_balance: f64,
+    opening_balance_type: String,
+    db: State<'_, SqlitePool>,
+) -> Result<i64, String> {
+    create_account(
+        1, // Cash & Bank
+        name,
+        None,
+        None,
+        None,
+        opening_balance,
+        opening_balance_type,
+        false,
+        false,
+        Some(bank_name),
+        Some(account_title),
+        Some(account_number),
+        None,
+        None,
+        db
+    ).await
+}
+
+#[tauri::command]
 pub async fn update_account(
     id: i64,
     account_type_id: i64,
@@ -380,6 +424,11 @@ pub async fn update_account(
     opening_balance_type: String,
     is_customer: bool,
     is_supplier: bool,
+    bank_name: Option<String>,
+    account_title: Option<String>,
+    account_number: Option<String>,
+    wage_type: Option<String>,
+    salary_rate: Option<f64>,
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
@@ -390,7 +439,7 @@ pub async fn update_account(
     };
 
     sqlx::query(
-        "UPDATE accounts SET account_type_id = ?, name = ?, contact = ?, address = ?, area_id = ?, opening_balance = ?, opening_balance_type = ?, is_customer = ?, is_supplier = ? WHERE id = ?"
+        "UPDATE accounts SET account_type_id = ?, name = ?, contact = ?, address = ?, area_id = ?, opening_balance = ?, opening_balance_type = ?, is_customer = ?, is_supplier = ?, bank_name = ?, account_title = ?, account_number = ?, wage_type = ?, salary_rate = ? WHERE id = ?"
     )
     .bind(account_type_id)
     .bind(&name)
@@ -401,6 +450,11 @@ pub async fn update_account(
     .bind(&opening_balance_type)
     .bind(is_customer)
     .bind(is_supplier)
+    .bind(bank_name)
+    .bind(account_title)
+    .bind(account_number)
+    .bind(wage_type)
+    .bind(salary_rate)
     .bind(id)
     .execute(&mut *tx)
     .await

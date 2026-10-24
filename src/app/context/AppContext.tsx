@@ -4,7 +4,25 @@ import { invoke } from '@tauri-apps/api/core';
 // Core Master Data
 export interface Product { id: number; code: string; name: string; packing: string | null; purchase_price: number; sale_price: number; opening_stock: number; current_stock?: number; flavor?: string | null; real_barcode: string | null; uom: string | null; reorder_level: number | null; flavors?: string | null; sale_account_id: number | null; }
 export interface Salesman { id: number; name: string; contact: string | null; salary: number; details: string | null; status: string; }
-export interface Account { id: number; name: string; account_type_id: number; contact: string | null; area_id: number | null; opening_balance: number; opening_balance_type: string; current_balance: number; is_customer: boolean; is_supplier: boolean; created_at: string; }
+export interface Account { 
+  id: number; 
+  name: string; 
+  account_type_id: number; 
+  contact: string | null; 
+  address?: string | null;
+  area_id: number | null; 
+  opening_balance: number; 
+  opening_balance_type: string; 
+  current_balance: number; 
+  is_customer: boolean; 
+  is_supplier: boolean; 
+  bank_name?: string | null;
+  account_title?: string | null;
+  account_number?: string | null;
+  wage_type?: string | null;
+  salary_rate?: number | null;
+  created_at: string; 
+}
 export interface Category { id: number; name: string; description: string | null; parent_id: number | null; }
 export interface Area { id: number; name: string; salesman_id: number | null; remarks: string | null; active: number; account_count: number; }
 export interface Salesman { id: number; name: string; contact: string | null; salary: number; details: string | null; status: string; }
@@ -12,7 +30,7 @@ export interface AccountType { id: number; name: string; nature: string; trial_b
 
 // Transaction Data
 export interface InvoiceLine { flavor?: string; sale_rate?: number; product_name?: string; product_id: number; qty: number; rate: number; discount_pct: number; amount: number; }
-export interface Invoice { id: number; type: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN'; ref_no: string; account_id: number; salesman_id?: number; date: string; lines: InvoiceLine[]; gross_amount: number; discount_amount: number; net_amount: number; amount_paid_cash: number; amount_paid_bank: number; }
+export interface Invoice { id: number; type: 'SALE' | 'PURCHASE' | 'SALE_RETURN' | 'PURCHASE_RETURN'; ref_no: string; account_id: number; salesman_id?: number; date: string; lines: InvoiceLine[]; gross_amount: number; discount_amount: number; net_amount: number; amount_paid_cash: number; amount_paid_bank: number; bank_account_id?: number | null; }
 
 export interface FixedLiability {
   id: number;
@@ -57,7 +75,7 @@ interface AppContextType {
 
   postInvoice: (invoice: Omit<Invoice, 'id'>) => Promise<void>;
   postJournalEntry: (date: string, lines: { accountId: number; entryType: 'DR' | 'CR'; amount: number; description?: string }[], description: string) => Promise<void>;
-  postPayment: (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, refNo?: string) => Promise<void>;
+  postPayment: (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, refNo?: string, paymentMethod?: string, bankAccountId?: number) => Promise<void>;
   fetchData: () => Promise<void>;
 
   createCategory: (name: string, description?: string, parent_id?: number, margin_target?: number, flavor?: string) => Promise<number>;
@@ -68,8 +86,9 @@ interface AppContextType {
   updateProduct: (id: number, code: string, name: string, flavors?: string, packing?: string, purchase_price?: number, sale_price?: number, opening_stock?: number, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
 
-  createAccount: (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean) => Promise<number>;
-  updateAccount: (id: number, account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean) => Promise<void>;
+  createAccount: (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean, bank_name?: string, account_title?: string, account_number?: string, wage_type?: string, salary_rate?: number) => Promise<number>;
+  createBankAccount: (name: string, bank_name: string, account_title: string, account_number: string, opening_balance?: number, opening_balance_type?: string) => Promise<number>;
+  updateAccount: (id: number, account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean, bank_name?: string, account_title?: string, account_number?: string, wage_type?: string, salary_rate?: number) => Promise<void>;
   deleteAccount: (id: number) => Promise<void>;
 
   createArea: (name: string, salesman_id?: number, remarks?: string) => Promise<number>;
@@ -280,9 +299,39 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) { console.error(e); throw e; }
   };
 
-  const createAccount = async (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance: number = 0, opening_balance_type: string = 'DEBIT', is_customer: boolean = false, is_supplier: boolean = false) => {
+  const createAccount = async (
+    account_type_id: number, 
+    name: string, 
+    contact?: string, 
+    address?: string, 
+    area_id?: number, 
+    opening_balance: number = 0, 
+    opening_balance_type: string = 'DEBIT', 
+    is_customer: boolean = false, 
+    is_supplier: boolean = false,
+    bank_name?: string,
+    account_title?: string,
+    account_number?: string,
+    wage_type?: string,
+    salary_rate?: number
+  ) => {
     try {
-      const id = await invoke<number>('create_account', { accountTypeId: account_type_id, name, contact, address, areaId: area_id, openingBalance: opening_balance, openingBalanceType: opening_balance_type, isCustomer: is_customer, isSupplier: is_supplier });
+      const id = await invoke<number>('create_account', { 
+        accountTypeId: account_type_id, 
+        name, 
+        contact, 
+        address, 
+        areaId: area_id, 
+        openingBalance: opening_balance, 
+        openingBalanceType: opening_balance_type, 
+        isCustomer: is_customer, 
+        isSupplier: is_supplier,
+        bankName: bank_name || null,
+        accountTitle: account_title || null,
+        accountNumber: account_number || null,
+        wageType: wage_type || null,
+        salaryRate: salary_rate || null
+      });
       await fetchData();
       return id;
     } catch (e) {
@@ -290,9 +339,65 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const updateAccount = async (id: number, account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance: number = 0, opening_balance_type: string = 'DEBIT', is_customer: boolean = false, is_supplier: boolean = false) => {
+  const createBankAccount = async (
+    name: string,
+    bank_name: string,
+    account_title: string,
+    account_number: string,
+    opening_balance: number = 0,
+    opening_balance_type: string = 'DEBIT'
+  ) => {
     try {
-      await invoke('update_account', { id, accountTypeId: account_type_id, name, contact, address, areaId: area_id, openingBalance: opening_balance, openingBalanceType: opening_balance_type, isCustomer: is_customer, isSupplier: is_supplier });
+      const id = await invoke<number>('create_bank_account', {
+        name,
+        bankName: bank_name,
+        accountTitle: account_title,
+        accountNumber: account_number,
+        openingBalance: opening_balance,
+        openingBalanceType: opening_balance_type
+      });
+      await fetchData();
+      return id;
+    } catch (e) {
+      console.error(e); throw e;
+    }
+  };
+
+  const updateAccount = async (
+    id: number, 
+    account_type_id: number, 
+    name: string, 
+    contact?: string, 
+    address?: string, 
+    area_id?: number, 
+    opening_balance: number = 0, 
+    opening_balance_type: string = 'DEBIT', 
+    is_customer: boolean = false, 
+    is_supplier: boolean = false,
+    bank_name?: string,
+    account_title?: string,
+    account_number?: string,
+    wage_type?: string,
+    salary_rate?: number
+  ) => {
+    try {
+      await invoke('update_account', { 
+        id, 
+        accountTypeId: account_type_id, 
+        name, 
+        contact, 
+        address, 
+        areaId: area_id, 
+        openingBalance: opening_balance, 
+        openingBalanceType: opening_balance_type, 
+        isCustomer: is_customer, 
+        isSupplier: is_supplier,
+        bankName: bank_name || null,
+        accountTitle: account_title || null,
+        accountNumber: account_number || null,
+        wageType: wage_type || null,
+        salaryRate: salary_rate || null
+      });
       await fetchData();
     } catch (e) { console.error(e); throw e; }
   };
@@ -365,7 +470,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const postPayment = async (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, refNo?: string) => {
+  const postPayment = async (
+    date: string, 
+    accountId: number, 
+    type: 'RECEIVE' | 'PAY', 
+    amount: number, 
+    description: string, 
+    refNo?: string, 
+    paymentMethod?: string, 
+    bankAccountId?: number
+  ) => {
     try {
       await invoke('process_cash_transaction', {
         transType: type === 'RECEIVE' ? 'RECEIVE' : 'PAYMENT',
@@ -373,9 +487,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         amount,
         transDate: date,
         description: description,
-        paymentMethod: null,
+        paymentMethod: paymentMethod || null,
         refNo: refNo || null,
-        attachmentPath: null
+        attachmentPath: null,
+        bankAccountId: bankAccountId || null
       });
       await fetchData();
     } catch (error) {
@@ -401,7 +516,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           grossAmount: invoiceData.gross_amount,
           discountAmount: invoiceData.discount_amount,
           netAmount: invoiceData.net_amount,
-          amountReceivedCash: invoiceData.amount_paid_cash, amountReceivedBank: invoiceData.amount_paid_bank
+          amountReceivedCash: invoiceData.amount_paid_cash, 
+          amountReceivedBank: invoiceData.amount_paid_bank,
+          bankAccountId: invoiceData.bank_account_id || null
         });
       } else if (invoiceData.type === 'PURCHASE') {
         await invoke('process_purchase', {
@@ -418,7 +535,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           grossAmount: invoiceData.gross_amount,
           discountAmount: invoiceData.discount_amount,
           netAmount: invoiceData.net_amount,
-          amountPaidCash: invoiceData.amount_paid_cash, amountPaidBank: invoiceData.amount_paid_bank
+          amountPaidCash: invoiceData.amount_paid_cash, 
+          amountPaidBank: invoiceData.amount_paid_bank,
+          bankAccountId: invoiceData.bank_account_id || null
         });
       } else if (invoiceData.type === 'SALE_RETURN') {
         await invoke('process_sale_return', {
@@ -479,7 +598,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       fetchData,
       createCategory, updateCategory, deleteCategory,
       createProduct, updateProduct, deleteProduct,
-      createAccount, updateAccount, deleteAccount,
+      createAccount, createBankAccount, updateAccount, deleteAccount,
       createArea, updateArea, deleteArea,
       createAccountType,
       saveSetting,

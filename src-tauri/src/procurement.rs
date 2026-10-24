@@ -28,6 +28,7 @@ pub async fn process_purchase(
     net_amount: f64,
     amount_paid_cash: f64,
     amount_paid_bank: f64,
+    bank_account_id: Option<i64>,
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
@@ -177,13 +178,13 @@ pub async fn process_purchase(
     }
 
     if amount_paid_bank > 0.0 {
-        
+        let target_bank_account = bank_account_id.unwrap_or(accounts.bank);
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_PAYMENT', ?, 'Bank Paid at Purchase')")
             .bind(supplier_id).bind(amount_paid_bank).bind(invoice_id)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
         
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'BANK_PAYMENT', ?, 'Bank Paid at Purchase')")
-            .bind(accounts.bank).bind(amount_paid_bank).bind(invoice_id)
+            .bind(target_bank_account).bind(amount_paid_bank).bind(invoice_id)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
 

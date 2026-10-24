@@ -6,6 +6,7 @@ import { generateInvoicePDF } from '../../utils/pdfGenerator';
 import { printThermalReceipt } from '../../utils/receiptPrinter';
 import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
+import { BankAccountSelect } from '../../shared/components/BankAccountSelect';
 
 export const PurchaseInvoicePanel: React.FC = () => {
   const { settings, products, categories, accounts, postInvoice } = useAppContext();
@@ -16,6 +17,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
   ]);
   const [amountPaidCash, setAmountPaidCash] = useState<number>(0);
   const [amountPaidBank, setAmountPaidBank] = useState<number>(0);
+  const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   
   
   
@@ -36,14 +38,10 @@ export const PurchaseInvoicePanel: React.FC = () => {
     }
   };
 
-  const updateLine = (id: string, field: keyof InvoiceLine | 'flavor', value: any) => {
+  const updateLine = (id: string, field: keyof InvoiceLine, value: any) => {
     setLines(lines.map(l => {
       if (l.id === id) {
         const newLine = { ...l, [field]: value };
-        if (field === 'flavor') {
-          newLine.product_id = 0;
-          newLine.rate = 0;
-        }
         if (field === 'product_id' && value) {
           const product = products.find(p => p.id === value);
           if (product) newLine.rate = product.purchase_price;
@@ -90,7 +88,9 @@ export const PurchaseInvoicePanel: React.FC = () => {
         gross_amount: totalGross,
         discount_amount: totalDiscount,
         net_amount: totalNet,
-        amount_paid_cash: amountPaidCash, amount_paid_bank: amountPaidBank
+        amount_paid_cash: amountPaidCash, 
+        amount_paid_bank: amountPaidBank,
+        bank_account_id: selectedBankId || null
       });
       toast.success(`Purchase Invoice saved successfully`);
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
@@ -244,6 +244,14 @@ export const PurchaseInvoicePanel: React.FC = () => {
                   onChange={e => setAmountPaidBank(Number(e.target.value))}
                 />
               </div>
+              {amountPaidBank > 0 && (
+                <div className="pt-2 border-t border-slate-200">
+                  <BankAccountSelect 
+                    value={selectedBankId} 
+                    onChange={setSelectedBankId} 
+                  />
+                </div>
+              )}
             </div>
             <div className="flex justify-between text-sm border-t border-slate-100 mt-2 pt-2">
               <span className="text-slate-600 font-medium">Balance Payable:</span>

@@ -44,7 +44,7 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({
       case 'product':
         return (filter ? (products || []).filter(filter) : (products || [])).map(p => ({
           id: p.id,
-          label: p.flavor ? `${p.name} [${p.flavor}]` : p.name
+          label: p.name
         }));
       case 'category':
         return (filter ? (categories || []).filter(filter) : (categories || [])).map(c => ({

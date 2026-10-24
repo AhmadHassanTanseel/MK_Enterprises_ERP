@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openShell } from '@tauri-apps/plugin-shell';
 import { EntitySelect } from '../../shared/components/EntitySelect';
+import { BankAccountSelect } from '../../shared/components/BankAccountSelect';
 import { useAppContext } from '../../app/context/AppContext';
 import { Plus, Search, Filter, Paperclip, CreditCard, Banknote, Building2, X } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -28,6 +29,7 @@ export const CashPaymentPanel: React.FC = () => {
   const [accountId, setAccountId] = useState<number | null>(null);
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [bankAccountId, setBankAccountId] = useState<number | null>(null);
   const [description, setDescription] = useState('');
   const [transDate, setTransDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [attachment, setAttachment] = useState<string | null>(null);
@@ -122,7 +124,9 @@ export const CashPaymentPanel: React.FC = () => {
         'PAY',
         amount,
         `${paymentMethod} - ${description}`,
-        refNo
+        refNo,
+        paymentMethod,
+        paymentMethod === 'Bank' ? (bankAccountId || undefined) : undefined
       );
 
       if (attachment) {
@@ -180,6 +184,14 @@ export const CashPaymentPanel: React.FC = () => {
                 <span className="text-xs font-medium">Cheque</span>
               </button>
             </div>
+            {paymentMethod === 'Bank' && (
+              <div className="mt-2 p-3 bg-rose-50/40 rounded-lg border border-rose-200">
+                <BankAccountSelect 
+                  value={bankAccountId} 
+                  onChange={setBankAccountId} 
+                />
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Amount *</label>

@@ -134,6 +134,11 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             status TEXT DEFAULT 'ACTIVE',
             is_customer BOOLEAN DEFAULT 0,
             is_supplier BOOLEAN DEFAULT 0,
+            bank_name TEXT,
+            account_title TEXT,
+            account_number TEXT,
+            wage_type TEXT DEFAULT 'MONTHLY',
+            salary_rate REAL DEFAULT 0.0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(account_type_id) REFERENCES account_types(id),
             FOREIGN KEY(area_id) REFERENCES areas(id),
@@ -443,6 +448,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
     if current < 13 {
         migration_013_fix_dispatches_schema(pool).await?;
         record_migration(pool, 13).await?;
+    }
+
+    if current < 14 {
+        migration_014_bank_and_worker_enhancements(pool).await?;
+        record_migration(pool, 14).await?;
     }
 
     Ok(())
@@ -802,5 +812,29 @@ async fn migration_013_fix_dispatches_schema(pool: &SqlitePool) -> Result<(), St
     let _ = sqlx::query("INSERT OR IGNORE INTO accounts (id, account_type_id, name, is_customer, is_supplier) VALUES (7, 7, 'Operating Expense', 0, 0)").execute(pool).await;
 
     let _ = sqlx::query("PRAGMA foreign_keys = ON").execute(pool).await;
+    Ok(())
+}
+
+async fn migration_014_bank_and_worker_enhancements(pool: &SqlitePool) -> Result<(), String> {
+    if !column_exists(pool, "accounts", "bank_name").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN bank_name TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "accounts", "account_title").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN account_title TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "accounts", "account_number").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN account_number TEXT").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "accounts", "wage_type").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN wage_type TEXT DEFAULT 'MONTHLY'").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    if !column_exists(pool, "accounts", "salary_rate").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN salary_rate REAL DEFAULT 0.0").execute(pool).await.map_err(|e| e.to_string())?;
+    }
+
+    // Default Bank Account (ID 6) metadata update if needed
+    let _ = sqlx::query("UPDATE accounts SET bank_name = 'Meezan Bank', account_title = 'Zawar Traders', account_number = '0101-0103456789' WHERE id = 6 AND (bank_name IS NULL OR bank_name = '')")
+        .execute(pool).await;
+
     Ok(())
 }

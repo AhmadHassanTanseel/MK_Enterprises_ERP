@@ -145,7 +145,7 @@ export const generateVoucherPDF = async (
   
   // Header
   doc.setFontSize(20);
-  doc.text('Mian Khan Traders', 14, 22);
+  doc.text('Zawar Traders', 14, 22);
   
   doc.setFontSize(10);
   doc.setTextColor(100);
@@ -203,7 +203,7 @@ export const generateGenericReportPDF = async (
   const doc = new jsPDF('landscape');
   
   doc.setFontSize(20);
-  doc.text('Mian Khan Traders', 14, 22);
+  doc.text('Zawar Traders', 14, 22);
   
   doc.setFontSize(14);
   doc.text(report.title, 14, 30);
@@ -245,7 +245,7 @@ export async function generateFinancialStatementPDF(
   // Header
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text('Mian Khan Traders', pageWidth / 2, 20, { align: 'center' });
+  doc.text('Zawar Traders', pageWidth / 2, 20, { align: 'center' });
   
   doc.setFontSize(16);
   doc.text('Financial Statement', pageWidth / 2, 30, { align: 'center' });

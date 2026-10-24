@@ -27,6 +27,7 @@ pub async fn process_cash_transaction(
     _payment_method: Option<String>,
     _ref_no: Option<String>,
     _attachment_path: Option<String>,
+    bank_account_id: Option<i64>,
     db: State<'_, SqlitePool>
 ) -> Result<String, String> {
     // Persist a real cash receipt/payment into journal_entries
@@ -52,7 +53,7 @@ pub async fn process_cash_transaction(
         is_bank = true;
     }
 
-    let treasury_account_id = if is_bank { accounts.bank } else { accounts.cash };
+    let treasury_account_id = if is_bank { bank_account_id.unwrap_or(accounts.bank) } else { accounts.cash };
     let voucher_type = if is_bank {
         if trans_type == "RECEIVE" { "BANK_RECEIPT" } else { "BANK_PAYMENT" }
     } else {

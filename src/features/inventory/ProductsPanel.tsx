@@ -165,16 +165,6 @@ export const ProductsPanel: React.FC = () => {
                 placeholder="e.g. Pepsi"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Flavors (comma separated)</label>
-              <input 
-                type="text" 
-                className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none" 
-                value={formData.flavors || ''} 
-                placeholder="e.g. Cola, Sprite, Orange"
-                onChange={e => setFormData({...formData, flavors: e.target.value})} 
-              />
-            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>

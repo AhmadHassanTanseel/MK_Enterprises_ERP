@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText, Plus } from 'lucide-react';
+import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText, Plus, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
@@ -25,6 +25,8 @@ export const OtherAccountsPanel: React.FC = () => {
     {
       title: 'Accounts',
       items: [
+        { id: 'banking', label: 'Bank Accounts & Cash Flow', icon: Building2 },
+        { id: 'workers', label: 'Mulazmeen / Attendance', icon: Users },
         { id: 'assets', label: 'Assets', icon: Activity },
         { id: 'expenses', label: 'Expenses', icon: DollarSign },
         { id: 'adjustments', label: 'Adjustments', icon: FileText },
@@ -319,7 +321,54 @@ export const OtherAccountsPanel: React.FC = () => {
   const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const { accountTypes, accounts, postJournalEntry, fetchData, ledgerEntries, products, createAccount } = useAppContext();
+  const { accountTypes, accounts, postJournalEntry, fetchData, ledgerEntries, products, createAccount, createBankAccount } = useAppContext();
+
+  // Bank Accounts State & Calculations
+  const [isAddBankModalOpen, setIsAddBankModalOpen] = useState(false);
+  const [bankNickname, setBankNickname] = useState('');
+  const [bankNameInput, setBankNameInput] = useState('');
+  const [bankAccountTitle, setBankAccountTitle] = useState('Zawar Traders');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankOB, setBankOB] = useState<number | ''>('');
+  const [bankOBType, setBankOBType] = useState<'DEBIT' | 'CREDIT'>('DEBIT');
+  const [isBankSubmitting, setIsBankSubmitting] = useState(false);
+
+  const bankAccountsList = accounts.filter(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name);
+  const cashInDrawerAcc = accounts.find(a => a.id === 1);
+  const totalInBanks = bankAccountsList.reduce((sum, b) => sum + (b.current_balance ?? 0), 0);
+  const totalInCashDrawer = cashInDrawerAcc ? (cashInDrawerAcc.current_balance ?? 0) : 0;
+
+  const handleCreateBankAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bankNameInput.trim() || !bankAccountNumber.trim()) {
+      toast.error('Bank Name and Account Number are required');
+      return;
+    }
+    const displayName = bankNickname.trim() || `${bankNameInput.trim()} (${bankAccountNumber.slice(-4)})`;
+    setIsBankSubmitting(true);
+    try {
+      await createBankAccount(
+        displayName,
+        bankNameInput.trim(),
+        bankAccountTitle.trim() || 'Zawar Traders',
+        bankAccountNumber.trim(),
+        Number(bankOB) || 0,
+        bankOBType
+      );
+      toast.success(`Bank account ${displayName} created successfully!`);
+      setIsAddBankModalOpen(false);
+      setBankNickname('');
+      setBankNameInput('');
+      setBankAccountTitle('Zawar Traders');
+      setBankAccountNumber('');
+      setBankOB('');
+      setBankOBType('DEBIT');
+    } catch (err: any) {
+      toast.error(err.toString());
+    } finally {
+      setIsBankSubmitting(false);
+    }
+  };
 
   const toReceiveAccounts = accounts.filter(a => (a.is_customer || a.is_supplier) && a.current_balance > 0);
   const toPayAccounts = accounts.filter(a => (a.is_customer || a.is_supplier) && a.current_balance < 0);
@@ -797,15 +846,228 @@ export const OtherAccountsPanel: React.FC = () => {
         );
       case 'banking':
         return (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h2 className="text-xl font-bold text-slate-800 mb-6">Bank Accounts</h2>
-            <div className="space-y-4 mb-8">
-              <input type="text" placeholder="Bank Name (e.g. Meezan Bank)" className="w-full border border-slate-300 rounded p-2" />
-              <input type="text" placeholder="Account Number" className="w-full border border-slate-300 rounded p-2" />
-              <input type="number" placeholder="Opening Balance" className="w-full border border-slate-300 rounded p-2" />
-              <button onClick={handleNotConnected} className="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700">Add Bank Account</button>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <Building2 className="h-6 w-6 text-blue-600" />
+                  بینک کھاتے اور کیش فلو / Bank Accounts & Cash Flow
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Manage all business bank accounts, track live balances and cash flow across accounts.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddBankModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm shadow-sm transition-colors"
+              >
+                <Plus className="h-4 w-4" /> Add Bank Account (نیا بینک کھاتہ)
+              </button>
             </div>
-            <div className="bg-slate-50 p-4 rounded text-center text-slate-500">No Bank Accounts Configured (Placeholder)</div>
+
+            {/* Cash Flow Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+                <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">Total in Banks (بینک بیلنس)</span>
+                <p className="text-2xl font-black text-blue-900 mt-2">
+                  Rs. {totalInBanks.toLocaleString()}
+                </p>
+                <span className="text-[11px] text-blue-600 mt-1 block">
+                  Across {bankAccountsList.length} bank accounts
+                </span>
+              </div>
+
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4">
+                <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Cash in Drawer (دراز میں کیش)</span>
+                <p className="text-2xl font-black text-emerald-900 mt-2">
+                  Rs. {totalInCashDrawer.toLocaleString()}
+                </p>
+                <span className="text-[11px] text-emerald-600 mt-1 block">
+                  Account #1 (Cash in Drawer)
+                </span>
+              </div>
+
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-300 rounded-xl p-4">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Total Liquid Funds (کل رقم)</span>
+                <p className="text-2xl font-black text-slate-900 mt-2">
+                  Rs. {(totalInBanks + totalInCashDrawer).toLocaleString()}
+                </p>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  Banks + Cash in Drawer
+                </span>
+              </div>
+            </div>
+
+            {/* Bank Accounts Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-100/75 border-b border-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider">
+                    <th className="p-3">Bank Name (بینک)</th>
+                    <th className="p-3">Account Title (عنوان)</th>
+                    <th className="p-3">Account / IBAN Number (کھاتہ نمبر)</th>
+                    <th className="p-3 text-right">Current Live Balance (بیلنس)</th>
+                    <th className="p-3 text-center">Statement (کھاتہ)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {bankAccountsList.map((b) => (
+                    <tr key={b.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3 font-bold text-slate-800">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-blue-600" />
+                          <div>
+                            <div>{b.bank_name || b.name}</div>
+                            {b.bank_name && b.name !== b.bank_name && (
+                              <div className="text-[11px] font-normal text-slate-500">{b.name}</div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-3 text-slate-700 font-medium">{b.account_title || b.name}</td>
+                      <td className="p-3 font-mono text-xs text-slate-600">{b.account_number || '—'}</td>
+                      <td className="p-3 text-right">
+                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-black ${
+                          (b.current_balance ?? 0) >= 0 
+                            ? 'bg-emerald-100 text-emerald-800' 
+                            : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          Rs. {(b.current_balance ?? 0).toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenLedger(b)}
+                          className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors border border-blue-200"
+                        >
+                          View Ledger / کھاتہ دیکھیں
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {bankAccountsList.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-slate-500">
+                        کوئی بینک کھاتہ موجود نہیں۔ نیا بینک شامل کرنے کے لیے اوپر دیا گیا بٹن دبائیں۔
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Add Bank Account Modal */}
+            {isAddBankModalOpen && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2 flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                    نیا بینک کھاتہ شامل کریں (Add Bank Account)
+                  </h3>
+                  <form onSubmit={handleCreateBankAccount} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Bank Name (بینک کا نام) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Meezan Bank, HBL, Bank Alfalah"
+                        value={bankNameInput}
+                        onChange={e => setBankNameInput(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Account Title (کھاتے دار کا نام) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Zawar Traders"
+                        value={bankAccountTitle}
+                        onChange={e => setBankAccountTitle(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Account / IBAN Number (کھاتہ نمبر) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 0101-0103456789 or PK60MEZN00..."
+                        value={bankAccountNumber}
+                        onChange={e => setBankAccountNumber(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Account Nickname (شناختی نام - اختیاری)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Main Current Account"
+                        value={bankNickname}
+                        onChange={e => setBankNickname(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Opening Balance (ابتدائی رقم)
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          value={bankOB}
+                          onChange={e => setBankOB(e.target.value === '' ? '' : Number(e.target.value))}
+                          className="w-full border border-slate-300 rounded-lg p-2 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Type</label>
+                        <select
+                          value={bankOBType}
+                          onChange={e => setBankOBType(e.target.value as any)}
+                          className="w-full border border-slate-300 rounded-lg p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                        >
+                          <option value="DEBIT">Debit (Asset / مثبت بیلنس)</option>
+                          <option value="CREDIT">Credit (Overdraft / واجب الادا)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddBankModalOpen(false)}
+                        className="px-4 py-2 hover:bg-slate-100 rounded-lg text-sm text-slate-600 font-medium"
+                      >
+                        Cancel (منسوخ)
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isBankSubmitting}
+                        className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md transition-colors disabled:opacity-50"
+                      >
+                        {isBankSubmitting ? 'Saving...' : 'Save Bank Account'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         );
             case 'payables_receivables':

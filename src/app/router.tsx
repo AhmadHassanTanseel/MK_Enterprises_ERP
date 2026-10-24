@@ -22,6 +22,7 @@ import { AreasPanel } from '../features/settings/AreasPanel';
 import { PurchaseHistoryPanel } from '../features/purchases/PurchaseHistoryPanel';
 import { CashReceivedPanel } from '../features/finance/CashReceivedPanel';
 import { CashPaymentPanel } from '../features/finance/CashPaymentPanel';
+import { AttendanceComponent } from '../features/accounts/AttendanceComponent';
 
 export const router = createHashRouter([
   {
@@ -32,6 +33,7 @@ export const router = createHashRouter([
       { path: 'dashboard', element: <Dashboard /> },
       
       { path: 'accounts', element: <AccountsPanel /> },
+      { path: 'attendance', element: <div className="p-6 bg-slate-50 min-h-screen"><div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6"><AttendanceComponent /></div></div> },
       { path: 'other-accounts', element: <OtherAccountsPanel /> },
       { path: 'account-types', element: <AccountTypesPanel /> },
       
@@ -56,7 +58,7 @@ export const router = createHashRouter([
       
       { path: 'settings', element: <SettingsPanel /> },
       { path: 'users', element: <UsersPanel /> },
-      { path: 'areas', element: <AreasPanel /> },
+      { path: 'areas', element: <Navigate to="/dashboard" replace /> },
     ]
   }
 ]);

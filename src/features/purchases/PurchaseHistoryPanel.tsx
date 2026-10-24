@@ -47,8 +47,7 @@ export const PurchaseHistoryPanel: React.FC = () => {
         accountName: row.account_name,
         lines: (lines as any).map((l: any) => ({
           product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
-          flavor: l.flavor,
-          qty: l.qty || 0,
+                    qty: l.qty || 0,
           rate: l.rate || 0,
           total: l.amount || (((l.qty||0) * (l.rate||0)) - (l.discount_pct||0))
         })),

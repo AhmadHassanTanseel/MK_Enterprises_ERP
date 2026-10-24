@@ -89,13 +89,13 @@ export const MainLayout: React.FC = () => {
     
     // Accounts
     { id: 'accounts', label: 'Account', icon: Users },
+    { id: 'attendance', label: 'Mulazmeen / Attendance', icon: Users },
     { id: 'other-accounts', label: 'Other Accounts', icon: Wallet },
     
     // Others
     { id: 'inventory', label: 'Stock Dash', icon: List },
     { id: 'reports', label: 'Reports', icon: FileText },
       { id: 'financial-statements', label: 'Financial Statements', icon: TrendingUp },
-    { id: 'areas', label: 'Areas', icon: MapPin },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -105,7 +105,7 @@ export const MainLayout: React.FC = () => {
       {sidebarOpen && (
         <div className="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20 transition-all duration-300">
           <div className="h-16 flex items-center px-6 bg-slate-950 border-b border-slate-800">
-            <h1 className="text-lg font-black tracking-wider text-white" dir="rtl">میاں خان ٹریڈرز</h1>
+            <h1 className="text-lg font-black tracking-wider text-white" dir="rtl">زوار ٹریڈرز</h1>
           </div>
           
           <div className="flex-1 overflow-y-auto py-4">

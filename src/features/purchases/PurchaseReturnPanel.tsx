@@ -32,7 +32,6 @@ export const PurchaseReturnPanel: React.FC = () => {
           setLines(rawLines.map((l: any) => ({
             id: Math.random().toString(),
             product_id: l.product_id,
-            flavor: products.find(p => p.id === l.product_id)?.flavors?.split(/[,،]/)[0] || "",
             qty: l.qty,
             rate: l.rate,
             discount_pct: l.discount_pct || 0,
@@ -137,8 +136,7 @@ export const PurchaseReturnPanel: React.FC = () => {
                   accountName: accName,
                   lines: lines.map((l: any) => ({
                     product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
-                flavor: l.flavor,
-                qty: l.qty || 0,
+                    qty: l.qty || 0,
                     rate: l.rate || 0,
                     total: ((l.qty||0) * (l.rate||0)) - (l.discount||0)
                   })),
@@ -202,8 +200,7 @@ export const PurchaseReturnPanel: React.FC = () => {
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-2 font-semibold text-slate-600 text-center w-12">#</th>
-                  <th className="px-4 py-2 font-semibold text-slate-600 w-64 min-w-[200px]">Product (Brand)</th>
-                  <th className="px-4 py-2 font-semibold text-slate-600 w-64 min-w-[200px]">Size (Category)</th>
+                  <th className="px-4 py-2 font-semibold text-slate-600 w-80 min-w-[240px]">Product</th>
                   <th className="px-4 py-2 font-semibold text-slate-600 text-right w-24">Qty</th>
                   <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Rate (Rs)</th>
                   <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Gross</th>
@@ -216,12 +213,9 @@ export const PurchaseReturnPanel: React.FC = () => {
               {lines.map((line, index) => (
                 <tr key={line.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2 text-center">{index + 1}</td>
-                  <td className="px-4 py-2 w-64">
-                          {line.product_id ? (<select className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none" value={line.flavor || ''} onChange={e => updateLine(line.id, 'flavor', e.target.value)}><option value="">None</option>{(products.find(p => p.id === line.product_id)?.flavors || '').split(/[,،]/).map(f => f.trim()).filter(f => f).map(f => (<option key={f} value={f}>{f}</option>))}</select>) : (<span className="text-slate-400 text-sm">Select product</span>)}
-                        </td>
-                        <td className="px-4 py-2 w-64">
-                      <EntitySelect autoFocus type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)}  className="w-full" />
-                    </td>
+                  <td className="px-4 py-2">
+                    <EntitySelect autoFocus type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} className="w-full" />
+                  </td>
                     <td className="px-4 py-2 text-right">
                       <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 focus:border-blue-500 outline-none" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
                     </td>

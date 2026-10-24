@@ -115,9 +115,9 @@ export function printThermalReceipt(data: ReceiptData) {
     <body>
       <!-- Header -->
       <div class="text-center mb-2">
-        <div class="urdu-title">میاں خان ٹریڈرز</div>
-        <div style="font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; font-size: 14px; direction: rtl;">نزد نیشنل بینک جھنگ چنیوٹ روڈ بھوانہ</div>
-        <div style="font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; font-size: 14px; direction: rtl;">حاجی میاں خان 5973612-0345</div>
+        <div class="urdu-title">زوار ٹریڈرز</div>
+        <div style="font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; font-size: 14px; direction: rtl;">ہول سیل ڈیلر اینڈ جنرل آرڈر سپلائر</div>
+        <div style="font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; font-size: 14px; direction: rtl;"></div>
       </div>
       
       <!-- Transaction Meta -->
@@ -167,7 +167,7 @@ export function printThermalReceipt(data: ReceiptData) {
           <tbody>
             ${data.lines.map(l => `
               <tr>
-                <td colspan="3" class="item-name">${l.product} ${l.flavor && l.flavor !== 'None' ? '(' + l.flavor + ')' : ''}</td>
+                <td colspan="3" class="item-name"></td>
               </tr>
               <tr>
                 <td></td>

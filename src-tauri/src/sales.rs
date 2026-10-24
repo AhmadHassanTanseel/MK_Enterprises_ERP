@@ -25,9 +25,10 @@ pub async fn process_sale(
     net_amount: f64,
     amount_received_cash: f64,
     amount_received_bank: f64,
+    bank_account_id: Option<i64>,
     db: State<'_, SqlitePool>,
 ) -> Result<String, String> {
-    process_sale_internal(account_id, salesman_id, invoice_number, invoice_date, lines, gross_amount, discount_amount, net_amount, amount_received_cash, amount_received_bank, &*db).await
+    process_sale_internal(account_id, salesman_id, invoice_number, invoice_date, lines, gross_amount, discount_amount, net_amount, amount_received_cash, amount_received_bank, bank_account_id, &*db).await
 }
 
 pub async fn process_sale_internal(
@@ -41,6 +42,7 @@ pub async fn process_sale_internal(
     net_amount: f64,
     amount_received_cash: f64,
     amount_received_bank: f64,
+    bank_account_id: Option<i64>,
     db: &SqlitePool,
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
@@ -195,9 +197,9 @@ pub async fn process_sale_internal(
     }
 
     if amount_received_bank > 0.0 {
-        
+        let target_bank_account = bank_account_id.unwrap_or(accounts.bank);
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS')")
-            .bind(accounts.bank).bind(amount_received_bank).bind(invoice_id)
+            .bind(target_bank_account).bind(amount_received_bank).bind(invoice_id)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
         
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS')")

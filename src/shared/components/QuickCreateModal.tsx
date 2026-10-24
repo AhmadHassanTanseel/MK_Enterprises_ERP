@@ -257,30 +257,15 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({ type, accoun
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Contact / Phone</label>
-                  <input 
-                    type="text" 
-                    value={contact} 
-                    onChange={e => setContact(e.target.value)} 
-                    placeholder="0300-1234567"
-                    className="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Area / Market</label>
-                  <select 
-                    value={areaId} 
-                    onChange={e => setAreaId(Number(e.target.value))} 
-                    className="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  >
-                    <option value={0}>-- Select Area --</option>
-                    {areas.map(a => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Contact / Phone</label>
+                <input 
+                  type="text" 
+                  value={contact} 
+                  onChange={e => setContact(e.target.value)} 
+                  placeholder="0300-1234567"
+                  className="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                />
               </div>
 
               <div>
@@ -365,16 +350,6 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({ type, accoun
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Flavors (comma separated)</label>
-                <input 
-                  type="text" 
-                  value={flavors} 
-                  onChange={e => setFlavors(e.target.value)} 
-                  placeholder="e.g. Regular, Diet, Zero"
-                  className="w-full p-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                />
-              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

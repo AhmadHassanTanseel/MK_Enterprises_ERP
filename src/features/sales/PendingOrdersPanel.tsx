@@ -267,38 +267,16 @@ export const PendingOrdersPanel: React.FC = () => {
                       
                       return (
                       <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
-                        <div className="flex-1 flex gap-2">
-                          <div className="flex-1">
-                            <EntitySelect 
-                              type="product" 
-                              value={line.product_id || 0} 
-                              onChange={(v) => {
-                                const l = [...newLines]; 
-                                l[idx].product_id = v; 
-                                l[idx].flavor = undefined;
-                                setNewLines(l);
-                              }}
-                            />
-                          </div>
-                          
-                            <div className="w-1/3">
-                              <select 
-                                className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-400"
-                                value={line.flavor || ''}
-                                onChange={e => {
-                                  const l = [...newLines];
-                                  l[idx].flavor = e.target.value;
-                                  setNewLines(l);
-                                }}
-                                disabled={flavors.length === 0}
-                              >
-                                <option value="">{flavors.length > 0 ? "Select Flavor" : "No Flavors"}</option>
-                                {flavors.map(f => (
-                                  <option key={f} value={f}>{f}</option>
-                                ))}
-                              </select>
-                            </div>
-
+                        <div className="flex-1">
+                          <EntitySelect 
+                            type="product" 
+                            value={line.product_id || 0} 
+                            onChange={(v) => {
+                              const l = [...newLines]; 
+                              l[idx].product_id = v; 
+                              setNewLines(l);
+                            }}
+                          />
                         </div>
                         <div className="w-24">
                           <input 
@@ -365,7 +343,7 @@ export const PendingOrdersPanel: React.FC = () => {
   
                       return (
                         <tr key={item.id} className="hover:bg-slate-50">
-                          <td className="p-3 font-medium text-slate-700">{item.product_name} {item.flavor && <span className="text-indigo-600 text-xs font-bold ml-1">[{item.flavor}]</span>}</td>
+                          <td className="p-3 font-medium text-slate-700">{item.product_name}</td>
                           <td className="p-3 text-center text-slate-500 font-bold">{item.qty_dispatched}</td>
                           <td className="p-3">
                             <input 

@@ -31,7 +31,7 @@ async fn main() {
             ];
 
             let res = process_sale_internal(
-                1, None, None, "2026-09-10".into(), lines, 100.0, 0.0, 100.0, 100.0, 0.0, &pool_clone
+                1, None, None, "2026-09-10".into(), lines, 100.0, 0.0, 100.0, 100.0, 0.0, None, &pool_clone
             ).await;
             res.is_ok()
         });

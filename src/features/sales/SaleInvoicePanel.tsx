@@ -7,6 +7,7 @@ import { generateInvoicePDF } from '../../utils/pdfGenerator';
 import { printThermalReceipt } from '../../utils/receiptPrinter';
 import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
+import { BankAccountSelect } from '../../shared/components/BankAccountSelect';
 
 interface InvoiceLine {
   flavor?: string;
@@ -41,6 +42,7 @@ export const SaleInvoicePanel: React.FC = () => {
   // Split cash/bank
   const [amountReceivedCash, setAmountReceivedCash] = useState<number>(0);
   const [amountReceivedBank, setAmountReceivedBank] = useState<number>(0);
+  const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   
   
 
@@ -111,20 +113,23 @@ export const SaleInvoicePanel: React.FC = () => {
           grossAmount: totalGross,
           discountAmount: totalDiscount,
           netAmount: totalNet,
-          amountReceivedCash: amountReceivedCash, amountReceivedBank: amountReceivedBank,
+          amountReceivedCash: amountReceivedCash, 
+          amountReceivedBank: amountReceivedBank,
+          bankAccountId: selectedBankId || null,
           lines: validLines.map(l => ({
             product_id: l.product_id,
             quantity: l.qty,
             unit_price: l.rate,
-            discount_percent: l.discount || 0, flavor: l.flavor
+            discount_percent: l.discount || 0
           }))
         });
       toast.success('Sale Invoice Saved: ' + generatedInvNo);
       
       
-        const bankName = settings.find(s => s.key === 'bank_name')?.value || '';
-        const accountTitle = settings.find(s => s.key === 'bank_account_title')?.value || '';
-        const accountNumber = settings.find(s => s.key === 'bank_account_number')?.value || '';
+        const chosenBank = accounts.find(a => a.id === selectedBankId);
+        const bankName = chosenBank?.bank_name || settings.find(s => s.key === 'bank_name')?.value || '';
+        const accountTitle = chosenBank?.account_title || chosenBank?.name || settings.find(s => s.key === 'bank_account_title')?.value || '';
+        const accountNumber = chosenBank?.account_number || settings.find(s => s.key === 'bank_account_number')?.value || '';
         const paymentMethod = (typeof amountReceivedBank !== 'undefined' ? amountReceivedBank : (typeof amountPaidBank !== 'undefined' ? amountPaidBank : 0)) > 0 ? 'Bank' : 'Cash';
 
         if (printAfter) {
@@ -141,8 +146,7 @@ export const SaleInvoicePanel: React.FC = () => {
             accountName: accName,
             lines: lines.map((l: any) => ({
               product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
-                flavor: l.flavor,
-                qty: l.qty || 0,
+              qty: l.qty || 0,
               rate: l.rate || 0,
               total: ((l.qty||0) * (l.rate||0)) - (l.discount||0)
             })),
@@ -209,8 +213,7 @@ export const SaleInvoicePanel: React.FC = () => {
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
               <tr>
                 <th className="px-3 py-1.5 font-semibold text-slate-600 text-center w-12">#</th>
-                <th className="px-3 py-1.5 font-semibold text-slate-600 w-64">Product (Brand)</th>
-                <th className="px-3 py-1.5 font-semibold text-slate-600 w-48">Flavor</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 w-80">Product (Brand)</th>
                 <th className="px-3 py-1.5 font-semibold text-slate-600 text-right w-24">Stock</th>
                 <th className="px-3 py-1.5 font-semibold text-slate-600 text-right w-24">Qty</th>
                 <th className="px-3 py-1.5 font-semibold text-slate-600 text-right w-32">Rate</th>
@@ -234,22 +237,6 @@ export const SaleInvoicePanel: React.FC = () => {
                          
                         className="w-full" 
                       />
-                    </td>
-                    <td className="px-3 py-1.5 w-1/4">
-                      {line.product_id ? (
-                        <select 
-                          className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none"
-                          value={line.flavor || ''}
-                          onChange={e => updateLine(line.id, 'flavor', e.target.value)}
-                        >
-                          <option value="">None</option>
-                          {(products.find(p => p.id === line.product_id)?.flavors || '').split(/[,،]/).map(f => f.trim()).filter(f => f).map(f => (
-                            <option key={f} value={f}>{f}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-slate-400 text-sm">Select product</span>
-                      )}
                     </td>
                     <td className="px-3 py-1.5 text-right">
                       <span className={`px-2 py-1 rounded text-xs ${stock > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
@@ -322,6 +309,14 @@ export const SaleInvoicePanel: React.FC = () => {
                       onChange={e => setAmountReceivedBank(Number(e.target.value))}
                     />
                   </div>
+                  {amountReceivedBank > 0 && (
+                    <div className="pt-2 border-t border-slate-200">
+                      <BankAccountSelect 
+                        value={selectedBankId} 
+                        onChange={setSelectedBankId} 
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="flex justify-between text-sm border-t border-slate-100 mt-2 pt-2">
                   <span className="text-slate-600 font-medium">Balance (Bakaya):</span>
