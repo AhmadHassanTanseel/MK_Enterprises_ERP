@@ -245,6 +245,7 @@ export const PendingOrdersPanel: React.FC = () => {
                   ) : (
                     <EntitySelect 
                       type="account"
+                      accountRole="customer"
                       filter={(a: any) => a.is_customer}
                       value={newCustomerId || 0} 
                       onChange={setNewCustomerId} 

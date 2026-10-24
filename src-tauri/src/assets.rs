@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use sqlx::{SqlitePool, Row};
-use std::sync::Arc;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompanyAsset {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText } from 'lucide-react';
+import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
@@ -113,7 +113,82 @@ export const OtherAccountsPanel: React.FC = () => {
     }
   };
 
-  const [prSearch, setPrSearch] = useState('');
+  // Payables & Receivables: Opening Balance Modal State
+  const [obModalOpen, setObModalOpen] = useState(false);
+  const [obAccount, setObAccount] = useState<any>(null);
+  const [obAmount, setObAmount] = useState<number | ''>('');
+  const [obType, setObType] = useState<'DEBIT' | 'CREDIT'>('DEBIT');
+
+  const handleOpenOB = (account: any) => {
+    setObAccount(account);
+    setObAmount(account.opening_balance || '');
+    setObType(account.opening_balance_type || 'DEBIT');
+    setObModalOpen(true);
+  };
+
+  const handleSubmitOB = async () => {
+    if (!obAccount) return;
+    setIsSubmitting(true);
+    try {
+      await invoke('set_account_opening_balance', {
+        accountId: obAccount.id,
+        openingBalance: Number(obAmount) || 0,
+        openingBalanceType: obType
+      });
+      toast.success(`Opening balance updated for ${obAccount.name}`);
+      await fetchData();
+      setObModalOpen(false);
+    } catch (err: any) {
+      toast.error(err.toString());
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Quick Party Modal State
+  const [isAddPartyModalOpen, setIsAddPartyModalOpen] = useState(false);
+  const [newPartyName, setNewPartyName] = useState('');
+  const [newPartyType, setNewPartyType] = useState<'customer' | 'supplier' | 'both'>('customer');
+  const [newPartyContact, setNewPartyContact] = useState('');
+  const [newPartyOB, setNewPartyOB] = useState<number | ''>('');
+  const [newPartyOBType, setNewPartyOBType] = useState<'DEBIT' | 'CREDIT'>('DEBIT');
+
+  const handleCreateParty = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPartyName.trim()) {
+      toast.error('Account Name is required');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const isCust = newPartyType === 'customer' || newPartyType === 'both';
+      const isSupp = newPartyType === 'supplier' || newPartyType === 'both';
+      const typeId = isCust ? 2 : 4;
+      await createAccount(
+        typeId,
+        newPartyName.trim(),
+        newPartyContact.trim() || undefined,
+        undefined,
+        undefined,
+        Number(newPartyOB) || 0,
+        newPartyOBType,
+        isCust,
+        isSupp
+      );
+      toast.success(`Account ${newPartyName} added successfully`);
+      setNewPartyName('');
+      setNewPartyContact('');
+      setNewPartyOB('');
+      setIsAddPartyModalOpen(false);
+      await fetchData();
+    } catch (err: any) {
+      toast.error(`Failed to add account: ${err.toString()}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+    const [prSearch, setPrSearch] = useState('');
   const [settleModalOpen, setSettleModalOpen] = useState(false);
   const [settleAccount, setSettleAccount] = useState<any>(null);
   const [settleAction, setSettleAction] = useState<'receive' | 'pay'>('receive');
@@ -244,7 +319,7 @@ export const OtherAccountsPanel: React.FC = () => {
   const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const { accountTypes, accounts, postJournalEntry, fetchData, ledgerEntries, products } = useAppContext();
+  const { accountTypes, accounts, postJournalEntry, fetchData, ledgerEntries, products, createAccount } = useAppContext();
 
   const toReceiveAccounts = accounts.filter(a => (a.is_customer || a.is_supplier) && a.current_balance > 0);
   const toPayAccounts = accounts.filter(a => (a.is_customer || a.is_supplier) && a.current_balance < 0);
@@ -754,13 +829,21 @@ export const OtherAccountsPanel: React.FC = () => {
                 </button>
               </div>
 
-              <input 
-                type="text" 
-                placeholder="Search name..." 
-                value={prSearch}
-                onChange={e => setPrSearch(e.target.value)}
-                className="border border-slate-300 rounded px-3 py-1 text-sm outline-none focus:border-blue-500 w-64"
-              />
+              <div className="flex items-center gap-3">
+                <input 
+                  type="text" 
+                  placeholder="Search name..." 
+                  value={prSearch}
+                  onChange={e => setPrSearch(e.target.value)}
+                  className="border border-slate-300 rounded px-3 py-1 text-sm outline-none focus:border-blue-500 w-64"
+                />
+                <button
+                  onClick={() => setIsAddPartyModalOpen(true)}
+                  className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  <Plus className="h-4 w-4" /> Add Party
+                </button>
+              </div>
             </div>
 
             {prViewTab === 'balances' && (
@@ -778,10 +861,27 @@ export const OtherAccountsPanel: React.FC = () => {
                         <div>
                           <div className="font-semibold text-slate-800">{a.name}</div>
                           <div className="text-xs text-slate-500">{a.is_customer ? 'Customer' : 'Supplier'}</div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            OB: Rs. {(a.opening_balance || 0).toLocaleString()} ({a.opening_balance_type === 'CREDIT' ? 'Cr' : 'Dr'})
+                          </div>
                         </div>
                         <div className="text-right">
                           <div className="font-bold text-emerald-600">Rs. {a.current_balance.toLocaleString()}</div>
                           <div className="flex gap-2 justify-end mt-1">
+                            <button 
+                              onClick={() => handleOpenOB(a)}
+                              className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded hover:bg-amber-200 transition-colors font-medium"
+                              title="Set or Edit Opening Balance"
+                            >
+                              Opening Bal
+                            </button>
+                            <button 
+                              onClick={() => handleOpenOB(a)}
+                              className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded hover:bg-amber-200 transition-colors font-medium"
+                              title="Set or Edit Opening Balance"
+                            >
+                              Opening Bal
+                            </button>
                             <button 
                               onClick={() => handleOpenLedger(a)}
                               className="text-xs bg-slate-200 text-slate-700 px-2 py-1 rounded hover:bg-slate-300 transition-colors font-medium"
@@ -814,6 +914,9 @@ export const OtherAccountsPanel: React.FC = () => {
                         <div>
                           <div className="font-semibold text-slate-800">{a.name}</div>
                           <div className="text-xs text-slate-500">{a.is_supplier ? 'Supplier' : 'Customer'}</div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            OB: Rs. {(a.opening_balance || 0).toLocaleString()} ({a.opening_balance_type === 'CREDIT' ? 'Cr' : 'Dr'})
+                          </div>
                         </div>
                         <div className="text-right">
                           <div className="font-bold text-rose-600">Rs. {Math.abs(a.current_balance).toLocaleString()}</div>
@@ -846,12 +949,20 @@ export const OtherAccountsPanel: React.FC = () => {
                 {settledAccounts.filter(a => a.name.toLowerCase().includes(prSearch.toLowerCase())).slice(0, 10).map(a => (
                    <div key={a.id} className="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-200">
                      <span className="text-sm font-medium text-slate-700">{a.name}</span>
-                     <button 
-                        onClick={() => handleOpenSettle(a, 'receive')}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        Add Transaction
-                      </button>
+                     <div className="flex gap-2 items-center">
+                       <button 
+                         onClick={() => handleOpenOB(a)}
+                         className="text-xs text-amber-700 hover:underline"
+                       >
+                         Opening Bal
+                       </button>
+                       <button 
+                         onClick={() => handleOpenSettle(a, 'receive')}
+                         className="text-xs text-blue-600 hover:underline"
+                       >
+                         Add Transaction
+                       </button>
+                     </div>
                    </div>
                 ))}
               </div>
@@ -989,7 +1100,131 @@ export const OtherAccountsPanel: React.FC = () => {
           </div>
         );
 
-        case 'fixed_liabilities':
+            {/* OPENING BALANCE MODAL */}
+            {obModalOpen && obAccount && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-amber-50">
+                    <h3 className="font-bold text-slate-800">Set Opening Balance: {obAccount.name}</h3>
+                    <button onClick={() => setObModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    <div className="text-sm text-slate-500">
+                      Enter the prior balance carried forward for this party's Khata before entering invoices.
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Opening Balance (Rs.)</label>
+                      <div className="flex">
+                        <input 
+                          type="number" 
+                          step="0.01" 
+                          min="0"
+                          value={obAmount} 
+                          onChange={e => setObAmount(Number(e.target.value) || '')} 
+                          className="w-full border border-slate-300 rounded-l p-2 outline-none focus:border-amber-500" 
+                          placeholder="0.00"
+                          autoFocus
+                        />
+                        <select 
+                          value={obType} 
+                          onChange={e => setObType(e.target.value as any)}
+                          className="border border-slate-300 border-l-0 rounded-r p-2 bg-slate-50 outline-none font-medium"
+                        >
+                          <option value="DEBIT">Dr (Receivable / Lena)</option>
+                          <option value="CREDIT">Cr (Payable / Dena)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={handleSubmitOB} 
+                      disabled={isSubmitting}
+                      className="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      {isSubmitting ? 'Saving...' : 'Save Opening Balance'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* QUICK ADD PARTY MODAL */}
+            {isAddPartyModalOpen && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-blue-50">
+                    <h3 className="font-bold text-slate-800">Add New Khata Party</h3>
+                    <button onClick={() => setIsAddPartyModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+                  </div>
+                  <form onSubmit={handleCreateParty} className="p-6 space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Party / Account Name *</label>
+                      <input 
+                        type="text" 
+                        required 
+                        value={newPartyName} 
+                        onChange={e => setNewPartyName(e.target.value)} 
+                        className="w-full border border-slate-300 rounded p-2 outline-none focus:border-blue-500" 
+                        placeholder="e.g. Aslam Goods"
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Party Type *</label>
+                      <select 
+                        value={newPartyType} 
+                        onChange={e => setNewPartyType(e.target.value as any)}
+                        className="w-full border border-slate-300 rounded p-2 outline-none bg-white"
+                      >
+                        <option value="customer">Customer (Receivables)</option>
+                        <option value="supplier">Supplier (Payables)</option>
+                        <option value="both">Both (Customer & Supplier)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Contact / Mobile</label>
+                      <input 
+                        type="text" 
+                        value={newPartyContact} 
+                        onChange={e => setNewPartyContact(e.target.value)} 
+                        className="w-full border border-slate-300 rounded p-2 outline-none focus:border-blue-500" 
+                        placeholder="0300-1234567"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Opening Balance</label>
+                      <div className="flex">
+                        <input 
+                          type="number" 
+                          step="0.01" 
+                          min="0"
+                          value={newPartyOB} 
+                          onChange={e => setNewPartyOB(Number(e.target.value) || '')} 
+                          className="w-full border border-slate-300 rounded-l p-2 outline-none focus:border-blue-500" 
+                          placeholder="0.00"
+                        />
+                        <select 
+                          value={newPartyOBType} 
+                          onChange={e => setNewPartyOBType(e.target.value as any)}
+                          className="border border-slate-300 border-l-0 rounded-r p-2 bg-slate-50 outline-none font-medium"
+                        >
+                          <option value="DEBIT">Dr (Lena)</option>
+                          <option value="CREDIT">Cr (Dena)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button 
+                      type="submit" 
+                      disabled={isSubmitting}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      {isSubmitting ? 'Creating...' : 'Create Party & Save Khata'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+                case 'fixed_liabilities':
           return (
             <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
               <h2 className="text-xl font-bold text-slate-800 mb-6">Fixed Liabilities</h2>

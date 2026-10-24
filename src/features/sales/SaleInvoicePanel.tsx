@@ -180,13 +180,13 @@ export const SaleInvoicePanel: React.FC = () => {
   const uniqueBrands = Array.from(new Set(products.map(p => p.name).filter(Boolean)));
 
   return (
-    <div className="flex flex-col h-full gap-4" ref={containerRef}>
+    <div className="flex flex-col min-h-full gap-4 pb-12" ref={containerRef}>
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
         <h2 className="text-lg font-bold text-slate-800 mb-4">New Sale Invoice</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Customer / Walk-in *</label>
-            <EntitySelect autoFocus type="account" value={customer_id || 0} onChange={setCustomerId} filter={a => a.is_customer} />
+            <EntitySelect autoFocus type="account" accountRole="customer" value={customer_id || 0} onChange={setCustomerId} filter={a => a.is_customer} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
@@ -203,20 +203,20 @@ export const SaleInvoicePanel: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-auto">
+      <div className="min-w-0 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[480px]">
+        <div className="overflow-auto min-h-[420px]">
           <table className="w-full min-w-[800px] text-left border-collapse">
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-4 py-2 font-semibold text-slate-600 text-center w-12">#</th>
-                <th className="px-4 py-2 font-semibold text-slate-600 w-64">Product (Brand)</th>
-                <th className="px-4 py-2 font-semibold text-slate-600 w-48">Flavor</th>
-                <th className="px-4 py-2 font-semibold text-slate-600 text-right w-24">Stock</th>
-                <th className="px-4 py-2 font-semibold text-slate-600 text-right w-24">Qty</th>
-                <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Rate</th>
-                <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Discount</th>
-                <th className="px-4 py-2 font-semibold text-slate-600 text-right w-32">Line Total</th>
-                <th className="px-4 py-2 font-semibold text-slate-600 text-center w-16">Action</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 text-center w-12">#</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 w-64">Product (Brand)</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 w-48">Flavor</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 text-right w-24">Stock</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 text-right w-24">Qty</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 text-right w-32">Rate</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 text-right w-32">Discount</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 text-right w-32">Line Total</th>
+                <th className="px-3 py-1.5 font-semibold text-slate-600 text-center w-16">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -225,8 +225,8 @@ export const SaleInvoicePanel: React.FC = () => {
                 const lineTotal = (line.rate - (line.discount || 0)) * line.qty;
                 return (
                   <tr key={line.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-2 text-center text-slate-400">{index + 1}</td>
-                    <td className="px-4 py-2 w-1/4">
+                    <td className="px-3 py-1.5 text-center text-slate-400">{index + 1}</td>
+                    <td className="px-3 py-1.5 w-1/4">
                       <EntitySelect 
                         type="product" 
                         value={line.product_id || 0} 
@@ -235,7 +235,7 @@ export const SaleInvoicePanel: React.FC = () => {
                         className="w-full" 
                       />
                     </td>
-                    <td className="px-4 py-2 w-1/4">
+                    <td className="px-3 py-1.5 w-1/4">
                       {line.product_id ? (
                         <select 
                           className="w-full p-2 border border-slate-300 rounded focus:border-indigo-500 outline-none"
@@ -251,22 +251,22 @@ export const SaleInvoicePanel: React.FC = () => {
                         <span className="text-slate-400 text-sm">Select product</span>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-3 py-1.5 text-right">
                       <span className={`px-2 py-1 rounded text-xs ${stock > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                         {stock}
                       </span>
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-3 py-1.5">
                       <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none focus:border-blue-500" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-3 py-1.5">
                       <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none focus:border-blue-500" value={line.rate === 0 ? 0 : line.rate || ''} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-3 py-1.5">
                       <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 outline-none focus:border-blue-500" value={line.discount || ''} onChange={e => updateLine(line.id, 'discount', Number(e.target.value))} />
                     </td>
-                    <td className="px-4 py-2 text-right font-medium text-slate-700">Rs. {lineTotal.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-center">
+                    <td className="px-3 py-1.5 text-right font-medium text-slate-700">Rs. {lineTotal.toLocaleString()}</td>
+                    <td className="px-3 py-1.5 text-center">
                       <button type="button" onClick={() => removeLine(line.id)} className="text-rose-500 hover:bg-rose-50 p-1 rounded transition-colors" disabled={lines.length <= 1}>
                         <Trash2 className="h-4 w-4" />
                       </button>

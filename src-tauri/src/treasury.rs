@@ -261,16 +261,16 @@ pub async fn get_ledger_entries_by_ref(
 ) -> Result<Vec<LedgerEntryDetail>, String> {
     let sql = r#"
         SELECT 
-            l.id,
-            l.account_id,
+            je.id,
+            je.account_id,
             a.name as account_name,
-            l.debit,
-            l.credit,
-            l.remarks
-        FROM ledger l
-        JOIN accounts a ON l.account_id = a.id
-        WHERE l.ref_no = ?
-        ORDER BY l.id ASC
+            je.debit,
+            je.credit,
+            je.narration as remarks
+        FROM journal_entries je
+        JOIN accounts a ON je.account_id = a.id
+        WHERE je.ref_no = ?
+        ORDER BY je.id ASC
     "#;
     
     let entries: Vec<LedgerEntryDetail> = sqlx::query_as(sql)

@@ -53,26 +53,26 @@ interface AppContextType {
   deleteFixedLiability: (id: number) => Promise<void>;
 
   salesmen: Salesman[]; setSalesmen: React.Dispatch<React.SetStateAction<Salesman[]>>;
-  createSalesman: (name: string, contact?: string, salary?: number, details?: string, area_ids?: number[]) => Promise<void>;
+  createSalesman: (name: string, contact?: string, salary?: number, details?: string, area_ids?: number[]) => Promise<number>;
 
   postInvoice: (invoice: Omit<Invoice, 'id'>) => Promise<void>;
   postJournalEntry: (date: string, lines: { accountId: number; entryType: 'DR' | 'CR'; amount: number; description?: string }[], description: string) => Promise<void>;
   postPayment: (date: string, accountId: number, type: 'RECEIVE' | 'PAY', amount: number, description: string, refNo?: string) => Promise<void>;
   fetchData: () => Promise<void>;
 
-  createCategory: (name: string, description?: string, parent_id?: number, margin_target?: number, flavor?: string) => Promise<void>;
+  createCategory: (name: string, description?: string, parent_id?: number, margin_target?: number, flavor?: string) => Promise<number>;
   updateCategory: (id: number, name: string, description?: string, parent_id?: number, margin_target?: number, flavor?: string) => Promise<void>;
   deleteCategory: (id: number) => Promise<void>;
 
-  createProduct: (code: string, name: string, flavors?: string, packing?: string, purchase_price?: number, sale_price?: number, opening_stock?: number, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => Promise<void>;
+  createProduct: (code: string, name: string, flavors?: string, packing?: string, purchase_price?: number, sale_price?: number, opening_stock?: number, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => Promise<number>;
   updateProduct: (id: number, code: string, name: string, flavors?: string, packing?: string, purchase_price?: number, sale_price?: number, opening_stock?: number, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
 
-  createAccount: (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean) => Promise<void>;
+  createAccount: (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean) => Promise<number>;
   updateAccount: (id: number, account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance?: number, opening_balance_type?: string, is_customer?: boolean, is_supplier?: boolean) => Promise<void>;
   deleteAccount: (id: number) => Promise<void>;
 
-  createArea: (name: string, salesman_id?: number, remarks?: string) => Promise<void>;
+  createArea: (name: string, salesman_id?: number, remarks?: string) => Promise<number>;
   updateArea: (id: number, name: string, salesman_id?: number, remarks?: string, active?: number) => Promise<void>;
   deleteArea: (id: number) => Promise<void>;
 
@@ -226,15 +226,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const createSalesman = async (name: string, contact?: string, salary?: number, details?: string, area_ids?: number[]) => {
     try {
-      await invoke('create_salesman', { name, contact, salary: salary || 0, details, areaIds: area_ids || [] });
+      const id = await invoke<number>('create_salesman', { name, contact, salary: salary || 0, details, areaIds: area_ids || [] });
       await fetchData();
+      return id;
     } catch (e) { console.error(e); throw e; }
   };
   
   const createCategory = async (name: string, description?: string, parent_id?: number, margin_target?: number, flavor?: string) => {
     try {
-      await invoke('create_category', { name, description, parent_id, margin_target, flavor });
+      const id = await invoke<number>('create_category', { name, description, parent_id, margin_target, flavor });
       await fetchData();
+      return id;
     } catch (e) {
       console.error(e); throw e;
     }
@@ -256,8 +258,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const createProduct = async (code: string, name: string, flavors?: string, packing?: string, purchase_price: number = 0, sale_price: number = 0, opening_stock: number = 0, real_barcode?: string, uom?: string, reorder_level?: number, sale_account_id?: number) => {
     try {
-      await invoke('create_product', { code, name, flavors: flavors, packing, purchasePrice: purchase_price, salePrice: sale_price, openingStock: opening_stock, realBarcode: real_barcode, uom, reorderLevel: reorder_level, saleAccountId: sale_account_id });
+      const id = await invoke<number>('create_product', { code, name, flavors: flavors, packing, purchasePrice: purchase_price, salePrice: sale_price, openingStock: opening_stock, realBarcode: real_barcode, uom, reorderLevel: reorder_level, saleAccountId: sale_account_id });
       await fetchData();
+      return id;
     } catch (e) {
       console.error(e); throw e;
     }
@@ -279,8 +282,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const createAccount = async (account_type_id: number, name: string, contact?: string, address?: string, area_id?: number, opening_balance: number = 0, opening_balance_type: string = 'DEBIT', is_customer: boolean = false, is_supplier: boolean = false) => {
     try {
-      await invoke('create_account', { accountTypeId: account_type_id, name, contact, address, areaId: area_id, openingBalance: opening_balance, openingBalanceType: opening_balance_type, isCustomer: is_customer, isSupplier: is_supplier });
+      const id = await invoke<number>('create_account', { accountTypeId: account_type_id, name, contact, address, areaId: area_id, openingBalance: opening_balance, openingBalanceType: opening_balance_type, isCustomer: is_customer, isSupplier: is_supplier });
       await fetchData();
+      return id;
     } catch (e) {
       console.error(e); throw e;
     }
@@ -302,8 +306,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const createArea = async (name: string, salesman_id?: number, remarks?: string) => {
     try {
-      await invoke('create_area', { name, salesmanId: salesman_id, remarks });
+      const id = await invoke<number>('create_area', { name, salesmanId: salesman_id, remarks });
       await fetchData();
+      return id;
     } catch (e) {
       console.error(e); throw e;
     }

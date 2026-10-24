@@ -58,13 +58,36 @@ pub async fn process_purchase(
         }
     };
 
+    let clean_salesman_id = match salesman_id {
+        Some(id) if id > 0 => {
+            let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM salesmen WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+            if exists.is_some() { Some(id) } else { None }
+        },
+        _ => None,
+    };
+
+    let clean_supplier_id = if supplier_id <= 0 {
+        4
+    } else {
+        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM accounts WHERE id = ?")
+            .bind(supplier_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        if exists.is_some() { supplier_id } else { 4 }
+    };
+
     let res = sqlx::query(
         "INSERT INTO invoices (invoice_number, invoice_type, invoice_date, account_id, salesman_id, gross_amount, discount_amount, net_amount, amount_received, bakaya, status) VALUES (?, 'PURCHASE', ?, ?, ?, ?, ?, ?, ?, ?, 'POSTED')"
     )
     .bind(&inv_no)
     .bind(&invoice_date)
-    .bind(supplier_id)
-    .bind(salesman_id)
+    .bind(clean_supplier_id)
+    .bind(clean_salesman_id)
     .bind(gross_amount)
     .bind(discount_amount)
     .bind(net_amount)

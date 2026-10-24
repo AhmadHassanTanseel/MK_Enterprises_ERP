@@ -89,6 +89,7 @@ pub fn run() {
             get_accounts,
             create_account,
             update_account,
+            set_account_opening_balance,
             delete_account,
             get_account_types,
             get_salesmen,

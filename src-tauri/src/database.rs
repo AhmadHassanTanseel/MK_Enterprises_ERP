@@ -33,7 +33,8 @@ pub async fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Sqlite
         (3, 5, 'General Sales Revenue', 0, 0),
         (4, 6, 'General Purchases', 0, 1),
         (5, 8, 'Damage Loss Account', 0, 0),
-        (6, 1, 'Default Bank Account', 0, 0);"
+        (6, 1, 'Default Bank Account', 0, 0),
+        (7, 7, 'Operating Expense', 0, 0);"
     ).execute(&pool).await;
 
     let _ = sqlx::query(
@@ -43,6 +44,48 @@ pub async fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Sqlite
         ('sales_revenue_account_id', '3'),
         ('purchases_account_id', '4'),
         ('damage_loss_account_id', '5');"
+    ).execute(&pool).await;
+
+    // FAIL-SAFE ENSURE ESSENTIAL TABLES ALWAYS EXIST
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS dispatches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            salesman_id INTEGER DEFAULT 0,
+            customer_id INTEGER DEFAULT 0,
+            dispatch_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            notes TEXT
+        );"
+    ).execute(&pool).await;
+
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS dispatch_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dispatch_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            dispatched_quantity INTEGER NOT NULL,
+            sold_quantity INTEGER DEFAULT 0,
+            returned_quantity INTEGER DEFAULT 0,
+            unit_price REAL NOT NULL DEFAULT 0.0,
+            flavor TEXT,
+            FOREIGN KEY(dispatch_id) REFERENCES dispatches(id) ON DELETE CASCADE,
+            FOREIGN KEY(product_id) REFERENCES products(id)
+        );"
+    ).execute(&pool).await;
+
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            user_name TEXT NOT NULL DEFAULT 'System',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );"
+    ).execute(&pool).await;
+
+    let _ = sqlx::query(
+        "CREATE VIEW IF NOT EXISTS ledger AS 
+        SELECT id, account_id, debit, credit, narration as remarks, ref_no, entry_date as date 
+        FROM journal_entries;"
     ).execute(&pool).await;
 
     Ok(pool)
@@ -242,6 +285,46 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             UNIQUE(account_id, date)
         );
 
+        CREATE TABLE IF NOT EXISTS dispatches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            salesman_id INTEGER DEFAULT 0,
+            customer_id INTEGER DEFAULT 0,
+            dispatch_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            notes TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS dispatch_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dispatch_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            dispatched_quantity INTEGER NOT NULL,
+            sold_quantity INTEGER DEFAULT 0,
+            returned_quantity INTEGER DEFAULT 0,
+            unit_price REAL NOT NULL DEFAULT 0.0,
+            flavor TEXT,
+            FOREIGN KEY(dispatch_id) REFERENCES dispatches(id) ON DELETE CASCADE,
+            FOREIGN KEY(product_id) REFERENCES products(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            user_name TEXT NOT NULL DEFAULT 'System',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE VIEW IF NOT EXISTS ledger AS 
+        SELECT 
+            id, 
+            account_id, 
+            debit, 
+            credit, 
+            narration as remarks, 
+            ref_no, 
+            entry_date as date 
+        FROM journal_entries;
+
         -- SEED ESSENTIAL ACCOUNT TYPES (Financial Tree Baseline)
         INSERT OR IGNORE INTO account_types (id, name, nature, trial_bal_type, trial_order) VALUES 
         (1, 'Cash & Bank', 'ASSET', 'DEBIT', 1),
@@ -262,7 +345,8 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         (3, 5, 'General Sales Revenue', 0, 0),
         (4, 6, 'General Purchases', 0, 1),
         (5, 8, 'Damage Loss Account', 0, 0),
-        (6, 1, 'Default Bank Account', 0, 0);
+        (6, 1, 'Default Bank Account', 0, 0),
+        (7, 7, 'Operating Expense', 0, 0);
     "#;
 
     sqlx::query(schema)
@@ -354,6 +438,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
     if current < 12 {
         migration_012_fix_system_accounts(pool).await?;
         record_migration(pool, 12).await?;
+    }
+    
+    if current < 13 {
+        migration_013_fix_dispatches_schema(pool).await?;
+        record_migration(pool, 13).await?;
     }
 
     Ok(())
@@ -599,8 +688,8 @@ async fn migration_007_features(pool: &sqlx::SqlitePool) -> Result<(), String> {
             customer_id INTEGER DEFAULT 0,
             dispatch_date DATETIME DEFAULT CURRENT_TIMESTAMP,
             status TEXT NOT NULL DEFAULT 'PENDING',
-            notes TEXT,
-            FOREIGN KEY(salesman_id) REFERENCES accounts(id)
+            notes TEXT
+
         )
         "#
     ).execute(pool).await.map_err(|e| e.to_string())?;
@@ -683,5 +772,35 @@ async fn migration_011_dispatch_customer_id(pool: &SqlitePool) -> Result<(), Str
 async fn migration_012_fix_system_accounts(pool: &SqlitePool) -> Result<(), String> {
     sqlx::query("UPDATE accounts SET is_customer = 1 WHERE id = 2").execute(pool).await.map_err(|e| e.to_string())?;
     sqlx::query("UPDATE accounts SET is_supplier = 1 WHERE id = 4").execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+async fn migration_013_fix_dispatches_schema(pool: &SqlitePool) -> Result<(), String> {
+    let _ = sqlx::query("PRAGMA foreign_keys = OFF").execute(pool).await;
+
+    let _ = sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS dispatches_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            salesman_id INTEGER DEFAULT 0,
+            customer_id INTEGER DEFAULT 0,
+            dispatch_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            notes TEXT
+        );
+        "#
+    ).execute(pool).await;
+
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO dispatches_new (id, salesman_id, customer_id, dispatch_date, status, notes)
+         SELECT id, salesman_id, IFNULL(customer_id, 0), dispatch_date, status, notes FROM dispatches"
+    ).execute(pool).await;
+
+    let _ = sqlx::query("DROP TABLE IF EXISTS dispatches").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE dispatches_new RENAME TO dispatches").execute(pool).await;
+
+    let _ = sqlx::query("INSERT OR IGNORE INTO accounts (id, account_type_id, name, is_customer, is_supplier) VALUES (7, 7, 'Operating Expense', 0, 0)").execute(pool).await;
+
+    let _ = sqlx::query("PRAGMA foreign_keys = ON").execute(pool).await;
     Ok(())
 }

@@ -105,7 +105,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full gap-4" ref={containerRef}>
+    <div className="flex flex-col min-h-full gap-4 pb-12" ref={containerRef}>
       
       
 
@@ -118,7 +118,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
         <div className="grid grid-cols-4 gap-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Supplier *</label>
-            <EntitySelect autoFocus type="account" value={accountId || 0} onChange={setAccountId} filter={a => a.is_supplier} />
+            <EntitySelect autoFocus type="account" accountRole="supplier" value={accountId || 0} onChange={setAccountId} filter={a => a.is_supplier} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
@@ -132,8 +132,8 @@ export const PurchaseInvoicePanel: React.FC = () => {
       </div>
 
       {/* Grid Panel */}
-      <div className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden min-h-[300px]">
-        <div className="flex-1 overflow-auto">
+      <div className="min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden min-h-[480px]">
+        <div className="overflow-auto min-h-[420px]">
           <table className="w-full min-w-[800px] text-left text-sm text-slate-600">
             <thead className="text-xs uppercase bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-200 shadow-sm z-10">
               <tr>
@@ -151,8 +151,8 @@ export const PurchaseInvoicePanel: React.FC = () => {
                         <tbody className="divide-y divide-slate-100">
               {lines.map((line, index) => (
                 <tr key={line.id} className="hover:bg-slate-50">
-                  <td className="px-2 py-2 text-center text-slate-400">{index + 1}</td>
-                    <td className="px-2 py-2">
+                  <td className="px-2 py-1.5 text-center text-slate-400">{index + 1}</td>
+                    <td className="px-2 py-1.5">
                       <EntitySelect 
                         type="product" 
                         value={line.product_id || 0} 
@@ -167,27 +167,27 @@ export const PurchaseInvoicePanel: React.FC = () => {
                         className="w-full" 
                       />
                     </td>
-                  <td className="px-2 py-2 text-right">
+                  <td className="px-2 py-1.5 text-right">
                     <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
                   </td>
-                  <td className="px-2 py-2 text-right">
+                  <td className="px-2 py-1.5 text-right">
                     <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.rate || ''} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />
                     {line.product_id ? (
                       <div className="text-[10px] text-slate-400 mt-1 whitespace-nowrap">Last: Rs. {products.find(p => p.id === line.product_id)?.purchase_price || 0}</div>
                     ) : null}
                   </td>
-                  <td className="px-2 py-2 text-right">
+                  <td className="px-2 py-1.5 text-right">
                     <input type="number" min="0" className="w-full min-w-[80px] text-right border border-emerald-300 bg-emerald-50 rounded p-1 focus:ring-2 outline-none" value={line.sale_rate || ''} onChange={e => updateLine(line.id, 'sale_rate', Number(e.target.value))} />
                     {line.product_id ? (
                       <div className="text-[10px] text-emerald-600 mt-1 whitespace-nowrap">Last: Rs. {products.find(p => p.id === line.product_id)?.sale_price || 0}</div>
                     ) : null}
                   </td>
-                  <td className="px-2 py-2 text-right font-medium text-slate-700">{((line.qty || 0) * (line.rate || 0)).toLocaleString()}</td>
-                  <td className="px-2 py-2 text-right">
+                  <td className="px-2 py-1.5 text-right font-medium text-slate-700">{((line.qty || 0) * (line.rate || 0)).toLocaleString()}</td>
+                  <td className="px-2 py-1.5 text-right">
                     <input type="number" className="w-full min-w-[80px] text-right border border-slate-200 rounded p-1 focus:ring-2 outline-none" value={line.discount_pct || ''} onChange={e => updateLine(line.id, 'discount_pct', Number(e.target.value))} />
                   </td>
-                  <td className="px-2 py-2 text-right font-bold text-slate-800 bg-slate-50/50">{calculateLineTotal(line).toLocaleString()}</td>
-                  <td className="px-2 py-2 text-center">
+                  <td className="px-2 py-1.5 text-right font-bold text-slate-800 bg-slate-50/50">{calculateLineTotal(line).toLocaleString()}</td>
+                  <td className="px-2 py-1.5 text-center">
                     <button onClick={() => setLines(lines.filter(l => l.id !== line.id))} className="p-1 text-rose-500 hover:bg-rose-50 rounded transition-colors" disabled={lines.length <= 1}>
                       <Trash2 className="h-4 w-4" />
                     </button>

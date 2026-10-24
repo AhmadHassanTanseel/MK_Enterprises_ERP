@@ -186,10 +186,7 @@ export const PurchaseReturnPanel: React.FC = () => {
             </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Supplier *</label>
-            <select className="w-full border border-slate-300 rounded-md p-2" value={accountId || ''} onChange={e => setAccountId(Number(e.target.value))}>
-              <option value="">-- Select Supplier --</option>
-              {supplierAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-            </select>
+            <EntitySelect autoFocus type="account" accountRole="supplier" value={accountId || 0} onChange={setAccountId} filter={a => a.is_supplier} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>

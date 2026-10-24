@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use tauri::{State, AppHandle, Manager};
-use chrono::{Local, Datelike};
+use chrono::Local;
 use std::fs;
 
 // --- DATA STRUCTURES ---
@@ -234,6 +234,31 @@ pub async fn update_product(
     .bind(id)
     .execute(&*db).await.map_err(|e| e.to_string())?;
 
+    let existing_opening: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM inventory_movements WHERE product_id = ? AND movement_type = 'OPENING' LIMIT 1"
+    )
+    .bind(id)
+    .fetch_optional(&*db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some(mv_id) = existing_opening {
+        sqlx::query("UPDATE inventory_movements SET quantity = ? WHERE id = ?")
+            .bind(opening_stock)
+            .bind(mv_id)
+            .execute(&*db)
+            .await
+            .map_err(|e| e.to_string())?;
+    } else if opening_stock > 0 {
+        sqlx::query("INSERT INTO inventory_movements (product_id, quantity, movement_type, reference_id) VALUES (?, ?, 'OPENING', ?)")
+            .bind(id)
+            .bind(opening_stock)
+            .bind(id)
+            .execute(&*db)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
     Ok(format!("Product {} updated successfully", id))
 }
 
@@ -295,6 +320,11 @@ pub async fn create_account(
 ) -> Result<i64, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
 
+    let clean_area_id = match area_id {
+        Some(id) if id > 0 => Some(id),
+        _ => None,
+    };
+
     let account_id = sqlx::query(
         "INSERT INTO accounts (account_type_id, name, contact, address, area_id, opening_balance, opening_balance_type, is_customer, is_supplier) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -303,7 +333,7 @@ pub async fn create_account(
     .bind(&name)
     .bind(contact)
     .bind(address)
-    .bind(area_id)
+    .bind(clean_area_id)
     .bind(opening_balance)
     .bind(&opening_balance_type)
     .bind(is_customer)
@@ -354,6 +384,11 @@ pub async fn update_account(
 ) -> Result<String, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
 
+    let clean_area_id = match area_id {
+        Some(id) if id > 0 => Some(id),
+        _ => None,
+    };
+
     sqlx::query(
         "UPDATE accounts SET account_type_id = ?, name = ?, contact = ?, address = ?, area_id = ?, opening_balance = ?, opening_balance_type = ?, is_customer = ?, is_supplier = ? WHERE id = ?"
     )
@@ -361,7 +396,7 @@ pub async fn update_account(
     .bind(&name)
     .bind(contact)
     .bind(address)
-    .bind(area_id)
+    .bind(clean_area_id)
     .bind(opening_balance)
     .bind(&opening_balance_type)
     .bind(is_customer)
@@ -736,6 +771,7 @@ pub struct AppNotification {
 }
 
 #[derive(FromRow)]
+#[allow(dead_code)]
 struct LowStockItem {
     name: String,
     available_stock: i64,
@@ -814,4 +850,55 @@ pub async fn get_notifications(
     }
 
     Ok(notifs)
+}
+
+#[tauri::command]
+pub async fn set_account_opening_balance(
+    account_id: i64,
+    opening_balance: f64,
+    opening_balance_type: String,
+    db: State<'_, SqlitePool>,
+) -> Result<String, String> {
+    let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+
+    sqlx::query(
+        "UPDATE accounts SET opening_balance = ?, opening_balance_type = ? WHERE id = ?"
+    )
+    .bind(opening_balance)
+    .bind(&opening_balance_type)
+    .bind(account_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    sqlx::query(
+        "DELETE FROM journal_entries WHERE narration = 'Opening Balance' AND reference_id = ? AND voucher_type = 'JOURNAL_VOUCHER'"
+    )
+    .bind(account_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if opening_balance > 0.0 {
+        let (debit, credit) = if opening_balance_type == "DEBIT" {
+            (opening_balance, 0.0)
+        } else {
+            (0.0, opening_balance)
+        };
+
+        sqlx::query(
+            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) 
+             VALUES (?, ?, ?, 'JOURNAL_VOUCHER', ?, 'Opening Balance')"
+        )
+        .bind(account_id)
+        .bind(debit)
+        .bind(credit)
+        .bind(account_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok("Opening balance updated successfully".into())
 }

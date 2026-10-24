@@ -656,26 +656,22 @@ async fn run_profit_report(pool: &SqlitePool, filters: &ReportFilters) -> Result
     let mut purchases = 0.0;
     let mut purchase_returns = 0.0;
 
-    for (invoice_type, count, amount) in &rows {
-        let label = match invoice_type.as_str() {
+    for (invoice_type, _count, amount) in &rows {
+        match invoice_type.as_str() {
             "SALE" => {
                 sales = *amount;
-                "Sales"
             }
             "SALE_RETURN" => {
                 sale_returns = *amount;
-                "Sale Returns"
             }
             "PURCHASE" => {
                 purchases = *amount;
-                "Purchases"
             }
             "PURCHASE_RETURN" => {
                 purchase_returns = *amount;
-                "Purchase Returns"
             }
-            _ => "Other",
-        };
+            _ => {}
+        }
     }
 
     let net_sales = sales - sale_returns;

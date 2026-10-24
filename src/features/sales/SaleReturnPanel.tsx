@@ -189,7 +189,7 @@ export const SaleReturnPanel: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Customer *</label>
-            <EntitySelect autoFocus type="account" value={accountId || 0} onChange={setAccountId} filter={a => a.is_customer} />
+            <EntitySelect autoFocus type="account" accountRole="customer" value={accountId || 0} onChange={setAccountId} filter={a => a.is_customer} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>

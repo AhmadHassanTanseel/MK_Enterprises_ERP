@@ -156,6 +156,7 @@ export const CashReceivedPanel: React.FC = () => {
             <label className="block text-sm font-medium text-slate-700 mb-1">Account (Customer) *</label>
             <EntitySelect 
               type="account" 
+              accountRole="customer"
               value={accountId || 0} 
               onChange={setAccountId}
               filter={a => a.account_type_id !== 1}

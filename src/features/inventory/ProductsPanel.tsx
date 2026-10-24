@@ -176,6 +176,40 @@ export const ProductsPanel: React.FC = () => {
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Pur. Rate (Cost)</label>
+                <input 
+                  type="number" min="0" step="any"
+                  className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={formData.purchase_price ?? ''}
+                  onChange={e => setFormData({...formData, purchase_price: e.target.value === '' ? 0 : Number(e.target.value)})}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Sale Rate (Price)</label>
+                <input 
+                  type="number" min="0" step="any"
+                  className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none font-semibold text-emerald-700"
+                  value={formData.sale_price ?? ''}
+                  onChange={e => setFormData({...formData, sale_price: e.target.value === '' ? 0 : Number(e.target.value)})}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Available / Opening Stock (Qty)</label>
+              <input 
+                type="number" min="0"
+                className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                value={formData.opening_stock ?? ''}
+                onChange={e => setFormData({...formData, opening_stock: e.target.value === '' ? 0 : Number(e.target.value)})}
+                placeholder="0"
+              />
+            </div>
+
             <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-medium py-2 rounded-md hover:bg-blue-700 transition-colors disabled:bg-blue-400">
               {formData.id ? 'Update Product' : 'Save Product'}
             </button>
@@ -213,9 +247,10 @@ export const ProductsPanel: React.FC = () => {
               <tr>
                 <th className="px-4 py-3 font-medium">Code</th>
                 <th className="px-4 py-3 font-medium">Product Name</th>
+                <th className="px-4 py-3 font-medium text-right">Live Stock</th>
                 <th className="px-4 py-3 font-medium text-right">Pur. Rate</th>
                 <th className="px-4 py-3 font-medium text-right">Sale Rate</th>
-                                <th className="px-4 py-3 font-medium text-center">Action</th>
+                <th className="px-4 py-3 font-medium text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -223,6 +258,7 @@ export const ProductsPanel: React.FC = () => {
                 <tr key={prod.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono text-slate-500">{prod.code}</td>
                   <td className="px-4 py-3 font-medium text-slate-800">{prod.name}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-slate-700">{prod.current_stock ?? prod.opening_stock ?? 0}</td>
                   <td className="px-4 py-3 text-right">{prod.purchase_price.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-emerald-600 font-medium">{prod.sale_price.toLocaleString()}</td>
 

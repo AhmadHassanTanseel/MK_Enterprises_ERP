@@ -71,13 +71,36 @@ pub async fn process_sale_internal(
         }
     };
 
+    let clean_salesman_id = match salesman_id {
+        Some(id) if id > 0 => {
+            let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM salesmen WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+            if exists.is_some() { Some(id) } else { None }
+        },
+        _ => None,
+    };
+
+    let clean_account_id = if account_id <= 0 {
+        2
+    } else {
+        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM accounts WHERE id = ?")
+            .bind(account_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        if exists.is_some() { account_id } else { 2 }
+    };
+
     let res = sqlx::query(
         "INSERT INTO invoices (invoice_number, invoice_type, invoice_date, account_id, salesman_id, gross_amount, discount_amount, net_amount, amount_received, bakaya, status) VALUES (?, 'SALE', ?, ?, ?, ?, ?, ?, ?, ?, 'POSTED')"
     )
     .bind(&inv_no)
     .bind(&invoice_date)
-    .bind(account_id)
-    .bind(salesman_id)
+    .bind(clean_account_id)
+    .bind(clean_salesman_id)
     .bind(gross_amount)
     .bind(discount_amount)
     .bind(net_amount)
@@ -324,12 +347,10 @@ pub async fn create_dispatch(
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
     let _ = sqlx::query("BEGIN IMMEDIATE").execute(&mut *tx).await;
 
-    let actual_salesman_id = if salesman_id == 0 { customer_id } else { salesman_id };
-    
     let dispatch_id = sqlx::query(
         "INSERT INTO dispatches (salesman_id, customer_id, dispatch_date, status) VALUES (?, ?, date('now'), 'PENDING')"
     )
-    .bind(actual_salesman_id)
+    .bind(salesman_id)
     .bind(customer_id)
     .execute(&mut *tx)
     .await
@@ -383,10 +404,6 @@ pub async fn settle_dispatch(
 
     let mut total_gross = 0.0;
     let mut total_discount = 0.0;
-    
-    // We get salesman_id to use as customer for the invoice, or maybe create a generic cash sale?
-    let row = sqlx::query("SELECT salesman_id FROM dispatches WHERE id = ?").bind(dispatch_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
-    let salesman_id: i64 = sqlx::Row::try_get(&row, "salesman_id").map_err(|e: sqlx::Error| e.to_string())?;
 
     // Prepare lines for invoice
     let mut sale_lines = Vec::new();
@@ -426,7 +443,6 @@ pub async fn settle_dispatch(
     }
     
     // Create Sale Invoice for the sold items
-    let mut invoice_id = 0;
     if !sale_lines.is_empty() {
         let net = total_gross - total_discount;
         let ref_no = format!("DISP-{}", dispatch_id);
@@ -440,13 +456,37 @@ pub async fn settle_dispatch(
         let row2 = sqlx::query("SELECT salesman_id, customer_id FROM dispatches WHERE id = ?").bind(dispatch_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
         let s_id: i64 = sqlx::Row::try_get(&row2, "salesman_id").unwrap_or_default();
         let c_id: Option<i64> = sqlx::Row::try_get(&row2, "customer_id").ok();
-        let target_account = if let Some(cid) = c_id { if cid > 0 { cid } else { s_id } } else { s_id };
+        let target_account = if let Some(cid) = c_id {
+            if cid > 0 {
+                let acc_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM accounts WHERE id = ?")
+                    .bind(cid)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .unwrap_or_default();
+                acc_exists.unwrap_or(2)
+            } else {
+                2
+            }
+        } else {
+            2
+        };
 
-        invoice_id = sqlx::query(
+        let clean_salesman_id = if s_id > 0 {
+            let sm_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM salesmen WHERE id = ?")
+                .bind(s_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .unwrap_or_default();
+            sm_exists
+        } else {
+            None
+        };
+
+        let invoice_id = sqlx::query(
             "INSERT INTO invoices (invoice_type, invoice_number, invoice_date, account_id, salesman_id, gross_amount, discount_amount, net_amount, amount_received, bakaya, status)
              VALUES ('SALE', ?, date('now'), ?, ?, ?, ?, ?, ?, ?, 'POSTED')"
         )
-        .bind(&ref_no).bind(target_account).bind(s_id).bind(total_gross).bind(total_discount).bind(net).bind(actual_received).bind(bakaya)
+        .bind(&ref_no).bind(target_account).bind(clean_salesman_id).bind(total_gross).bind(total_discount).bind(net).bind(actual_received).bind(bakaya)
         .execute(&mut *tx)
         .await.map_err(|e| e.to_string())?.last_insert_rowid();
 
