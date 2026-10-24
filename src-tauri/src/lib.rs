@@ -14,6 +14,7 @@ pub mod procurement;
 pub mod sales;
 pub mod attachments;
 pub mod attendance;
+pub mod google_oauth;
 
 use master_data::*;
 use reporting::*;
@@ -27,6 +28,7 @@ use audit::*;
 use assets::*;
 use adjustments::*;
 use attendance::*;
+use google_oauth::*;
 use tauri::Manager;
 
 
@@ -129,6 +131,10 @@ pub fn run() {
             get_cloud_config,
             set_cloud_config,
             record_cloud_sync_time,
+            get_google_oauth_config,
+            save_google_oauth_tokens,
+            disconnect_google_oauth,
+            start_google_oauth_flow,
             backup_to_drive,
             get_drive_backup_path,
             set_drive_backup_path,
