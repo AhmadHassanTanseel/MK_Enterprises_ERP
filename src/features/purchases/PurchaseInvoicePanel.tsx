@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useGridNavigation } from '../../utils/useGridNavigation';
 import { useAppContext, InvoiceLine } from '../../app/context/AppContext';
 import { Plus, Trash2, Printer, Save, FileText } from 'lucide-react';
@@ -163,11 +163,12 @@ export const PurchaseInvoicePanel: React.FC = () => {
                         type="product" 
                         value={line.product_id || 0} 
                         onChange={v => {
-                          const p = products.find(prod => prod.id === v);
+                          const val = v || 0;
+                          const p = products.find(prod => prod.id === val);
                           if (p) {
-                            setLines(lines.map(l => l.id === line.id ? { ...l, product_id: v, rate: 0, sale_rate: 0 } : l));
+                            setLines(lines.map(l => l.id === line.id ? { ...l, product_id: val, rate: 0, sale_rate: 0 } : l));
                           } else {
-                            updateLine(line.id, 'product_id', v);
+                            updateLine(line.id, 'product_id', val);
                           }
                         }} 
                         className="w-full" 

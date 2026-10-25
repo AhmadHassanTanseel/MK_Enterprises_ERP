@@ -195,6 +195,14 @@ export const generateVoucherPDF = async (
   await savePdf(doc, `${voucherType}_${refNo}.pdf`, 'Document');
 };
 
+export const generateReportPDF = async (
+  report: any,
+  fromDate: string,
+  toDate: string
+) => {
+  return generateGenericReportPDF(report, fromDate, toDate);
+};
+
 export const generateGenericReportPDF = async (
   report: any,
   fromDate: string,

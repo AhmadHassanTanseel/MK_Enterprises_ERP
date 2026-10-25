@@ -17,16 +17,21 @@ export interface ReceiptData {
   address?: string;
   phone?: string;
   deliveryDate?: string;
-  paymentMethod?: 'Cash' | 'Online';
+  paymentMethod?: 'Cash' | 'Online' | 'Cash & Bank' | 'Payment in Bank' | 'Payment via Cash' | 'Credit' | string;
   bankName?: string;
   accountTitle?: string;
   accountNumber?: string;
   staffName?: string;
   lines: ReceiptLine[];
-  gross: number;
-  discount: number;
-  net: number;
-  paid: number;
+  gross?: number;
+  totalGross?: number;
+  discount?: number;
+  totalDiscount?: number;
+  net?: number;
+  totalNet?: number;
+  paid?: number;
+  amountReceived?: number;
+  amountPaid?: number;
   balance: number;
 }
 
@@ -174,16 +179,16 @@ export function printThermalReceipt(data: ReceiptData) {
         <div class="text-right">${totalQty}</div>
         
         <div>Net Bill:</div>
-        <div class="text-right">${(data.gross || data.totalGross)?.toLocaleString() || "0"}</div>
+        <div class="text-right">${(data.gross ?? data.totalGross)?.toLocaleString() || "0"}</div>
         
         <div>Discount:</div>
-        <div class="text-right">${(data.discount || data.totalDiscount)?.toLocaleString() || "0"}</div>
+        <div class="text-right">${(data.discount ?? data.totalDiscount)?.toLocaleString() || "0"}</div>
         
         <div class="font-bold mt-1" style="font-size: 14px;">TOTAL BILL:</div>
-        <div class="text-right font-bold mt-1" style="font-size: 14px;">${(data.net || data.totalNet)?.toLocaleString() || "0"}</div>
+        <div class="text-right font-bold mt-1" style="font-size: 14px;">${(data.net ?? data.totalNet)?.toLocaleString() || "0"}</div>
         
         <div class="mt-1">Total Paid:</div>
-        <div class="text-right mt-1">${(data.paid || data.amountReceived || data.amountPaid)?.toLocaleString() || "0"}</div>
+        <div class="text-right mt-1">${(data.paid ?? data.amountReceived ?? data.amountPaid)?.toLocaleString() || "0"}</div>
         
         <div>Bakaya:</div>
         <div class="text-right">${(data.balance)?.toLocaleString() || "0"}</div>

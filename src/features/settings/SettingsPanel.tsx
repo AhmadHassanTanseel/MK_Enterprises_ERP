@@ -339,14 +339,16 @@ function doGet(e) {
       if (resp.ok) {
         const data = await resp.json();
         token = data.access_token;
-        await invoke('save_google_oauth_tokens', {
-          accessToken: token,
-          refreshToken: null,
-          userEmail: null,
-          userName: null,
-        });
-        setOauthConfig(prev => ({ ...prev, access_token: token }));
-        return token;
+        if (token) {
+          await invoke('save_google_oauth_tokens', {
+            accessToken: token,
+            refreshToken: null,
+            userEmail: null,
+            userName: null,
+          });
+          setOauthConfig(prev => ({ ...prev, access_token: token }));
+          return token;
+        }
       }
     }
     throw new Error("No active Google session. Please sign in with Google.");
@@ -593,7 +595,7 @@ function doGet(e) {
       }
 
       toast.loading("Restoring database and applying checkpoint...", { id: 'downloadRestore' });
-      const msg = await invoke('restore_cloud_backup', { base64Data });
+      const msg = await invoke<string>('restore_cloud_backup', { base64Data });
       toast.success(msg, { id: 'downloadRestore' });
       setShowCloudRestoreModal(false);
 

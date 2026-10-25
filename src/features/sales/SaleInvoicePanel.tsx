@@ -139,7 +139,7 @@ export const SaleInvoicePanel: React.FC = () => {
         const bankName = chosenBank?.bank_name || settings.find(s => s.key === 'bank_name')?.value || '';
         const accountTitle = chosenBank?.account_title || chosenBank?.name || settings.find(s => s.key === 'bank_account_title')?.value || '';
         const accountNumber = chosenBank?.account_number || settings.find(s => s.key === 'bank_account_number')?.value || '';
-        const paymentMethod = (typeof amountReceivedBank !== 'undefined' ? amountReceivedBank : (typeof amountPaidBank !== 'undefined' ? amountPaidBank : 0)) > 0 ? 'Bank' : 'Cash';
+        const paymentMethod = amountReceivedBank > 0 ? 'Online' : 'Cash';
 
         if (printAfter) {
         const acc = accounts.find(a => a.id === customer_id);
