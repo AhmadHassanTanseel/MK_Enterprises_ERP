@@ -146,14 +146,11 @@ export const SettingsPanel: React.FC = () => {
     setIsTestingWebhook(true);
     toast.loading("Testing connection to Google Drive...", { id: 'testWebhook' });
     try {
-      const resp = await fetch(inputCloudUrl.trim());
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`);
-      }
-      const data = await resp.json();
-      toast.success("Connection Successful! Google Drive is ready to receive backups.", { id: 'testWebhook', duration: 5000 });
+      const res = await invoke<string>('test_google_webhook', { url: inputCloudUrl.trim() });
+      toast.success(res, { id: 'testWebhook', duration: 7000 });
     } catch (err: any) {
-      toast.error("Access Denied or Blocked: Please ensure 'Who has access' is set to 'Anyone' in your script.google.com deployment.", { id: 'testWebhook', duration: 8000 });
+      const msg = typeof err === 'string' ? err : (err.message || String(err));
+      toast.error(msg, { id: 'testWebhook', duration: 12000 });
     } finally {
       setIsTestingWebhook(false);
     }
@@ -1034,15 +1031,20 @@ function doGet(e) {
                     <Copy className="h-3.5 w-3.5" /> Copy Script (اسکرپٹ کاپی کریں)
                   </button>
                 </div>
-                <ol className="list-decimal list-inside space-y-1 text-[11px] text-blue-800">
+                <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-blue-800">
                   <li>Visit <strong>script.google.com</strong> with your Google Account.</li>
-                  <li>Click <strong>New Project</strong>, paste the copied script, and click <strong>Deploy &gt; New deployment</strong>.</li>
-                  <li>Select <strong>Web app</strong>, Who has access: <strong>Anyone</strong>, and copy the Web app URL here.</li>
+                  <li>Paste the copied script and click <strong>Deploy &gt; New deployment</strong> (یا Manage deployments).</li>
+                  <li><strong>Execute as:</strong> لازمی <strong>Me (your email)</strong> منتخب کریں۔</li>
+                  <li><strong>Who has access:</strong> لازمی <strong>Anyone</strong> (کوئی بھی) منتخب کریں۔</li>
+                  <li>Click <strong>Deploy</strong> (اگر پہلے سے بنی ہوئی ہے تو <strong>Version: New version</strong> منتخب کریں)۔</li>
                 </ol>
               </div>
 
-              <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-[11px] text-amber-900 font-medium">
-                ⚠️ <strong>اہم ترین قدم:</strong> گوگل اسکرپٹ کو Deploy کرتے وقت <strong>"Who has access"</strong> کو لازمی <strong>"Anyone"</strong> منتخب کریں (ورنہ گوگل لاگ ان کا پوچھے گا اور بیک اپ بلاک ہو جائے گا)۔
+              <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-[11px] text-amber-900 space-y-1">
+                <div className="font-bold">⚠️ اہم ترین سیٹنگز (لاگ اِن ایرر سے بچنے کے لیے):</div>
+                <div>1. <strong>Execute as:</strong> لازمی <strong>"Me" (آپ کی ای میل)</strong> ہو، نہ کہ 'User accessing'۔</div>
+                <div>2. <strong>Who has access:</strong> لازمی <strong>"Anyone"</strong> ہو۔</div>
+                <div>3. اگر تبدیلی کی ہے تو <strong>Manage deployments &gt; Edit (پنسل) &gt; Version: "New version"</strong> منتخب کر کے Deploy دبائیں۔</div>
               </div>
 
               <div className="pt-2 border-t border-slate-100">

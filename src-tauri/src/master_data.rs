@@ -822,6 +822,7 @@ pub struct AppNotification {
     pub title: String,
     pub message: String,
     pub level: String, // "warning", "info", "danger"
+    pub link: Option<String>,
 }
 
 #[derive(FromRow)]
@@ -867,6 +868,7 @@ pub async fn get_notifications(
             title: "Backup Pending".into(),
             message: "Daily backup is pending! Please go to Settings and take a backup.".into(),
             level: "warning".into(),
+            link: Some("/settings".into()),
         });
     }
 
@@ -897,6 +899,7 @@ pub async fn get_notifications(
                     title: "Low Stock Alert".into(),
                     message,
                     level: "danger".into(),
+                    link: Some("/inventory".into()),
                 });
             }
         }

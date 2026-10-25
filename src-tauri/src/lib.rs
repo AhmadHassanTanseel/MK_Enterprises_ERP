@@ -145,7 +145,8 @@ pub fn run() {
             sell_company_asset,
             get_settings,
             save_setting,
-            restart_app
+            restart_app,
+            test_google_webhook
         ])
         .setup(|mut app| {
             let _ = trial::enforce_trial(&mut app);

@@ -304,3 +304,59 @@ pub async fn restore_database(
 pub async fn restart_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     app_handle.restart();
 }
+
+#[tauri::command]
+pub async fn test_google_webhook(url: String) -> Result<String, String> {
+    let clean_url = url.trim();
+    if clean_url.is_empty() {
+        return Err("URL cannot be empty".into());
+    }
+
+    let output = std::process::Command::new("curl.exe")
+        .args(["-L", "-s", "-i", clean_url])
+        .output()
+        .map_err(|e| format!("Failed to execute test request: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Check if Google redirected to sign-in page
+    if stdout.contains("accounts.google.com/ServiceLogin")
+        || stdout.contains("accounts.google.com/v3/signin")
+        || stdout.contains("ServiceLogin?passive=")
+    {
+        return Err(
+            "Google Script is redirecting to Sign-in page! (گوگل اسکرپٹ لاگ اِن مانگ رہا ہے)\n\n\
+             Reason: In script.google.com, 'Execute as' was set to 'User accessing the web app'.\n\n\
+             How to fix (حل):\n\
+             1. Open script.google.com\n\
+             2. Click Deploy > Manage deployments\n\
+             3. Click the Pencil (Edit) icon\n\
+             4. Set 'Execute as' -> Me (your email) (لازمی 'Me' منتخب کریں)\n\
+             5. Set 'Who has access' -> Anyone (کوئی بھی)\n\
+             6. Set 'Version' -> New version (نیا ورژن منتخب کریں)\n\
+             7. Click Deploy".into(),
+        );
+    }
+
+    if stdout.contains("\"status\"")
+        || stdout.contains("\"files\"")
+        || stdout.contains("files:")
+        || stdout.contains("status:")
+    {
+        return Ok("Connection Successful! Google Drive is ready to receive backups. (گوگل ڈرائیو کامیابی سے منسلک ہو گیا)".into());
+    }
+
+    if stdout.contains("HTTP/1.1 200") || stdout.contains("HTTP/2 200") {
+        return Ok("Connection Successful! (گوگل ڈرائیو کامیابی سے منسلک ہو گیا)".into());
+    }
+
+    if stdout.contains("HTTP/1.1 401") || stdout.contains("HTTP/1.1 403") {
+        return Err("Access Denied (403/401). Please ensure you clicked 'Authorize access' and set 'Who has access' to 'Anyone'.".into());
+    }
+
+    if stdout.contains("HTTP/1.1 404") {
+        return Err("Web App URL not found (404). Please ensure the URL ends with /exec".into());
+    }
+
+    Ok("Connected successfully to Google Webhook.".into())
+}

@@ -12,6 +12,7 @@ interface AppNotification {
   title: string;
   message: string;
   level: string;
+  link?: string;
 }
 
 export const MainLayout: React.FC = () => {
@@ -25,6 +26,19 @@ export const MainLayout: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
 
   const notifRef = useRef<HTMLDivElement>(null);
+
+  const handleNotificationClick = (notif: AppNotification) => {
+    setShowNotifications(false);
+    if (notif.link) {
+      navigate(notif.link);
+    } else if (notif.id.includes('backup') || notif.title.toLowerCase().includes('backup')) {
+      navigate('/settings');
+    } else if (notif.id.includes('stock') || notif.title.toLowerCase().includes('stock')) {
+      navigate('/inventory');
+    } else {
+      navigate('/settings');
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -241,10 +255,20 @@ export const MainLayout: React.FC = () => {
                         <div className="p-4 text-center text-slate-500 text-sm">No new notifications</div>
                       ) : (
                         notifications.map(notif => (
-                          <div key={notif.id} className="p-4 border-b border-slate-100 hover:bg-slate-50">
-                            <h5 className={`font-bold text-sm ${notif.level === 'danger' ? 'text-rose-600' : notif.level === 'warning' ? 'text-amber-600' : 'text-blue-600'} mb-1`}>
-                              {notif.title}
-                            </h5>
+                          <div 
+                            key={notif.id} 
+                            onClick={() => handleNotificationClick(notif)}
+                            className="p-3.5 border-b border-slate-100 hover:bg-blue-50 cursor-pointer transition-colors group"
+                            title="Click to open panel (پینل کھولنے کے لیے کلک کریں)"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <h5 className={`font-bold text-sm ${notif.level === 'danger' ? 'text-rose-600' : notif.level === 'warning' ? 'text-amber-600' : 'text-blue-600'}`}>
+                                {notif.title}
+                              </h5>
+                              <span className="text-[10px] text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity font-semibold">
+                                جائیں &rarr;
+                              </span>
+                            </div>
                             <p className="text-slate-600 text-xs leading-relaxed">{notif.message}</p>
                           </div>
                         ))
