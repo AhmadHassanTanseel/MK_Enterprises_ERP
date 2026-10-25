@@ -56,6 +56,23 @@ export const PurchaseReturnPanel: React.FC = () => {
   const removeLine = (id: string) => lines.length > 1 && setLines(lines.filter(l => l.id !== id));
 
   const updateLine = (id: string, field: keyof InvoiceLine, value: any) => {
+    if (field === 'product_id' && value) {
+      const existingLineIndex = lines.findIndex(l => l.id !== id && l.product_id === value);
+      if (existingLineIndex !== -1) {
+        const existingLine = lines[existingLineIndex];
+        const product = products.find(p => p.id === value);
+        toast.error(`"${product?.name || 'Item'}" پہلے سے لائن نمبر ${existingLineIndex + 1} میں شامل ہے!`, { id: 'dup-prod' });
+        setTimeout(() => {
+          const qtyInput = document.getElementById(`line-qty-${existingLine.id}`);
+          if (qtyInput) {
+            qtyInput.focus();
+            (qtyInput as HTMLInputElement).select();
+          }
+        }, 50);
+        return;
+      }
+    }
+
     setLines(lines.map(l => {
       if (l.id === id) {
         const newLine = { ...l, [field]: value };
@@ -217,7 +234,14 @@ export const PurchaseReturnPanel: React.FC = () => {
                     <EntitySelect autoFocus type="product" value={line.product_id || 0} onChange={v => updateLine(line.id, 'product_id', v)} className="w-full" />
                   </td>
                     <td className="px-4 py-2 text-right">
-                      <input type="number" min="1" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 focus:border-blue-500 outline-none" value={line.qty || ''} onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} />
+                      <input 
+                        id={`line-qty-${line.id}`}
+                        type="number" 
+                        min="1" 
+                        className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 focus:border-blue-500 outline-none" 
+                        value={line.qty || ''} 
+                        onChange={e => updateLine(line.id, 'qty', Number(e.target.value))} 
+                      />
                     </td>
                     <td className="px-4 py-2 text-right">
                       <input type="number" min="0" className="w-full min-w-[80px] text-right border border-slate-300 rounded p-1 focus:border-blue-500 outline-none" value={line.rate || ''} onChange={e => updateLine(line.id, 'rate', Number(e.target.value))} />

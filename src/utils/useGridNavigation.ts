@@ -57,34 +57,32 @@ export function useGridNavigation(
       const rowElements = Array.from(row.querySelectorAll(navigableSelectors)) as HTMLElement[];
       const colIndex = rowElements.indexOf(target);
       
-      if (e.key === 'ArrowRight') {
-        if (isTextInput) {
-            const input = target as HTMLInputElement;
-            if (input.selectionStart !== null && input.selectionStart < input.value.length) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        // Allow native cursor movement within text fields without jumping between inputs
+        if (isInput || isSelect || target.tagName === 'TEXTAREA') {
+          return;
         }
-        // Removed the "if (isSelect) return" - so ArrowRight will move focus!
+        
         e.preventDefault();
-        if (colIndex < rowElements.length - 1) {
-          rowElements[colIndex + 1].focus();
-        } else if (rowIndex < rows.length - 1) {
-          const nextRowElements = Array.from(rows[rowIndex + 1].querySelectorAll(navigableSelectors)) as HTMLElement[];
-          if (nextRowElements.length > 0) nextRowElements[0].focus();
-        }
-      } else if (e.key === 'ArrowLeft') {
-        if (isTextInput) {
-            const input = target as HTMLInputElement;
-            if (input.selectionEnd !== null && input.selectionEnd > 0) return;
-        }
-        // Removed the "if (isSelect) return"
-        e.preventDefault();
-        if (colIndex > 0) {
-          rowElements[colIndex - 1].focus();
-        } else if (rowIndex > 0) {
-          const prevRowElements = Array.from(rows[rowIndex - 1].querySelectorAll(navigableSelectors)) as HTMLElement[];
-          if (prevRowElements.length > 0) prevRowElements[prevRowElements.length - 1].focus();
+        if (e.key === 'ArrowRight') {
+          if (colIndex < rowElements.length - 1) {
+            rowElements[colIndex + 1].focus();
+          } else if (rowIndex < rows.length - 1) {
+            const nextRowElements = Array.from(rows[rowIndex + 1].querySelectorAll(navigableSelectors)) as HTMLElement[];
+            if (nextRowElements.length > 0) nextRowElements[0].focus();
+          }
+        } else if (e.key === 'ArrowLeft') {
+          if (colIndex > 0) {
+            rowElements[colIndex - 1].focus();
+          } else if (rowIndex > 0) {
+            const prevRowElements = Array.from(rows[rowIndex - 1].querySelectorAll(navigableSelectors)) as HTMLElement[];
+            if (prevRowElements.length > 0) prevRowElements[prevRowElements.length - 1].focus();
+          }
         }
       } else if (e.key === 'ArrowUp') {
-
+        if (isSelect || target.tagName === 'TEXTAREA' || (isInput && (target as HTMLInputElement).type === 'number')) {
+          return;
+        }
         e.preventDefault();
         if (rowIndex > 0) {
           const prevRowElements = Array.from(rows[rowIndex - 1].querySelectorAll(navigableSelectors)) as HTMLElement[];
@@ -92,7 +90,9 @@ export function useGridNavigation(
           if (targetElem) targetElem.focus();
         }
       } else if (e.key === 'ArrowDown') {
-
+        if (isSelect || target.tagName === 'TEXTAREA' || (isInput && (target as HTMLInputElement).type === 'number')) {
+          return;
+        }
         e.preventDefault();
         if (rowIndex < rows.length - 1) {
           const nextRowElements = Array.from(rows[rowIndex + 1].querySelectorAll(navigableSelectors)) as HTMLElement[];

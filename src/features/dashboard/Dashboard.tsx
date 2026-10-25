@@ -139,6 +139,10 @@ export const Dashboard: React.FC = () => {
     };
   }, [invoices, accounts, ledgerEntries, todayStr, startOfWeekStr, startOfMonthStr, thirtyDaysAgoStr]);
 
+  const formatRs = (val: number) => {
+    return 'Rs. ' + Math.round(val || 0).toLocaleString();
+  };
+
   return (
     <div className="space-y-4">
       {/* Header bar with Hide/Show Cash & Bank Flow button */}
@@ -162,82 +166,82 @@ export const Dashboard: React.FC = () => {
         </button>
       </div>
       
-      {/* 5 Summary Sections */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+      {/* 5 Summary Sections - Auto-Adaptive, Uncompressed */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
         {/* Sales Summary */}
-        <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-200">
+        <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-blue-600" /> Sales (Net)
+            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 truncate">
+              <TrendingUp className="h-4 w-4 text-blue-600 shrink-0" /> Sales (Net)
             </h3>
           </div>
-          <div className="space-y-1">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">Today</span>
-              <span className="font-bold text-slate-800">Rs. {metrics.salesToday.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">Today</span>
+              <span className="font-bold text-slate-800 tabular-nums">{formatRs(metrics.salesToday)}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">This Week</span>
-              <span className="font-bold text-slate-800">Rs. {metrics.salesWeek.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">This Week</span>
+              <span className="font-bold text-slate-800 tabular-nums">{formatRs(metrics.salesWeek)}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">This Month</span>
-              <span className="font-bold text-slate-800">Rs. {metrics.salesMonth.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1">
+              <span className="text-slate-600 font-semibold whitespace-nowrap">This Month</span>
+              <span className="font-bold text-blue-700 tabular-nums">{formatRs(metrics.salesMonth)}</span>
             </div>
           </div>
         </div>
 
         {/* Purchases Summary */}
-        <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-200">
+        <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5 text-teal-600" /> Purchases (Net)
+            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 truncate">
+              <ShoppingCart className="h-4 w-4 text-teal-600 shrink-0" /> Purchases (Net)
             </h3>
           </div>
-          <div className="space-y-1">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">Today</span>
-              <span className="font-bold text-slate-800">Rs. {metrics.purchToday.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">Today</span>
+              <span className="font-bold text-slate-800 tabular-nums">{formatRs(metrics.purchToday)}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">This Week</span>
-              <span className="font-bold text-slate-800">Rs. {metrics.purchWeek.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">This Week</span>
+              <span className="font-bold text-slate-800 tabular-nums">{formatRs(metrics.purchWeek)}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">This Month</span>
-              <span className="font-bold text-slate-800">Rs. {metrics.purchMonth.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1">
+              <span className="text-slate-600 font-semibold whitespace-nowrap">This Month</span>
+              <span className="font-bold text-teal-700 tabular-nums">{formatRs(metrics.purchMonth)}</span>
             </div>
           </div>
         </div>
 
         {/* Customers Summary */}
-        <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-200">
+        <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
-              <Users className="h-5 w-5 text-purple-600" /> Customers
+            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 truncate">
+              <Users className="h-4 w-4 text-purple-600 shrink-0" /> Customers
             </h3>
           </div>
-          <div className="space-y-1">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">Active (30 days)</span>
-              <span className="font-bold text-slate-800">{metrics.activeCustomerCount}</span>
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">Active (30 days)</span>
+              <span className="font-bold text-slate-800 tabular-nums">{metrics.activeCustomerCount}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">Receivables</span>
-              <span className="font-bold text-slate-800">Rs. {metrics.totalReceivables.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">New This Month</span>
+              <span className="font-bold text-slate-800 tabular-nums">{metrics.newCustomersMonth}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">New This Month</span>
-              <span className="font-bold text-slate-800">{metrics.newCustomersMonth}</span>
+            <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1">
+              <span className="text-slate-600 font-semibold whitespace-nowrap">Receivables</span>
+              <span className="font-bold text-purple-700 tabular-nums">{formatRs(metrics.totalReceivables)}</span>
             </div>
           </div>
         </div>
 
         {/* Cash Summary */}
-        <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-200">
+        <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-emerald-600" /> Cash Flow
+            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 truncate">
+              <DollarSign className="h-4 w-4 text-emerald-600 shrink-0" /> Cash Flow
             </h3>
             <button
               type="button"
@@ -245,50 +249,50 @@ export const Dashboard: React.FC = () => {
               className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
               title={hideCashBank ? "Show Cash Flow" : "Hide Cash Flow"}
             >
-              {hideCashBank ? <Eye className="h-4 w-4 text-emerald-600" /> : <EyeOff className="h-4 w-4" />}
+              {hideCashBank ? <Eye className="h-3.5 w-3.5 text-emerald-600" /> : <EyeOff className="h-3.5 w-3.5" />}
             </button>
           </div>
-          <div className="mb-2 pb-2 border-b border-slate-100 flex justify-between items-center">
-            <span className="text-xs font-bold text-slate-600">Total in Hand</span>
+          <div className="mb-1.5 pb-1.5 border-b border-slate-100 flex justify-between items-center">
+            <span className="text-xs font-bold text-slate-600 whitespace-nowrap">Total in Hand</span>
             {hideCashBank ? (
-              <span className="text-sm font-black tracking-widest text-slate-400 font-mono">••••••••</span>
+              <span className="text-xs font-black tracking-widest text-slate-400 font-mono">••••••••</span>
             ) : (
-              <span className={`text-base font-bold ${metrics.cashAllTime >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashAllTime.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              <span className={`text-xs font-bold tabular-nums ${metrics.cashAllTime >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatRs(metrics.cashAllTime)}</span>
             )}
           </div>
           <div className="space-y-1">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">Today</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">Today</span>
               {hideCashBank ? (
-                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
-                <span className={`font-bold ${metrics.cashToday >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashToday.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span className={`font-bold tabular-nums ${metrics.cashToday >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatRs(metrics.cashToday)}</span>
               )}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">This Week</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">This Week</span>
               {hideCashBank ? (
-                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
-                <span className={`font-bold ${metrics.cashWeek >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashWeek.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span className={`font-bold tabular-nums ${metrics.cashWeek >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatRs(metrics.cashWeek)}</span>
               )}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">This Month</span>
+            <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1">
+              <span className="text-slate-600 font-semibold whitespace-nowrap">This Month</span>
               {hideCashBank ? (
-                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
-                <span className={`font-bold ${metrics.cashMonth >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Rs. {metrics.cashMonth.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span className={`font-bold tabular-nums ${metrics.cashMonth >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatRs(metrics.cashMonth)}</span>
               )}
             </div>
           </div>
         </div>
 
         {/* Bank Summary */}
-        <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-200">
+        <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
-              <Activity className="h-5 w-5 text-blue-600" /> Bank Flow
+            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 truncate">
+              <Activity className="h-4 w-4 text-blue-600 shrink-0" /> Bank Flow
             </h3>
             <button
               type="button"
@@ -296,58 +300,58 @@ export const Dashboard: React.FC = () => {
               className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
               title={hideCashBank ? "Show Bank Flow" : "Hide Bank Flow"}
             >
-              {hideCashBank ? <Eye className="h-4 w-4 text-blue-600" /> : <EyeOff className="h-4 w-4" />}
+              {hideCashBank ? <Eye className="h-3.5 w-3.5 text-blue-600" /> : <EyeOff className="h-3.5 w-3.5" />}
             </button>
           </div>
-          <div className="mb-2 pb-2 border-b border-slate-100 flex justify-between items-center">
-            <span className="text-xs font-bold text-slate-600">Total in Bank</span>
+          <div className="mb-1.5 pb-1.5 border-b border-slate-100 flex justify-between items-center">
+            <span className="text-xs font-bold text-slate-600 whitespace-nowrap">Total in Bank</span>
             {hideCashBank ? (
-              <span className="text-sm font-black tracking-widest text-slate-400 font-mono">••••••••</span>
+              <span className="text-xs font-black tracking-widest text-slate-400 font-mono">••••••••</span>
             ) : (
-              <span className={`text-base font-bold ${metrics.bankAllTime >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankAllTime.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              <span className={`text-xs font-bold tabular-nums ${metrics.bankAllTime >= 0 ? 'text-blue-700' : 'text-rose-600'}`}>{formatRs(metrics.bankAllTime)}</span>
             )}
           </div>
           <div className="space-y-1">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">Today</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">Today</span>
               {hideCashBank ? (
-                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
-                <span className={`font-bold ${metrics.bankToday >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankToday.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span className={`font-bold tabular-nums ${metrics.bankToday >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>{formatRs(metrics.bankToday)}</span>
               )}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">This Week</span>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">This Week</span>
               {hideCashBank ? (
-                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
-                <span className={`font-bold ${metrics.bankWeek >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankWeek.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span className={`font-bold tabular-nums ${metrics.bankWeek >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>{formatRs(metrics.bankWeek)}</span>
               )}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-500">This Month</span>
+            <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1">
+              <span className="text-slate-600 font-semibold whitespace-nowrap">This Month</span>
               {hideCashBank ? (
-                <span className="text-xs font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
-                <span className={`font-bold ${metrics.bankMonth >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>Rs. {metrics.bankMonth.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span className={`font-bold tabular-nums ${metrics.bankMonth >= 0 ? 'text-blue-700' : 'text-rose-600'}`}>{formatRs(metrics.bankMonth)}</span>
               )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* 8 Quick Navigation Blocks */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* 9 Quick Navigation Blocks - Balanced 3-column Grid (3 x 3) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {quickNav.map((nav, i) => (
           <NavLink 
             key={i} 
             to={nav.to}
-            className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow flex items-center justify-start gap-3 group"
+            className="bg-white p-3.5 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-blue-300 transition-all flex items-center justify-start gap-3.5 group"
           >
-            <div className={`p-2 rounded-full ${nav.color} group-hover:scale-110 transition-transform duration-300`}>
+            <div className={`p-2.5 rounded-xl ${nav.color} group-hover:scale-105 transition-transform duration-200 shadow-sm`}>
               <nav.icon className="h-5 w-5" />
             </div>
-            <span className="font-medium text-slate-700 text-sm">{nav.label}</span>
+            <span className="font-semibold text-slate-800 text-sm">{nav.label}</span>
           </NavLink>
         ))}
       </div>
