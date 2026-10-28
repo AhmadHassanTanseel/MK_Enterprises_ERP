@@ -367,11 +367,19 @@ export const AttendanceComponent: React.FC = () => {
     setWorkerKhataModalOpen(true);
     try {
       const res: any = await invoke('get_account_ledger', {
-        accountId: workerId,
-        fromDate: null,
-        toDate: null
+        accountId: workerId
       });
-      setWorkerKhataEntries(res?.entries || res || []);
+      const entriesList = Array.isArray(res) ? res : [];
+      let runningBalance = 0;
+      const computedEntries = entriesList.map((e: any) => {
+        // For staff/employee accounts: Credit = salary/earnings, Debit = payments/advances taken
+        runningBalance += (e.credit || 0) - (e.debit || 0);
+        return {
+          ...e,
+          balance: runningBalance
+        };
+      });
+      setWorkerKhataEntries(computedEntries);
     } catch (err: any) {
       toast.error(`کھاتہ لوڈ کرنے میں غلطی: ${err.toString()}`);
     } finally {
