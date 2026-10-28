@@ -96,6 +96,19 @@ pub async fn process_sale_internal(
         if exists.is_some() { account_id } else { 2 }
     };
 
+    let bakaya = net_amount - amount_received;
+    if bakaya > 0.01 {
+        let acc_name: Option<String> = sqlx::query_scalar("SELECT name FROM accounts WHERE id = ?")
+            .bind(clean_account_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        let is_walk_in = clean_account_id == 2 || acc_name.as_deref().map(|n| n.to_lowercase().contains("walk-in")).unwrap_or(false);
+        if is_walk_in {
+            return Err("واک اِن کسٹمر (Walk-in Customer) کے لیے ادھار ممکن نہیں ہے۔ برائے مہربانی گاہک کا نام منتخب کریں یا نیا کسٹمر کھاتہ بنائیں (Udhaar/Credit not allowed for Walk-in Customer. Please assign or create a customer account).".to_string());
+        }
+    }
+
     let res = sqlx::query(
         "INSERT INTO invoices (invoice_number, invoice_type, invoice_date, account_id, salesman_id, gross_amount, discount_amount, net_amount, amount_received, bakaya, status) VALUES (?, 'SALE', ?, ?, ?, ?, ?, ?, ?, ?, 'POSTED')"
     )
@@ -107,7 +120,7 @@ pub async fn process_sale_internal(
     .bind(discount_amount)
     .bind(net_amount)
     .bind(amount_received)
-    .bind(net_amount - amount_received)
+    .bind(bakaya)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;

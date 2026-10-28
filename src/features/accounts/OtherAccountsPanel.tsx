@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText, Plus, Building2 } from 'lucide-react';
+import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText, Plus, Building2, Edit2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
@@ -312,7 +312,7 @@ export const OtherAccountsPanel: React.FC = () => {
   const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const { accountTypes, accounts, postJournalEntry, fetchData, ledgerEntries, products, createAccount, createBankAccount } = useAppContext();
+  const { accountTypes, accounts, postJournalEntry, fetchData, ledgerEntries, products, createAccount, createBankAccount, updateAccount } = useAppContext();
 
   // Bank Accounts State & Calculations
   const [isAddBankModalOpen, setIsAddBankModalOpen] = useState(false);
@@ -323,6 +323,26 @@ export const OtherAccountsPanel: React.FC = () => {
   const [bankOB, setBankOB] = useState<number | ''>('');
   const [bankOBType, setBankOBType] = useState<'DEBIT' | 'CREDIT'>('DEBIT');
   const [isBankSubmitting, setIsBankSubmitting] = useState(false);
+
+  // Edit Bank Account State
+  const [isEditBankModalOpen, setIsEditBankModalOpen] = useState(false);
+  const [editingBankAcc, setEditingBankAcc] = useState<any>(null);
+  const [editBankName, setEditBankName] = useState('');
+  const [editAccountTitle, setEditAccountTitle] = useState('');
+  const [editAccountNumber, setEditAccountNumber] = useState('');
+  const [editBankNickname, setEditBankNickname] = useState('');
+  const [editBankOB, setEditBankOB] = useState<number | string>('');
+  const [editBankOBType, setEditBankOBType] = useState<'DEBIT' | 'CREDIT'>('DEBIT');
+
+  // Fixed Liability Payment State
+  const [payLiabilityModalOpen, setPayLiabilityModalOpen] = useState(false);
+  const [payingLiability, setPayingLiability] = useState<any>(null);
+  const [payLiabAmount, setPayLiabAmount] = useState<number | ''>('');
+  const [payLiabMethod, setPayLiabMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [payLiabBankId, setPayLiabBankId] = useState<number | null>(null);
+  const [payLiabDate, setPayLiabDate] = useState(new Date().toISOString().split('T')[0]);
+  const [payLiabNotes, setPayLiabNotes] = useState('');
+  const [isPayingLiab, setIsPayingLiab] = useState(false);
 
   const bankAccountsList = accounts.filter(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name);
   const cashInDrawerAcc = accounts.find(a => a.id === 1);
@@ -358,6 +378,100 @@ export const OtherAccountsPanel: React.FC = () => {
       toast.error(err.toString());
     } finally {
       setIsBankSubmitting(false);
+    }
+  };
+
+  const handleOpenEditBank = (acc: any) => {
+    setEditingBankAcc(acc);
+    setEditBankName(acc.bank_name || acc.name || '');
+    setEditAccountTitle(acc.account_title || acc.name || '');
+    setEditAccountNumber(acc.account_number || '');
+    setEditBankNickname(acc.name || '');
+    setEditBankOB(acc.opening_balance ?? 0);
+    setEditBankOBType(acc.opening_balance_type === 'CREDIT' ? 'CREDIT' : 'DEBIT');
+    setIsEditBankModalOpen(true);
+  };
+
+  const handleUpdateBankAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBankAcc) return;
+    if (!editBankName.trim() || !editAccountNumber.trim()) {
+      toast.error('بینک کا نام اور اکاؤنٹ نمبر لازمی ہیں (Bank name and account number required)');
+      return;
+    }
+    const displayName = editBankNickname.trim() || `${editBankName.trim()} (${editAccountNumber.slice(-4)})`;
+    setIsBankSubmitting(true);
+    try {
+      await updateAccount(
+        editingBankAcc.id,
+        editingBankAcc.account_type_id || 1,
+        displayName,
+        editingBankAcc.contact || undefined,
+        editingBankAcc.address || undefined,
+        editingBankAcc.area_id || undefined,
+        Number(editBankOB) || 0,
+        editBankOBType,
+        false,
+        false,
+        editBankName.trim(),
+        editAccountTitle.trim(),
+        editAccountNumber.trim(),
+        editingBankAcc.wage_type || undefined,
+        editingBankAcc.salary_rate || undefined
+      );
+      toast.success(`بینک اکاؤنٹ "${displayName}" تبدیل کر دیا گیا ہے!`);
+      setIsEditBankModalOpen(false);
+      setEditingBankAcc(null);
+      await fetchData();
+    } catch (err: any) {
+      toast.error(`تبدیلی ناکام: ${err.toString()}`);
+    } finally {
+      setIsBankSubmitting(false);
+    }
+  };
+
+  const handleOpenPayLiability = (fl: any) => {
+    setPayingLiability(fl);
+    setPayLiabAmount(fl.amount || '');
+    setPayLiabMethod('CASH');
+    setPayLiabBankId(null);
+    setPayLiabDate(new Date().toISOString().split('T')[0]);
+    setPayLiabNotes(`Fixed Liability Payment: ${fl.name} (${fl.frequency})`);
+    setPayLiabilityModalOpen(true);
+  };
+
+  const submitPayLiability = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payingLiability || !payLiabAmount || Number(payLiabAmount) <= 0) {
+      toast.error('درست رقم درج کریں (Valid amount required)');
+      return;
+    }
+    if (payLiabMethod === 'BANK' && !payLiabBankId) {
+      toast.error('بینک اکاؤنٹ منتخب کریں (Select a bank account)');
+      return;
+    }
+    setIsPayingLiab(true);
+    try {
+      const ref = `FL-${Date.now().toString().slice(-6)}`;
+      await invoke('process_cash_transaction', {
+        transType: 'PAYMENT',
+        accountId: 7, // Operating Expense / Liability account
+        amount: Number(payLiabAmount),
+        transDate: payLiabDate,
+        description: payLiabNotes || `Fixed Liability Payment: ${payingLiability.name}`,
+        paymentMethod: payLiabMethod,
+        refNo: ref,
+        attachmentPath: null,
+        bankAccountId: payLiabMethod === 'BANK' ? payLiabBankId : null
+      });
+      toast.success(`ادائیگی برائے "${payingLiability.name}" محفوظ ہو گئی!`);
+      setPayLiabilityModalOpen(false);
+      setPayingLiability(null);
+      await fetchData();
+    } catch (err: any) {
+      toast.error(err.toString());
+    } finally {
+      setIsPayingLiab(false);
     }
   };
 
@@ -955,13 +1069,22 @@ export const OtherAccountsPanel: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenLedger(b)}
-                          className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors border border-blue-200"
-                        >
-                          View Ledger / کھاتہ دیکھیں
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenLedger(b)}
+                            className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors border border-blue-200"
+                          >
+                            کھاتہ دیکھیں
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditBank(b)}
+                            className="px-2.5 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-bold transition-colors border border-amber-200 flex items-center gap-1"
+                          >
+                            <Edit2 className="h-3 w-3" /> ترمیم
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -975,6 +1098,123 @@ export const OtherAccountsPanel: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Edit Bank Account Modal */}
+            {isEditBankModalOpen && editingBankAcc && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2 flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-amber-600" />
+                    بینک کھاتہ تبدیل کریں (Edit Bank Account)
+                  </h3>
+                  <form onSubmit={handleUpdateBankAccount} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Bank Name (بینک کا نام) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Meezan Bank, HBL, Bank Alfalah"
+                        value={editBankName}
+                        onChange={e => setEditBankName(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Account Title (کھاتے دار کا نام) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. MK Enterprises"
+                        value={editAccountTitle}
+                        onChange={e => setEditAccountTitle(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Account / IBAN Number (کھاتہ نمبر) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 0101-0103456789 or PK60MEZN00..."
+                        value={editAccountNumber}
+                        onChange={e => setEditAccountNumber(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Account Nickname / Branch (شناختی نام / برانچ)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Main Branch"
+                        value={editBankNickname}
+                        onChange={e => setEditBankNickname(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Opening Balance (ابتدائی رقم)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={editBankOB}
+                          onChange={e => setEditBankOB(e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Type
+                        </label>
+                        <select
+                          value={editBankOBType}
+                          onChange={e => setEditBankOBType(e.target.value as any)}
+                          className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none font-bold"
+                        >
+                          <option value="DEBIT">Debit (Deposit / بقایا)</option>
+                          <option value="CREDIT">Credit (Overdrawn / منفی)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-3 border-t">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditBankModalOpen(false);
+                          setEditingBankAcc(null);
+                        }}
+                        className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isBankSubmitting}
+                        className="flex-1 py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+                      >
+                        {isBankSubmitting ? 'تبدیل ہو رہا ہے...' : 'محفوظ کریں (Save Changes)'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
 
             {/* Add Bank Account Modal */}
             {isAddBankModalOpen && (
@@ -1565,7 +1805,16 @@ export const OtherAccountsPanel: React.FC = () => {
                           </td>
                           <td className="px-4 py-3 font-medium">Rs. {fl.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                           <td className="px-4 py-3 text-right">
-                            <button onClick={() => deleteFixedLiability(fl.id)} className="text-red-500 hover:text-red-700 font-medium">Delete</button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPayLiability(fl)}
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-colors shadow-xs"
+                              >
+                                ادائیگی کریں (Pay)
+                              </button>
+                              <button onClick={() => deleteFixedLiability(fl.id)} className="text-red-500 hover:text-red-700 font-medium text-xs">Delete</button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -1573,6 +1822,114 @@ export const OtherAccountsPanel: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+            {/* Pay Fixed Liability Modal */}
+            {payLiabilityModalOpen && payingLiability && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2 flex items-center gap-2">
+                    <TrendingDown className="h-5 w-5 text-emerald-600" />
+                    ادائیگی برائے: {payingLiability.name}
+                  </h3>
+                  <form onSubmit={submitPayLiability} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        رقم (Payment Amount Rs.) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        step="0.01"
+                        value={payLiabAmount}
+                        onChange={e => setPayLiabAmount(Number(e.target.value) || '')}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-base font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        ادائیگی کا ذریعہ (Payment Method) *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPayLiabMethod('CASH')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            payLiabMethod === 'CASH'
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-xs'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          💵 کیش (Cash in Drawer)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPayLiabMethod('BANK')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            payLiabMethod === 'BANK'
+                              ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-xs'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          🏦 بینک اکاؤنٹ (Bank)
+                        </button>
+                      </div>
+                    </div>
+
+                    {payLiabMethod === 'BANK' && (
+                      <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                        <label className="block text-xs font-bold text-slate-700 mb-1">بینک اکاؤنٹ منتخب کریں:</label>
+                        <BankAccountSelect
+                          value={payLiabBankId}
+                          onChange={setPayLiabBankId}
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                      <input
+                        type="date"
+                        value={payLiabDate}
+                        onChange={e => setPayLiabDate(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">تفصیل / نوٹس (Notes)</label>
+                      <input
+                        type="text"
+                        value={payLiabNotes}
+                        onChange={e => setPayLiabNotes(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                        placeholder="e.g. Rent for this month"
+                      />
+                    </div>
+
+                    <div className="flex gap-3 pt-3 border-t">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPayLiabilityModalOpen(false);
+                          setPayingLiability(null);
+                        }}
+                        className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isPayingLiab}
+                        className="flex-1 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+                      >
+                        {isPayingLiab ? 'ادائیگی جاری ہے...' : 'ادائیگی تصدیق کریں (Confirm Pay)'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
             </div>
           );
 

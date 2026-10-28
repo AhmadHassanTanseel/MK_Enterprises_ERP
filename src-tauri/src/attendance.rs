@@ -36,7 +36,10 @@ pub struct WorkerSalarySummary {
     pub half_days: i64,
     pub leave_days: i64,
     pub per_day_rate: f64,
+    pub total_earned: f64,
     pub deductions: f64,
+    pub advance_paid: f64,
+    pub salary_already_paid: f64,
     pub net_payable: f64,
 }
 
@@ -205,7 +208,7 @@ pub async fn get_worker_attendance_history(account_id: i64, db: tauri::State<'_,
     let pool = db.inner();
     let mut records = Vec::new();
     
-    let query = "SELECT id, account_id, date, status, remarks FROM attendance WHERE account_id = ? ORDER BY date DESC LIMIT 60";
+    let query = "SELECT id, account_id, date, status, remarks FROM attendance WHERE account_id = ? ORDER BY date DESC LIMIT 400";
     let rows = sqlx::query(query).bind(account_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
     
     for row in rows {
@@ -286,15 +289,45 @@ pub async fn get_salary_summary(
             salary_rate / 30.0
         };
 
-        let (deductions, net_payable) = if wage_type == "DAILY" {
+        // Fetch advances paid to this worker in or before this period
+        let advance_row: Option<(f64,)> = sqlx::query_as(
+            "SELECT COALESCE(SUM(debit), 0.0) FROM journal_entries 
+             WHERE account_id = ? AND date(entry_date) >= date(?) AND date(entry_date) <= date(?)
+             AND (narration LIKE '%Advance%' OR narration LIKE '%پیشگی%' OR narration LIKE '%ایڈوانس%' OR ref_no LIKE 'ADV-%')"
+        )
+        .bind(worker_id)
+        .bind(&start_date)
+        .bind(&end_date)
+        .fetch_optional(&*pool)
+        .await
+        .unwrap_or(None);
+        let advance_paid = advance_row.map(|r| r.0).unwrap_or(0.0);
+
+        // Fetch salary payments already made for this worker in this period
+        let paid_row: Option<(f64,)> = sqlx::query_as(
+            "SELECT COALESCE(SUM(debit), 0.0) FROM journal_entries 
+             WHERE account_id = ? AND date(entry_date) >= date(?) AND date(entry_date) <= date(?)
+             AND (narration LIKE '%Salary%' OR narration LIKE '%تنخواہ%' OR narration LIKE '%Wages%' OR ref_no LIKE 'SAL-%')"
+        )
+        .bind(worker_id)
+        .bind(&start_date)
+        .bind(&end_date)
+        .fetch_optional(&*pool)
+        .await
+        .unwrap_or(None);
+        let salary_already_paid = paid_row.map(|r| r.0).unwrap_or(0.0);
+
+        let (total_earned, deductions, net_payable) = if wage_type == "DAILY" {
             let earned = (present_days as f64 * salary_rate) + (half_days as f64 * (salary_rate / 2.0));
-            (0.0, earned)
+            let payable = (earned - advance_paid - salary_already_paid).max(0.0);
+            (earned, 0.0, payable)
         } else {
             let absent_ded = absent_days as f64 * per_day_rate;
             let half_ded = half_days as f64 * (per_day_rate / 2.0);
             let total_ded = absent_ded + half_ded;
-            let payable = (salary_rate - total_ded).max(0.0);
-            (total_ded, payable)
+            let earned = (salary_rate - total_ded).max(0.0);
+            let payable = (earned - advance_paid - salary_already_paid).max(0.0);
+            (earned, total_ded, payable)
         };
 
         summaries.push(WorkerSalarySummary {
@@ -310,7 +343,10 @@ pub async fn get_salary_summary(
             half_days,
             leave_days,
             per_day_rate,
+            total_earned,
             deductions,
+            advance_paid,
+            salary_already_paid,
             net_payable,
         });
     }

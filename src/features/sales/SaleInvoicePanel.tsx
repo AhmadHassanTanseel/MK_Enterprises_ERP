@@ -8,6 +8,7 @@ import { printThermalReceipt } from '../../utils/receiptPrinter';
 import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 import { BankAccountSelect } from '../../shared/components/BankAccountSelect';
+import { QuickCreateModal } from '../../shared/components/QuickCreateModal';
 
 interface InvoiceLine {
   flavor?: string;
@@ -43,6 +44,7 @@ export const SaleInvoicePanel: React.FC = () => {
   const [amountReceivedCash, setAmountReceivedCash] = useState<number>(0);
   const [amountReceivedBank, setAmountReceivedBank] = useState<number>(0);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
+  const [showQuickCreateCustomer, setShowQuickCreateCustomer] = useState<boolean>(false);
 
   useEffect(() => {
     if (!selectedBankId && accounts.length > 0) {
@@ -127,6 +129,18 @@ export const SaleInvoicePanel: React.FC = () => {
         toast.error(`Insufficient stock for ${product.name}. Available: ${product.current_stock || 0}, Requested: ${line.qty}`);
         return;
       }
+    }
+
+    // Check Walk-in Udhaar restriction
+    const totalRecv = (amountReceivedCash || 0) + (amountReceivedBank || 0);
+    const bal = totalNet - totalRecv;
+    const selectedAcc = accounts.find(a => a.id === customer_id);
+    const isWalkIn = customer_id === 2 || (selectedAcc && selectedAcc.name.toLowerCase().includes('walk-in'));
+
+    if (bal > 0.01 && isWalkIn) {
+      toast.error('واک اِن کسٹمر (Walk-in Customer) پر ادھار نہیں کیا جا سکتا۔ برائے مہربانی گاہک کا نام منتخب کریں یا نیا کھاتہ بنائیں!', { duration: 6000 });
+      setShowQuickCreateCustomer(true);
+      return;
     }
 
     try {
@@ -355,6 +369,20 @@ export const SaleInvoicePanel: React.FC = () => {
                 <span className="text-slate-600 font-medium">Balance (Bakaya):</span>
                 <span className={`font-bold ${balance > 0 ? 'text-amber-600' : 'text-slate-500'}`}>Rs. {balance.toLocaleString()}</span>
               </div>
+              {balance > 0.01 && (customer_id === 2 || accounts.find(a => a.id === customer_id)?.name.toLowerCase().includes('walk-in')) && (
+                <div className="flex flex-col gap-1 p-2 bg-rose-50 border border-rose-200 rounded text-[11px] text-rose-700 font-semibold mt-1">
+                  <div className="flex items-center justify-between">
+                    <span>⚠️ واک اِن پر ادھار نہیں کیا جا سکتا۔</span>
+                    <button 
+                      type="button" 
+                      onClick={() => setShowQuickCreateCustomer(true)} 
+                      className="px-2 py-0.5 bg-rose-600 text-white rounded text-[10px] font-bold hover:bg-rose-700 transition-colors"
+                    >
+                      + نیا کسٹمر بنائیں
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 3. Action Buttons - Prominent & Always in Sight */}
@@ -386,6 +414,22 @@ export const SaleInvoicePanel: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showQuickCreateCustomer && (
+        <QuickCreateModal
+          type="account"
+          accountRole="customer"
+          onClose={() => setShowQuickCreateCustomer(false)}
+          onSuccess={async (newId) => {
+            await fetchData();
+            if (newId > 0) {
+              setCustomerId(newId);
+              toast.success("نیا کسٹمر منتخب ہو گیا ہے، اب بل محفوظ کریں!");
+            }
+            setShowQuickCreateCustomer(false);
+          }}
+        />
+      )}
     </div>
   );
 };

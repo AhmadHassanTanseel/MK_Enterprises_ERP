@@ -207,8 +207,20 @@ pub async fn get_sales_history(db: State<'_, SqlitePool>) -> Result<Vec<SalesHis
             i.id, 
             i.invoice_number as invoice_no, 
             datetime(i.invoice_date, 'localtime') as date, 
-            a.name as account_name, 
-            a.contact as mobile, 
+            CASE 
+                WHEN i.invoice_number LIKE 'DISP-%' AND da.name IS NOT NULL AND da.id != 2 AND ds.name IS NOT NULL 
+                    THEN da.name || ' [Driver: ' || ds.name || ']'
+                WHEN i.invoice_number LIKE 'DISP-%' AND da.name IS NOT NULL AND da.id != 2 
+                    THEN da.name
+                WHEN i.invoice_number LIKE 'DISP-%' AND ds.name IS NOT NULL 
+                    THEN ds.name || ' (Driver)'
+                WHEN i.invoice_number LIKE 'DISP-%' AND s.name IS NOT NULL 
+                    THEN s.name || ' (Driver)'
+                WHEN (a.id = 2 OR a.name LIKE '%Walk-in%') AND s.name IS NOT NULL 
+                    THEN s.name || ' (Driver)'
+                ELSE a.name 
+            END as account_name, 
+            COALESCE(da.contact, ds.contact, s.contact, a.contact) as mobile, 
             i.net_amount, 
             i.gross_amount as t_amount, 
             i.discount_amount as discount, 
@@ -216,6 +228,10 @@ pub async fn get_sales_history(db: State<'_, SqlitePool>) -> Result<Vec<SalesHis
             i.invoice_type
         FROM invoices i
         JOIN accounts a ON i.account_id = a.id
+        LEFT JOIN dispatches d ON (i.invoice_number LIKE 'DISP-%' AND CAST(SUBSTR(i.invoice_number, 6) AS INTEGER) = d.id)
+        LEFT JOIN accounts da ON d.customer_id = da.id
+        LEFT JOIN salesmen ds ON d.salesman_id = ds.id
+        LEFT JOIN salesmen s ON i.salesman_id = s.id
         WHERE i.invoice_type IN ('SALE', 'SALE_RETURN')
         ORDER BY i.id DESC
         "#
