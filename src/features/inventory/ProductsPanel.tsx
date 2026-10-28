@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext, Product } from '../../app/context/AppContext';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Edit2, Search, Filter, Trash2, X, Copy, History } from 'lucide-react';
+import { Plus, Edit2, Search, Trash2, X, Copy, History } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 
@@ -215,8 +215,8 @@ export const ProductsPanel: React.FC = () => {
           </button>
         </div>
         
-        <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
+        <div className="mb-4">
+          <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input 
               type="text" 
@@ -226,9 +226,6 @@ export const ProductsPanel: React.FC = () => {
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
-          <button className="p-2 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">
-            <Filter className="h-5 w-5" />
-          </button>
         </div>
 
         <div className="flex-1 overflow-auto">

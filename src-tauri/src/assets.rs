@@ -98,6 +98,95 @@ pub async fn add_company_asset(
 }
 
 #[tauri::command]
+pub async fn add_company_asset_opening(
+    pool: State<'_, SqlitePool>,
+    name: String,
+    purchase_price: f64,
+    purchase_date: String,
+    notes: Option<String>,
+) -> Result<i64, String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    let asset_name = if let Some(ref n) = notes {
+        if !n.trim().is_empty() {
+            format!("{} ({})", name.trim(), n.trim())
+        } else {
+            name.trim().to_string()
+        }
+    } else {
+        name.trim().to_string()
+    };
+
+    let result = sqlx::query(
+        r#"
+        INSERT INTO company_assets (name, purchase_date, purchase_price, status)
+        VALUES (?, ?, ?, 'ACTIVE')
+        "#
+    )
+    .bind(&asset_name)
+    .bind(&purchase_date)
+    .bind(purchase_price)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    
+    let asset_id = result.last_insert_rowid();
+
+    // 1. Get or create Company Assets account (Fixed Assets)
+    let asset_acc = sqlx::query("SELECT id FROM accounts WHERE name = 'Company Assets'")
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        
+    let acc_id: i64 = if let Some(acc) = asset_acc {
+        acc.try_get("id").unwrap_or(0)
+    } else {
+        sqlx::query("INSERT OR IGNORE INTO account_types (id, name, nature, trial_bal_type, trial_order) VALUES (9, 'Fixed Assets', 'ASSET', 'DEBIT', 9)")
+            .execute(&mut *tx).await.ok();
+            
+        let res = sqlx::query("INSERT INTO accounts (account_type_id, name) VALUES (9, 'Company Assets')")
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        res.last_insert_rowid()
+    };
+    
+    // 2. Get or create Owner Equity / Opening Balance Equity account
+    let equity_acc = sqlx::query("SELECT id FROM accounts WHERE name = 'Owner Capital / Opening Equity'")
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let equity_id: i64 = if let Some(eq) = equity_acc {
+        eq.try_get("id").unwrap_or(0)
+    } else {
+        sqlx::query("INSERT OR IGNORE INTO account_types (id, name, nature, trial_bal_type, trial_order) VALUES (12, 'Owner Equity', 'EQUITY', 'CREDIT', 12)")
+            .execute(&mut *tx).await.ok();
+            
+        let res = sqlx::query("INSERT INTO accounts (account_type_id, name) VALUES (12, 'Owner Capital / Opening Equity')")
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        res.last_insert_rowid()
+    };
+
+    let narration = format!("Opening / Existing Asset: {}", asset_name);
+
+    // Debit: Company Assets
+    sqlx::query(
+        "INSERT INTO journal_entries (entry_date, account_id, debit, credit, narration, voucher_type, reference_id) VALUES (?, ?, ?, 0.0, ?, 'JOURNAL_VOUCHER', ?)"
+    )
+    .bind(&purchase_date).bind(acc_id).bind(purchase_price).bind(&narration).bind(asset_id)
+    .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    
+    // Credit: Owner Capital / Opening Equity (DO NOT TOUCH CASH IN DRAWER / ACCOUNT 1)
+    sqlx::query(
+        "INSERT INTO journal_entries (entry_date, account_id, debit, credit, narration, voucher_type, reference_id) VALUES (?, ?, 0.0, ?, ?, 'JOURNAL_VOUCHER', ?)"
+    )
+    .bind(&purchase_date).bind(equity_id).bind(purchase_price).bind(&narration).bind(asset_id)
+    .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(asset_id)
+}
+
+#[tauri::command]
 pub async fn sell_company_asset(
     pool: State<'_, SqlitePool>,
     id: i64,

@@ -56,7 +56,9 @@ export const generateInvoicePDF = async (
   paymentMethod?: string,
   bankName?: string,
   accountTitle?: string,
-  accountNumber?: string
+  accountNumber?: string,
+  previousBalance?: number,
+  netAccountBalance?: number
 ) => {
   const loadingId = toast.loading("Generating PDF...");
   
@@ -93,7 +95,9 @@ export const generateInvoicePDF = async (
         discount: discountAmount || 0,
         net: netAmount || 0,
         paid: amountPaid || 0,
-        balance: (netAmount || 0) - (amountPaid || 0)
+        balance: (netAmount || 0) - (amountPaid || 0),
+        previousBalance: previousBalance !== undefined ? previousBalance : (account ? account.current_balance : undefined),
+        netAccountBalance: netAccountBalance !== undefined ? netAccountBalance : ((previousBalance !== undefined || account) ? ((previousBalance ?? (account ? account.current_balance : 0)) + ((netAmount || 0) - (amountPaid || 0))) : undefined)
     };
     
     // Create hidden div
@@ -144,12 +148,13 @@ export const generateVoucherPDF = async (
   const doc = new jsPDF();
   
   // Header
-  doc.setFontSize(20);
-  doc.text('Zawar Traders', 14, 22);
+  doc.setFontSize(18);
+  doc.text('Zawar Traders (زوار ٹریڈرز)', 14, 20);
   
-  doc.setFontSize(10);
-  doc.setTextColor(100);
-  doc.text('Business Accounting & Inventory System', 14, 30);
+  doc.setFontSize(9);
+  doc.setTextColor(80);
+  doc.text('Wholesale Dealer & General Order Supplier', 14, 26);
+  doc.text('Main Jhang Chiniot Road Near Cheesy Crunch Bhowana | Phone: 03457611825', 14, 31);
   
   // Voucher Title
   doc.setFontSize(16);
@@ -210,14 +215,19 @@ export const generateGenericReportPDF = async (
 ) => {
   const doc = new jsPDF('landscape');
   
-  doc.setFontSize(20);
-  doc.text('Zawar Traders', 14, 22);
+  doc.setFontSize(18);
+  doc.text('Zawar Traders', 14, 18);
   
-  doc.setFontSize(14);
-  doc.text(report.title, 14, 30);
+  doc.setFontSize(9);
+  doc.setTextColor(80);
+  doc.text('Main Jhang Chiniot Road Near Cheesy Crunch Bhowana | Contact: 03457611825', 14, 24);
+
+  doc.setFontSize(13);
+  doc.setTextColor(0);
+  doc.text(report.title, 14, 32);
   
   doc.setFontSize(10);
-  doc.text(`Period: ${fromDate} to ${toDate}`, 14, 36);
+  doc.text(`Period: ${fromDate} to ${toDate}`, 14, 38);
 
   const tableData = [...report.rows];
 
@@ -253,10 +263,16 @@ export async function generateFinancialStatementPDF(
   // Header
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text('Zawar Traders', pageWidth / 2, 20, { align: 'center' });
+  doc.text('Zawar Traders', pageWidth / 2, 18, { align: 'center' });
   
-  doc.setFontSize(16);
-  doc.text('Financial Statement', pageWidth / 2, 30, { align: 'center' });
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(80);
+  doc.text('Main Jhang Chiniot Road Near Cheesy Crunch Bhowana | Contact: 03457611825', pageWidth / 2, 24, { align: 'center' });
+
+  doc.setFontSize(15);
+  doc.setTextColor(0);
+  doc.text('Financial Statement', pageWidth / 2, 33, { align: 'center' });
   
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');

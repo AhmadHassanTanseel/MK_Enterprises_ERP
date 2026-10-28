@@ -102,9 +102,10 @@ export const PurchaseInvoicePanel: React.FC = () => {
 
     setIsSubmitting(true);
     try {
+      const finalRefNo = supplierRef.trim() ? supplierRef.trim() : `PUR-${Date.now().toString().slice(-6)}`;
       await postInvoice({
         type: 'PURCHASE',
-        ref_no: supplierRef.trim() ? supplierRef.trim() : `PUR-${Date.now().toString().slice(-6)}`,
+        ref_no: finalRefNo,
         account_id: accountId,
         date: invoiceDate,
         lines: lines as any,
@@ -116,11 +117,58 @@ export const PurchaseInvoicePanel: React.FC = () => {
         bank_account_id: selectedBankId || null
       });
       toast.success(`Purchase Invoice saved successfully`);
+
+      if (printAfter) {
+        const supp = accounts.find(a => a.id === accountId);
+        const suppName = supp ? supp.name : 'Supplier';
+        const prevBal = supp ? (supp.current_balance ?? 0) : 0;
+        const totalPaid = (amountPaidCash || 0) + (amountPaidBank || 0);
+        const billBalance = totalNet - totalPaid;
+        const netAccountBal = prevBal - billBalance;
+
+        const chosenBank = accounts.find(a => a.id === selectedBankId);
+        const bankName = chosenBank?.bank_name || settings.find(s => s.key === 'bank_name')?.value || '';
+        const accountTitle = chosenBank?.account_title || chosenBank?.name || settings.find(s => s.key === 'bank_account_title')?.value || '';
+        const accountNumber = chosenBank?.account_number || settings.find(s => s.key === 'bank_account_number')?.value || '';
+        const paymentMethod = amountPaidBank > 0 ? 'Online' : 'Cash';
+
+        if (isPDF) {
+          generateInvoicePDF('PURCHASE', finalRefNo, invoiceDate, supp, lines as any, products, totalGross, totalDiscount, totalNet, totalPaid, paymentMethod, bankName, accountTitle, accountNumber, prevBal, netAccountBal);
+        } else {
+          printThermalReceipt({
+            title: 'PURCHASE INVOICE',
+            refNo: finalRefNo,
+            date: invoiceDate,
+            accountLabel: 'Supplier',
+            accountName: suppName,
+            address: supp?.address || '',
+            phone: supp?.contact || '',
+            lines: lines.map((l: any) => ({
+              product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
+              qty: l.qty || 0,
+              rate: l.rate || 0,
+              total: (l.rate - (l.discount_pct || 0)) * l.qty
+            })),
+            totalGross: totalGross,
+            totalDiscount: totalDiscount,
+            totalNet: totalNet,
+            amountReceived: totalPaid,
+            balance: billBalance,
+            previousBalance: prevBal,
+            netAccountBalance: netAccountBal,
+            paymentMethod,
+            bankName,
+            accountTitle,
+            accountNumber,
+            isSupplier: true
+          });
+        }
+      }
+
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
       setAmountPaidCash(0);
       setAmountPaidBank(0);
-      
-      
+      setSupplierRef('');
       setAccountId(null);
     } catch (err) { toast.error(`Could not save Purchase Invoice: ${err instanceof Error ? err.message : String(err)}`); } finally {
       setIsSubmitting(false);

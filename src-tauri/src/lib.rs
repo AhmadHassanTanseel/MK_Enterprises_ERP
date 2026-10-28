@@ -142,6 +142,7 @@ pub fn run() {
             get_audit_logs,
             get_company_assets,
             add_company_asset,
+            add_company_asset_opening,
             sell_company_asset,
             get_settings,
             save_setting,

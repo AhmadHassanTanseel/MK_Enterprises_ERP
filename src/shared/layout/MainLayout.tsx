@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { GlobalSearch } from './GlobalSearch';
+import logoImg from '../../assets/logo.png';
 import { 
   LayoutDashboard, Wallet, Receipt, FileText, 
   Package, List, Users, Settings, Search, Bell, User, ChevronDown, ChevronRight, Menu, MapPin, TrendingUp, ArrowLeft, X
@@ -118,8 +119,12 @@ export const MainLayout: React.FC = () => {
       {/* SIDEBAR NAVIGATION */}
       {sidebarOpen && (
         <div className="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20 transition-all duration-300">
-          <div className="h-16 flex items-center px-6 bg-slate-950 border-b border-slate-800">
-            <h1 className="text-lg font-black tracking-wider text-white" dir="rtl">زوار ٹریڈرز</h1>
+          <div className="h-16 flex items-center gap-3 px-5 bg-slate-950 border-b border-slate-800">
+            <img src={logoImg} alt="Zawar Traders" className="h-10 w-10 rounded-full object-cover border border-amber-500/30 bg-white p-0.5 shadow-sm" />
+            <div className="flex flex-col">
+              <h1 className="text-lg font-black tracking-wider text-white" dir="rtl">زوار ٹریڈرز</h1>
+              <span className="text-[10px] text-slate-400 font-medium tracking-tight">Wholesale & Order Supplier</span>
+            </div>
           </div>
           
           <div className="flex-1 overflow-y-auto py-4">
@@ -283,8 +288,8 @@ export const MainLayout: React.FC = () => {
                 <span className="text-sm font-bold text-slate-700">Admin</span>
                 <span className="text-xs text-slate-500">Administrator</span>
               </div>
-              <div className="h-9 w-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold border border-blue-200">
-                <User className="h-5 w-5" />
+              <div className="h-9 w-9 rounded-full overflow-hidden border border-blue-300 shadow-sm bg-white flex items-center justify-center">
+                <img src={logoImg} alt="Admin" className="h-full w-full object-cover" />
               </div>
             </div>
           </div>

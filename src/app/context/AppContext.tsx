@@ -101,6 +101,7 @@ interface AppContextType {
   companyAssets: CompanyAsset[];
   fetchCompanyAssets: () => Promise<void>;
   addCompanyAsset: (name: string, purchase_price: number, purchase_date: string) => Promise<void>;
+  addCompanyAssetOpening: (name: string, purchase_price: number, purchase_date: string, notes?: string) => Promise<void>;
   sellCompanyAsset: (id: number, sold_price: number, sold_date: string) => Promise<void>;
 }
 
@@ -157,6 +158,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await invoke('add_company_asset', { name, purchasePrice: purchase_price, purchaseDate: purchase_date });
     await fetchCompanyAssets();
       await fetchFixedLiabilities();
+    await fetchData();
+  };
+
+  const addCompanyAssetOpening = async (name: string, purchase_price: number, purchase_date: string, notes?: string) => {
+    await invoke('add_company_asset_opening', { name, purchasePrice: purchase_price, purchaseDate: purchase_date, notes: notes || null });
+    await fetchCompanyAssets();
+    await fetchFixedLiabilities();
     await fetchData();
   };
 
@@ -605,6 +613,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         companyAssets,
         fetchCompanyAssets,
         addCompanyAsset,
+        addCompanyAssetOpening,
         sellCompanyAsset,
         fixedLiabilities,
         fetchFixedLiabilities,

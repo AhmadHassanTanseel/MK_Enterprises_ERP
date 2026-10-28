@@ -175,8 +175,13 @@ export const SaleInvoicePanel: React.FC = () => {
         if (printAfter) {
         const acc = accounts.find(a => a.id === customer_id);
         const accName = acc ? acc.name : 'Walk-in Customer';
+        const prevBalance = acc ? (acc.current_balance ?? 0) : 0;
+        const totalPaid = (amountReceivedCash || 0) + (amountReceivedBank || 0);
+        const invoiceNetBalance = totalNet - totalPaid;
+        const netAccountBalance = prevBalance + invoiceNetBalance;
+
         if (isPDF) {
-          generateInvoicePDF('SALE', generatedInvNo, invoiceDate, acc, lines as any, products, totalGross, totalDiscount, totalNet, (amountReceivedCash + amountReceivedBank), paymentMethod, bankName, accountTitle, accountNumber);
+          generateInvoicePDF('SALE', generatedInvNo, invoiceDate, acc, lines as any, products, totalGross, totalDiscount, totalNet, totalPaid, paymentMethod, bankName, accountTitle, accountNumber, prevBalance, netAccountBalance);
         } else {
           printThermalReceipt({
             title: 'SALE INVOICE',
@@ -184,6 +189,8 @@ export const SaleInvoicePanel: React.FC = () => {
             date: invoiceDate,
             accountLabel: 'Customer',
             accountName: accName,
+            address: acc?.address || '',
+            phone: acc?.contact || '',
             lines: lines.map((l: any) => ({
               product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
               qty: l.qty || 0,
@@ -193,13 +200,15 @@ export const SaleInvoicePanel: React.FC = () => {
             totalGross: totalGross,
             totalDiscount: totalDiscount,
             totalNet: totalNet,
-            amountReceived: amountReceivedCash + amountReceivedBank,
-            balance: totalNet - (amountReceivedCash + amountReceivedBank),
-              paymentMethod,
-              bankName,
-              accountTitle,
-              accountNumber
-            });
+            amountReceived: totalPaid,
+            balance: invoiceNetBalance,
+            previousBalance: prevBalance,
+            netAccountBalance: netAccountBalance,
+            paymentMethod,
+            bankName,
+            accountTitle,
+            accountNumber
+          });
         }
       }
       

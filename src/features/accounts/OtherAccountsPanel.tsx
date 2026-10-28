@@ -10,7 +10,7 @@ import { BankAccountSelect } from '../../shared/components/BankAccountSelect';
 export const OtherAccountsPanel: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'assets');
-  const { companyAssets, addCompanyAsset, sellCompanyAsset, fixedLiabilities, createFixedLiability, deleteFixedLiability } = useAppContext();
+  const { companyAssets, addCompanyAsset, addCompanyAssetOpening, sellCompanyAsset, fixedLiabilities, createFixedLiability, deleteFixedLiability } = useAppContext();
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -60,10 +60,11 @@ export const OtherAccountsPanel: React.FC = () => {
   };
 
   // Assets state
-  const [assetTab, setAssetTab] = useState<'list' | 'buy' | 'sell'>('list');
+  const [assetTab, setAssetTab] = useState<'list' | 'buy' | 'opening' | 'sell'>('list');
   const [assetName, setAssetName] = useState('');
   const [assetPrice, setAssetPrice] = useState<number | ''>('');
   const [assetDate, setAssetDate] = useState(new Date().toISOString().split('T')[0]);
+  const [assetNotes, setAssetNotes] = useState('');
   const [selectedAssetId, setSelectedAssetId] = useState<number | ''>('');
 
   const handleBuyAsset = async () => {
@@ -73,10 +74,27 @@ export const OtherAccountsPanel: React.FC = () => {
     }
     try {
       await addCompanyAsset(assetName, Number(assetPrice), assetDate);
-      toast.success('Asset purchased successfully');
+      toast.success('Asset purchased successfully (Cash deducted)');
       setAssetTab('list');
       setAssetName('');
       setAssetPrice('');
+    } catch (e: any) {
+      toast.error(e.toString());
+    }
+  };
+
+  const handleAddOpeningAsset = async () => {
+    if (!assetName || !assetPrice) {
+      toast.error('براہ کرم اثاثے کا نام اور مالیت درج کریں');
+      return;
+    }
+    try {
+      await addCompanyAssetOpening(assetName, Number(assetPrice), assetDate, assetNotes);
+      toast.success('پہلے سے موجود اثاثہ کامیابی سے درج ہو گیا (کیش دراز سے کوئی کٹوتی نہیں ہوئی)');
+      setAssetTab('list');
+      setAssetName('');
+      setAssetPrice('');
+      setAssetNotes('');
     } catch (e: any) {
       toast.error(e.toString());
     }
@@ -597,19 +615,25 @@ export const OtherAccountsPanel: React.FC = () => {
         return (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h2 className="text-xl font-bold text-slate-800 mb-6">Company Assets</h2>
-            <div className="flex gap-4 mb-6 border-b border-slate-200 pb-2">
+            <div className="flex flex-wrap gap-4 mb-6 border-b border-slate-200 pb-2">
               <button 
                 onClick={() => setAssetTab('list')}
                 className={`font-bold pb-2 px-2 ${assetTab === 'list' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >Assets List</button>
+              >Assets List (تمام اثاثہ جات)</button>
+              <button 
+                onClick={() => setAssetTab('opening')}
+                className={`font-bold pb-2 px-3 flex items-center gap-1.5 ${assetTab === 'opening' ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50/70 rounded-t' : 'text-emerald-600 hover:text-emerald-800'}`}
+              >
+                <Plus className="h-4 w-4" /> Add Existing Asset (موجودہ اثاثہ درج کریں - نو کیش کٹوتی)
+              </button>
               <button 
                 onClick={() => setAssetTab('buy')}
                 className={`font-bold pb-2 px-2 ${assetTab === 'buy' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >Purchase Asset</button>
+              >Purchase New Asset with Cash (نقد خریداری)</button>
               <button 
                 onClick={() => setAssetTab('sell')}
                 className={`font-bold pb-2 px-2 ${assetTab === 'sell' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >Sell Asset</button>
+              >Sell Asset (اثاثہ فروخت کریں)</button>
             </div>
             
             {assetTab === 'list' && (
@@ -650,6 +674,66 @@ export const OtherAccountsPanel: React.FC = () => {
               </div>
             )}
             
+            {assetTab === 'opening' && (
+              <div className="space-y-4 max-w-xl bg-emerald-50/50 p-6 rounded-xl border border-emerald-200">
+                <div className="bg-white p-3.5 rounded-lg border border-emerald-100 shadow-xs">
+                  <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-1.5 mb-1">
+                    <Activity className="h-4 w-4 text-emerald-600" /> پہلے سے موجود اثاثہ (Opening / Already Owned Asset)
+                  </h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    کاروبار شروع کرنے سے پہلے یا ذاتی ملکیت میں موجود اثاثے (جیسے سوزوکی گاڑی، دکان کا فرنیچر، ڈیپ فریزر / چِلر، عمارت یا کمپیوٹر سسٹم) کو یہاں درج کریں۔ اس کے اندراج سے دراز کیش یا بینک سے <strong>کوئی رقم منہا نہیں ہوگی</strong> بلکہ یہ کاروبار کے ابتدائی اثاثوں اور سرمائے میں شامل ہوگا۔
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">اثاثے کا نام / تفصیل (Asset Name) *</label>
+                  <input 
+                    type="text" 
+                    value={assetName} 
+                    onChange={e => setAssetName(e.target.value)} 
+                    placeholder="مثلاً: سوزوکی راوی 2021، ڈسپلے چِلر 4 فٹ، فرنیچر و کاؤنٹر" 
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" 
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">تخمینہ قیمت / بک ویلیو (Rs) *</label>
+                    <input 
+                      type="number" 
+                      value={assetPrice} 
+                      onChange={e => setAssetPrice(Number(e.target.value) || '')} 
+                      placeholder="مثلاً: 350000" 
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-slate-800" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">حصول یا اوپننگ تاریخ (Date)</label>
+                    <input 
+                      type="date" 
+                      value={assetDate} 
+                      onChange={e => setAssetDate(e.target.value)} 
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" 
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">اضافی تفصیلات / نمبر پلیٹ / ریمارکس (اختیاری)</label>
+                  <input 
+                    type="text" 
+                    value={assetNotes} 
+                    onChange={e => setAssetNotes(e.target.value)} 
+                    placeholder="مثلاً: رجسٹریشن نمبر LEB-2144 یا سفید رنگ" 
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" 
+                  />
+                </div>
+                <button 
+                  onClick={handleAddOpeningAsset} 
+                  className="w-full bg-emerald-600 text-white py-2.5 rounded-lg font-bold hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2 mt-2"
+                >
+                  <Plus className="h-4 w-4" /> موجودہ اثاثہ محفوظ کریں (Save Opening Asset - No Cash Deducted)
+                </button>
+              </div>
+            )}
+
             {assetTab === 'buy' && (
               <div className="space-y-4 max-w-md">
                 <div>

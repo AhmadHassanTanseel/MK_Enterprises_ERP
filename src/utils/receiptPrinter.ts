@@ -1,4 +1,5 @@
 import toast from 'react-hot-toast';
+import { ZAWAR_LOGO_BASE64 } from '../assets/logoBase64';
 
 export interface ReceiptLine {
   product: string;
@@ -33,6 +34,9 @@ export interface ReceiptData {
   amountReceived?: number;
   amountPaid?: number;
   balance: number;
+  previousBalance?: number;
+  netAccountBalance?: number;
+  isSupplier?: boolean;
 }
 
 export function printThermalReceipt(data: ReceiptData) {
@@ -57,6 +61,13 @@ export function printThermalReceipt(data: ReceiptData) {
   const now = new Date();
   const timeString = data.time || now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+  const prevBal = data.previousBalance !== undefined ? data.previousBalance : null;
+  const thisBillNet = (data.net ?? data.totalNet) || 0;
+  const paidToday = (data.paid ?? data.amountReceived ?? data.amountPaid) || 0;
+  const calculatedNetBal = data.netAccountBalance !== undefined 
+    ? data.netAccountBalance 
+    : (prevBal !== null ? (prevBal + (thisBillNet - paidToday)) : null);
+
   const html = `
     <html>
     <head>
@@ -64,23 +75,23 @@ export function printThermalReceipt(data: ReceiptData) {
       <meta charset="UTF-8">
       <style>
         @page { 
-            margin: 0; 
-            size: auto; /* Lets the printer driver decide the cut length */
-          }
-          html, body {
-            margin: 0;
-            padding: 0;
-            height: auto !important; /* Force auto height for continuous roll */
-          }
-          body { 
+          margin: 0; 
+          size: auto;
+        }
+        html, body {
+          margin: 0;
+          padding: 0;
+          height: auto !important;
+        }
+        body { 
           font-family: 'Courier New', Courier, monospace; 
-          width: 72mm; /* 80mm paper width minus small margins */
+          width: 72mm;
           margin: 0 auto;
-          padding: 2mm 4mm;
+          padding: 2mm 3mm;
           color: #000;
           font-size: 13px;
-            -webkit-font-smoothing: none;
-            font-weight: 600;
+          -webkit-font-smoothing: none;
+          font-weight: 600;
           line-height: 1.3;
         }
         .text-center { text-align: center; }
@@ -95,38 +106,47 @@ export function printThermalReceipt(data: ReceiptData) {
         .border-bottom { border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
         
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 2px 0; vertical-align: top; font-size: 13px;
-            font-weight: 600; }
+        th, td { padding: 2px 0; vertical-align: top; font-size: 13px; font-weight: 600; }
         
-        .item-name { width: 100%; display: block; font-size: 13px;
-            -webkit-font-smoothing: none;
-            font-weight: 600; font-weight: bold; margin-bottom: 1px; }
+        .item-name { width: 100%; display: block; font-size: 13px; font-weight: bold; margin-bottom: 1px; }
         
         .grid-2 { display: grid; grid-template-columns: auto auto; justify-content: space-between; row-gap: 2px; }
-        .totals-grid { display: grid; grid-template-columns: 1fr 1fr; row-gap: 3px; font-size: 13px;
-            -webkit-font-smoothing: none;
-            font-weight: 600; }
+        .totals-grid { display: grid; grid-template-columns: 1fr 1fr; row-gap: 3px; font-size: 13px; font-weight: 600; }
         
         .urdu-title {
           font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif;
-          font-size: 26px;
+          font-size: 24px;
           font-weight: bold;
-          line-height: 1.4;
+          line-height: 1.3;
           margin: 0;
           direction: rtl;
+        }
+        .urdu-text {
+          font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif;
+          direction: rtl;
+        }
+        .logo-img {
+          width: 58px;
+          height: 58px;
+          margin: 0 auto 3px auto;
+          display: block;
+          border-radius: 50%;
         }
       </style>
     </head>
     <body>
-      <!-- Header -->
+      <!-- Header with Logo, Address & Contact -->
       <div class="text-center mb-2">
+        <img src="${ZAWAR_LOGO_BASE64}" class="logo-img" alt="Logo" />
         <div class="urdu-title">زوار ٹریڈرز</div>
-        <div style="font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; font-size: 14px; direction: rtl;">ہول سیل ڈیلر اینڈ جنرل آرڈر سپلائر</div>
-        <div style="font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; font-size: 14px; direction: rtl;"></div>
+        <div style="font-weight: bold; font-size: 12px; margin-top: -2px;">Zawar Traders</div>
+        <div class="urdu-text" style="font-size: 13px;">ہول سیل ڈیلر اینڈ جنرل آرڈر سپلائر</div>
+        <div class="urdu-text" style="font-size: 12px; margin-top: 2px;">مین جھنگ چنیوٹ روڈ نزد چیزی کرنچ بھوآنہ</div>
+        <div style="font-size: 12px; font-weight: bold; margin-top: 2px;">رابطہ: 03457611825</div>
       </div>
       
       <!-- Transaction Meta -->
-      <div class="text-center font-bold mb-2 border-bottom border-top" style="font-size: 14px;">
+      <div class="text-center font-bold mb-2 border-bottom border-top" style="font-size: 13px;">
         ${data.title}
       </div>
       
@@ -158,7 +178,7 @@ export function printThermalReceipt(data: ReceiptData) {
           <tbody>
             ${data.lines.map(l => `
               <tr>
-                <td colspan="3" class="item-name"></td>
+                <td colspan="3" class="item-name">${l.product}</td>
               </tr>
               <tr>
                 <td></td>
@@ -170,7 +190,7 @@ export function printThermalReceipt(data: ReceiptData) {
         </table>
       </div>
       
-      <!-- Footer Totals -->
+      <!-- Current Bill Totals -->
       <div class="totals-grid mt-2 border-bottom">
         <div>Total Items:</div>
         <div class="text-right">${totalItems}</div>
@@ -184,24 +204,45 @@ export function printThermalReceipt(data: ReceiptData) {
         <div>Discount:</div>
         <div class="text-right">${(data.discount ?? data.totalDiscount)?.toLocaleString() || "0"}</div>
         
-        <div class="font-bold mt-1" style="font-size: 14px;">TOTAL BILL:</div>
-        <div class="text-right font-bold mt-1" style="font-size: 14px;">${(data.net ?? data.totalNet)?.toLocaleString() || "0"}</div>
+        <div class="font-bold mt-1" style="font-size: 14px;">THIS BILL:</div>
+        <div class="text-right font-bold mt-1" style="font-size: 14px;">${thisBillNet.toLocaleString()}</div>
         
-        <div class="mt-1">Total Paid:</div>
-        <div class="text-right mt-1">${(data.paid ?? data.amountReceived ?? data.amountPaid)?.toLocaleString() || "0"}</div>
+        <div class="mt-1">Paid Today:</div>
+        <div class="text-right mt-1">${paidToday.toLocaleString()}</div>
         
-        <div>Bakaya:</div>
+        <div>Bill Balance:</div>
         <div class="text-right">${(data.balance)?.toLocaleString() || "0"}</div>
       </div>
+
+      <!-- KHATA / ACCOUNT LEDGER SUMMARY (سابقہ اور کل کھاتہ بقایا) -->
+      ${prevBal !== null ? `
+      <div class="border-bottom mt-2 pb-2">
+        <div class="urdu-text text-center font-bold mb-1" style="font-size: 14px; background: #eee; padding: 2px;">
+          کھاتہ بقایا جات (Account Balance Summary)
+        </div>
+        <div class="totals-grid">
+          <div>سابقہ بقایا (Previous Bal):</div>
+          <div class="text-right">${prevBal.toLocaleString()}</div>
+
+          <div>موجودہ بل (This Bill):</div>
+          <div class="text-right">${thisBillNet.toLocaleString()}</div>
+
+          <div>آج ادا شدہ (Paid Today):</div>
+          <div class="text-right">${paidToday.toLocaleString()}</div>
+
+          <div class="font-bold mt-1" style="font-size: 14px;">کل نیٹ بقایا (Net Balance):</div>
+          <div class="text-right font-bold mt-1" style="font-size: 14px;">${(calculatedNetBal ?? 0).toLocaleString()}</div>
+        </div>
+      </div>
+      ` : ''}
       
-      <div class="mt-2 mb-2" style="font-size: 13px;
-            font-weight: 600;">
+      <div class="mt-2 mb-2" style="font-size: 13px; font-weight: 600;">
         <span class="font-bold">Signature:</span> _________________ <span style="margin-left:10px;">${data.staffName ? '(' + data.staffName + ')' : ''}</span>
       </div>
 
       <div class="text-center mt-2 border-top" style="padding-top: 6px; font-size: 10px;">
-        <div style="font-family: 'Jameel Noori Nastaleeq', 'Nafees Web Naskh', 'Arial Unicode MS', sans-serif; direction: rtl; margin-bottom: 4px;">نوٹ: کھلے اور خراب ہونے والے پروڈکٹس اور رسید کے بغیر پروڈکٹ کا کوئی کلیم نہیں ہوگا۔</div>
-          Thank you for your business!
+        <div class="urdu-text" style="font-size: 11px; margin-bottom: 4px;">نوٹ: کھلے اور خراب ہونے والے پروڈکٹس اور رسید کے بغیر پروڈکٹ کا کوئی کلیم نہیں ہوگا۔</div>
+        Thank you for your business!
         <br/>
         Software by Ahmad Hassan Tanseel
       </div>
