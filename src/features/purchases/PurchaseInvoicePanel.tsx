@@ -322,9 +322,35 @@ export const PurchaseInvoicePanel: React.FC = () => {
                 />
               </div>
               <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1.5">
-                <span className="text-slate-600 font-medium">Balance Payable:</span>
+                <span className="text-slate-600 font-medium">This Bill Balance:</span>
                 <span className={`font-bold ${balance > 0 ? 'text-amber-600' : 'text-slate-500'}`}>Rs. {balance.toLocaleString()}</span>
               </div>
+
+              {/* Live Supplier Khata / Payables Card */}
+              {accountId && (
+                (() => {
+                  const supp = accounts.find(a => a.id === accountId);
+                  if (!supp) return null;
+                  const prevBal = supp.current_balance ?? 0;
+                  const netBal = prevBal - balance;
+                  return (
+                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1 space-y-1 text-[11px]">
+                      <div className="flex justify-between items-center text-slate-600">
+                        <span>Supplier Prev. Balance:</span>
+                        <span className={`font-bold ${prevBal < 0 ? 'text-amber-700' : 'text-slate-700'}`}>
+                          Rs. {Math.abs(prevBal).toLocaleString()} {prevBal < 0 ? '(Payable)' : '(Advance)'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-t border-slate-200 pt-1 text-slate-800 font-bold">
+                        <span>Net Payable Balance:</span>
+                        <span className="font-black text-amber-800">
+                          Rs. {Math.abs(netBal).toLocaleString()} {netBal < 0 ? '(Payable)' : '(Advance)'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
             </div>
 
             {/* 3. Action Buttons - Prominent & Always in Sight */}

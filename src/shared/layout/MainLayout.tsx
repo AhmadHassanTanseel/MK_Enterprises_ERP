@@ -63,7 +63,13 @@ export const MainLayout: React.FC = () => {
     };
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 60000);
-    return () => clearInterval(interval);
+    window.addEventListener('backup_completed', fetchNotifications);
+    window.addEventListener('focus', fetchNotifications);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('backup_completed', fetchNotifications);
+      window.removeEventListener('focus', fetchNotifications);
+    };
   }, []);
 
 
@@ -122,7 +128,7 @@ export const MainLayout: React.FC = () => {
           <div className="h-16 flex items-center gap-3 px-5 bg-slate-950 border-b border-slate-800">
             <img src={logoImg} alt="Zawar Traders" className="h-10 w-10 rounded-full object-cover border border-amber-500/30 bg-white p-0.5 shadow-sm" />
             <div className="flex flex-col">
-              <h1 className="text-lg font-black tracking-wider text-white" dir="rtl">زوار ٹریڈرز</h1>
+              <h1 className="text-base font-black tracking-wider text-white">ZAWAR TRADERS</h1>
               <span className="text-[10px] text-slate-400 font-medium tracking-tight">Wholesale & Order Supplier</span>
             </div>
           </div>
@@ -219,8 +225,8 @@ export const MainLayout: React.FC = () => {
               )}
 
             <div className="flex flex-col">
-              <span className="font-bold text-slate-800 text-lg leading-tight">زوار ٹریڈرز</span>
-              <span className="text-xs text-slate-500 font-medium" dir="rtl">ہول سیل ڈیلر اینڈ جنرل آرڈر سپلائر</span>
+              <span className="font-bold text-slate-800 text-lg leading-tight tracking-wide">ZAWAR TRADERS</span>
+              <span className="text-xs text-slate-500 font-medium">Wholesale Dealer & General Order Supplier</span>
             </div>
           </div>
 

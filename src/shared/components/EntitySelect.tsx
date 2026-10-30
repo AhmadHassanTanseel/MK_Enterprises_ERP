@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useAppContext } from '../../app/context/AppContext';
 import { QuickCreateModal } from './QuickCreateModal';
 import { Search, ChevronDown, Check, Plus, Package } from 'lucide-react';
@@ -43,8 +43,12 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState<number>(0);
+  const [dropdownCoords, setDropdownCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // Effective filter for accounts based on role if no explicit filter passed
   const effectiveAccountFilter = useMemo(() => {
@@ -112,16 +116,67 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({
     });
   }, [rawOptions, searchTerm]);
 
+  // Calculate coordinates to escape all table overflow clipping
+  const updateDropdownCoords = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const popoverHeight = 300;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      
+      const top = spaceBelow >= popoverHeight || spaceBelow >= rect.top
+        ? rect.bottom + 4
+        : Math.max(10, rect.top - popoverHeight - 4);
+
+      setDropdownCoords({
+        top,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - 340)),
+        width: Math.max(rect.width, 320)
+      });
+    }
+  }, []);
+
+  // Update coords on open, scroll, resize
+  useEffect(() => {
+    if (!isOpen) return;
+    updateDropdownCoords();
+
+    const handleScroll = (e: Event) => {
+      if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) {
+        return; // Don't close or jump if user is scrolling inside dropdown
+      }
+      updateDropdownCoords();
+    };
+
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', updateDropdownCoords);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', updateDropdownCoords);
+    };
+  }, [isOpen, updateDropdownCoords]);
+
   // Click outside listener
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        dropdownRef.current && !dropdownRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Auto-scroll highlighted index into view
+  useEffect(() => {
+    if (isOpen && itemRefs.current[highlightedIndex]) {
+      itemRefs.current[highlightedIndex]?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedIndex, isOpen]);
 
   // Reset highlight index when filtered results change
   useEffect(() => {
@@ -152,35 +207,13 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({
     setSearchTerm('');
   };
 
-  // Keyboard navigation for combobox
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const toggleDropdown = () => {
     if (disabled) return;
-
     if (!isOpen) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
-        e.preventDefault();
-        setIsOpen(true);
-      }
-      return;
-    }
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlightedIndex(prev => (prev < filteredOptions.length ? prev + 1 : prev));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightedIndex(prev => (prev > 0 ? prev - 1 : 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (highlightedIndex === filteredOptions.length) {
-        // "+ Add New" was selected
-        setShowQuickCreate(true);
-        setIsOpen(false);
-      } else if (filteredOptions[highlightedIndex]) {
-        handleSelect(filteredOptions[highlightedIndex].id);
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
+      updateDropdownCoords();
+      setIsOpen(true);
+      setTimeout(() => inputRef.current?.focus(), 60);
+    } else {
       setIsOpen(false);
     }
   };
@@ -228,17 +261,10 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({
 
   // Searchable Combobox View
   return (
-    <div className={`relative ${className || ''}`} ref={containerRef} onKeyDown={handleKeyDown}>
+    <div className={`relative ${className || ''}`} ref={containerRef}>
       {/* Trigger Button / Input */}
       <div
-        onClick={() => {
-          if (!disabled) {
-            setIsOpen(!isOpen);
-            if (!isOpen) {
-              setTimeout(() => inputRef.current?.focus(), 50);
-            }
-          }
-        }}
+        onClick={toggleDropdown}
         className={`w-full flex items-center justify-between p-2 border rounded-md cursor-pointer transition-all ${
           disabled 
             ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' 
@@ -265,20 +291,49 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({
         </div>
       </div>
 
-      {/* Dropdown Popover */}
+      {/* Floating Dropdown Popover (Escaping table overflow clipping via fixed positioning) */}
       {isOpen && !disabled && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 flex flex-col max-h-72 overflow-hidden animate-in fade-in zoom-in-95 duration-100 min-w-[280px]">
+        <div
+          ref={dropdownRef}
+          style={{
+            position: 'fixed',
+            top: `${dropdownCoords?.top ?? 0}px`,
+            left: `${dropdownCoords?.left ?? 0}px`,
+            width: `${dropdownCoords?.width ?? 320}px`,
+            zIndex: 99999,
+          }}
+          className="bg-white border border-slate-300 rounded-lg shadow-2xl flex flex-col max-h-80 overflow-hidden"
+        >
           {/* Search Box Header */}
-          <div className="p-2 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2 shrink-0">
+          <div className="p-2.5 border-b border-slate-200 bg-slate-50 flex items-center gap-2 shrink-0">
             <Search className="h-4 w-4 text-slate-400 shrink-0" />
             <input
               ref={inputRef}
-              autoFocus
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="پروڈکٹ کا نام یا کوڈ تلاش کریں (Type to search)..."
-              className="w-full text-xs bg-transparent outline-none text-slate-700 placeholder:text-slate-400 font-medium"
+              onKeyDown={(e) => {
+                // STOP PROPAGATION so useGridNavigation doesn't steal Enter or Arrow keys!
+                e.stopPropagation();
+
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setHighlightedIndex(prev => (prev < filteredOptions.length - 1 ? prev + 1 : prev));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setHighlightedIndex(prev => (prev > 0 ? prev - 1 : 0));
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (filteredOptions[highlightedIndex]) {
+                    handleSelect(filteredOptions[highlightedIndex].id);
+                  }
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setIsOpen(false);
+                }
+              }}
+              placeholder="Search product name or code..."
+              className="w-full text-xs bg-transparent outline-none text-slate-800 placeholder:text-slate-400 font-medium"
             />
             {searchTerm && (
               <button 
@@ -292,13 +347,13 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({
           </div>
 
           {/* List Options */}
-          <div className="overflow-y-auto flex-1 divide-y divide-slate-50 py-1">
+          <div className="overflow-y-auto flex-1 divide-y divide-slate-100 py-1 max-h-56">
             {/* None / Reset Option */}
             <div
               onClick={() => handleSelect(null)}
-              className="px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 cursor-pointer flex items-center justify-between"
+              className="px-3 py-2 text-xs text-slate-500 hover:bg-slate-100 cursor-pointer flex items-center justify-between italic"
             >
-              <span>{getPlaceholder()}</span>
+              <span>-- None / Clear Selection --</span>
               {!value && <Check className="h-3.5 w-3.5 text-blue-600" />}
             </div>
 
@@ -309,34 +364,35 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({
               return (
                 <div
                   key={opt.id}
+                  ref={(el) => { itemRefs.current[idx] = el; }}
                   onClick={() => handleSelect(opt.id)}
                   onMouseEnter={() => setHighlightedIndex(idx)}
                   className={`px-3 py-2 cursor-pointer transition-colors flex items-center justify-between ${
-                    isHighlighted ? 'bg-blue-50/80 text-blue-900' : 'hover:bg-slate-50 text-slate-800'
+                    isHighlighted ? 'bg-blue-50/90 text-blue-900' : 'hover:bg-slate-50 text-slate-800'
                   }`}
                 >
                   <div className="flex flex-col truncate pr-2">
                     <span className="text-xs font-bold truncate flex items-center gap-1.5">
                       {opt.label}
                       {opt.code && (
-                        <span className="font-mono text-[10px] text-slate-400 font-normal">[{opt.code}]</span>
+                        <span className="font-mono text-[10px] text-slate-500 font-normal">[{opt.code}]</span>
                       )}
                     </span>
                     {type === 'product' && (
-                      <span className="text-[11px] text-slate-500">
-                        قیمت: Rs. {(opt.price || 0).toLocaleString()}
+                      <span className="text-[11px] text-slate-500 font-semibold">
+                        Rate: Rs. {(opt.price || 0).toLocaleString()}
                       </span>
                     )}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
                     {type === 'product' && (
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         (opt.stock || 0) > 0 
-                          ? 'bg-emerald-100 text-emerald-800' 
-                          : 'bg-rose-100 text-rose-800'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                          : 'bg-rose-100 text-rose-800 border border-rose-200'
                       }`}>
-                        اسٹاک: {opt.stock || 0}
+                        Stock: {opt.stock || 0}
                       </span>
                     )}
                     {isSelected && <Check className="h-4 w-4 text-blue-600 shrink-0" />}
@@ -347,13 +403,13 @@ export const EntitySelect: React.FC<EntitySelectProps> = ({
 
             {filteredOptions.length === 0 && (
               <div className="p-4 text-center text-xs text-slate-400">
-                کوئی پروڈکٹ نہیں ملی (No matches found)
+                No matching items found
               </div>
             )}
           </div>
 
           {/* Quick Create Button at bottom */}
-          <div className="p-1.5 bg-slate-50 border-t border-slate-100 shrink-0">
+          <div className="p-1.5 bg-slate-50 border-t border-slate-200 shrink-0">
             <button
               type="button"
               onClick={() => {

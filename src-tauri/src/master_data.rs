@@ -842,18 +842,62 @@ pub async fn get_notifications(
 
     // 1. Check for missing daily backup
     let mut backup_pending = true;
-    if let Ok(app_dir) = app_handle.path().app_data_dir() {
-        let backup_dir = app_dir.join("backups");
-        if backup_dir.exists() {
-            if let Ok(entries) = fs::read_dir(backup_dir) {
-                let today = Local::now().date_naive();
-                for entry in entries.flatten() {
-                    if let Ok(metadata) = entry.metadata() {
-                        if let Ok(modified) = metadata.modified() {
-                            let dt: chrono::DateTime<Local> = modified.into();
-                            if dt.date_naive() == today {
-                                backup_pending = false;
-                                break;
+    let today = Local::now().date_naive();
+    let today_str = today.format("%Y-%m-%d").to_string();
+
+    // Check system_config for recent backup date
+    let cfg_last: Option<(String,)> = sqlx::query_as("SELECT value FROM system_config WHERE key = 'last_backup_date'")
+        .fetch_optional(&*db)
+        .await
+        .unwrap_or(None);
+
+    if let Some((d,)) = cfg_last {
+        if d == today_str {
+            backup_pending = false;
+        }
+    }
+
+    // Also check configured local_backup_path directory if still pending
+    if backup_pending {
+        let local_cfg: Option<(String,)> = sqlx::query_as("SELECT value FROM system_config WHERE key = 'local_backup_path'")
+            .fetch_optional(&*db)
+            .await
+            .unwrap_or(None);
+
+        if let Some((p,)) = local_cfg {
+            let custom_dir = std::path::PathBuf::from(p);
+            if custom_dir.exists() {
+                if let Ok(entries) = fs::read_dir(custom_dir) {
+                    for entry in entries.flatten() {
+                        if let Ok(metadata) = entry.metadata() {
+                            if let Ok(modified) = metadata.modified() {
+                                let dt: chrono::DateTime<Local> = modified.into();
+                                if dt.date_naive() == today {
+                                    backup_pending = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Also check default app_data_dir/backups
+    if backup_pending {
+        if let Ok(app_dir) = app_handle.path().app_data_dir() {
+            let backup_dir = app_dir.join("backups");
+            if backup_dir.exists() {
+                if let Ok(entries) = fs::read_dir(backup_dir) {
+                    for entry in entries.flatten() {
+                        if let Ok(metadata) = entry.metadata() {
+                            if let Ok(modified) = metadata.modified() {
+                                let dt: chrono::DateTime<Local> = modified.into();
+                                if dt.date_naive() == today {
+                                    backup_pending = false;
+                                    break;
+                                }
                             }
                         }
                     }

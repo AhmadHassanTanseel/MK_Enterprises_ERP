@@ -15,6 +15,7 @@ pub mod sales;
 pub mod attachments;
 pub mod attendance;
 pub mod google_oauth;
+pub mod investors;
 
 use master_data::*;
 use reporting::*;
@@ -29,6 +30,7 @@ use assets::*;
 use adjustments::*;
 use attendance::*;
 use google_oauth::*;
+use investors::*;
 use tauri::Manager;
 
 
@@ -144,6 +146,12 @@ pub fn run() {
             add_company_asset,
             add_company_asset_opening,
             sell_company_asset,
+            get_investors,
+            add_investor,
+            add_investor_capital,
+            pay_investor_profit,
+            withdraw_investor_capital,
+            get_investor_statement,
             get_settings,
             save_setting,
             restart_app,

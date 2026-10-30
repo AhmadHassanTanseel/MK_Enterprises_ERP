@@ -34,7 +34,7 @@ export const Dashboard: React.FC = () => {
     { label: "Purchase Return", icon: CornerUpRight, to: "/purchase-return", color: "bg-indigo-100 text-indigo-700" },
     { label: "Stocks", icon: Box, to: "/inventory", color: "bg-slate-100 text-slate-700" },
     { label: "Expenses", icon: DollarSign, to: "/other-accounts?tab=expenses", color: "bg-rose-100 text-rose-700" },
-    { label: "Mulazmeen Attendance", icon: UsersIcon, to: "/other-accounts?tab=workers", color: "bg-sky-100 text-sky-700" },
+    { label: "Staff Attendance", icon: UsersIcon, to: "/other-accounts?tab=workers", color: "bg-sky-100 text-sky-700" },
   ];
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -147,7 +147,7 @@ export const Dashboard: React.FC = () => {
     <div className="space-y-4">
       {/* Header bar with Hide/Show Cash & Bank Flow button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-        <h2 className="text-base font-bold text-slate-800">کاروباری خلاصہ / Business Overview</h2>
+        <h2 className="text-base font-bold text-slate-800">Business Overview</h2>
         <button
           type="button"
           onClick={toggleHideCashBank}
@@ -159,7 +159,7 @@ export const Dashboard: React.FC = () => {
           title={hideCashBank ? "Show Cash & Bank Balances" : "Hide Cash & Bank Balances"}
         >
           {hideCashBank ? <Eye className="h-4 w-4 text-blue-600" /> : <EyeOff className="h-4 w-4 text-slate-500" />}
-          <span>{hideCashBank ? "Show Cash & Bank Flow (بیلنس دکھائیں)" : "Hide Cash & Bank Flow (بیلنس چھپائیں)"}</span>
+          <span>{hideCashBank ? "Show Cash & Bank Flow" : "Hide Cash & Bank Flow"}</span>
           {hideCashBank && (
             <span className="ml-1 px-1.5 py-0.2 bg-amber-200 text-amber-900 rounded text-[10px]">Hidden</span>
           )}

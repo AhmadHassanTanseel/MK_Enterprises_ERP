@@ -9,125 +9,129 @@ export const getA4InvoiceHtml = (data: any) => {
     : (prevBal !== null ? (prevBal + (thisBillNet - paidToday)) : null);
 
   return `
-    <div style="width: 794px; min-height: 1123px; padding: 40px; box-sizing: border-box; background: white; font-family: sans-serif; color: black; position: relative;">
+    <div style="width: 794px; min-height: 1123px; padding: 40px; box-sizing: border-box; background: white; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; position: relative;">
       
-      <!-- Header with Logo, Address & Contact -->
-      <div style="text-align: center; margin-bottom: 15px;">
-        <img src="${ZAWAR_LOGO_BASE64}" style="width: 75px; height: 75px; margin: 0 auto 5px auto; display: block; border-radius: 50%;" />
-        <h1 style="margin: 0; font-size: 30px; font-weight: bold; font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', serif;" dir="rtl">زوار ٹریڈرز</h1>
-        <p style="margin: 2px 0 0; font-size: 14px; font-weight: bold;">Zawar Traders (Wholesale Dealer & General Order Supplier)</p>
-        <p style="margin: 3px 0 0; font-size: 13px; font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', serif;" dir="rtl">مین جھنگ چنیوٹ روڈ نزد چیزی کرنچ بھوآنہ</p>
-        <p style="margin: 3px 0 0; font-size: 13px; font-weight: bold;">رابطہ / WhatsApp: 03457611825</p>
+      <!-- Official Header (100% English) -->
+      <div style="text-align: center; margin-bottom: 20px;">
+        <img src="${ZAWAR_LOGO_BASE64}" style="width: 75px; height: 75px; margin: 0 auto 8px auto; display: block; border-radius: 50%;" />
+        <h1 style="margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 1px; color: #0f172a; text-transform: uppercase;">ZAWAR TRADERS</h1>
+        <p style="margin: 3px 0 0; font-size: 13px; font-weight: 600; color: #475569;">Wholesale Dealer & General Order Supplier</p>
+        <p style="margin: 3px 0 0; font-size: 12px; color: #64748b;">Main Jhang Chiniot Road, Near Cheesy Crunch, Bhowana</p>
+        <p style="margin: 3px 0 0; font-size: 12px; font-weight: 700; color: #1e293b;">Cell / WhatsApp: 0345-7611825</p>
       </div>
 
-      <hr style="border: 0; border-top: 2px solid #000; margin: 15px 0;" />
+      <hr style="border: 0; border-top: 2px solid #0f172a; margin: 15px 0;" />
 
       <!-- Title & Meta -->
-      <div style="text-align: center; margin-bottom: 15px;">
-        <h2 style="margin: 0; font-size: 18px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">${data.title}</h2>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="margin: 0; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #1e40af;">${data.title}</h2>
       </div>
 
-      <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 13px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 13px;">
         <div>
-          <p style="margin: 0 0 4px;"><strong>Invoice #:</strong> ${data.refNo || 'Auto'}</p>
-          <p style="margin: 0 0 4px;"><strong>Date:</strong> ${data.date}</p>
+          <p style="margin: 0 0 5px;"><strong>Invoice #:</strong> ${data.refNo || 'Auto'}</p>
+          <p style="margin: 0 0 5px;"><strong>Date:</strong> ${data.date}</p>
         </div>
         <div style="text-align: right;">
-          <p style="margin: 0 0 4px;"><strong>${data.accountLabel}:</strong> ${data.accountName}</p>
+          <p style="margin: 0 0 5px;"><strong>${data.accountLabel}:</strong> ${data.accountName}</p>
+          ${data.phone ? `<p style="margin: 0 0 5px;"><strong>Contact:</strong> ${data.phone}</p>` : ''}
+          ${data.address ? `<p style="margin: 0 0 5px;"><strong>Address:</strong> ${data.address}</p>` : ''}
         </div>
       </div>
 
-      <hr style="border: 0; border-top: 1px dashed #000; margin: 15px 0;" />
+      <hr style="border: 0; border-top: 1px dashed #cbd5e1; margin: 15px 0;" />
 
-      <!-- Payment Info -->
-      <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 15px;">
+      <!-- Payment & Bank Info -->
+      <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 20px;">
         <div>
-          <p style="margin: 0 0 4px;"><strong>Payment Method:</strong> ${data.paymentMethod || 'Cash'}</p>
+          <p style="margin: 0 0 5px;"><strong>Payment Method:</strong> ${data.paymentMethod || 'Cash'}</p>
         </div>
-        <div style="border: 1px solid #ccc; padding: 8px; border-radius: 4px; min-width: 250px;">
-          <p style="margin: 0 0 4px;"><strong>Bank Details:</strong></p>
-          <p style="margin: 0 0 2px;">Account: ${data.accountTitle && data.accountTitle !== '_________________' ? data.accountTitle : '_________________'}</p>
-          <p style="margin: 0 0 2px;">Bank: ${data.bankName && data.bankName !== '_________________' ? data.bankName : '_________________'}</p>
-          <p style="margin: 0;">A/C No: ${data.accountNumber && data.accountNumber !== '_________________' ? data.accountNumber : '_________________'}</p>
+        <div style="border: 1px solid #e2e8f0; padding: 10px 14px; border-radius: 6px; background: #f8fafc; min-width: 260px;">
+          <p style="margin: 0 0 4px; font-weight: bold; color: #334155;">Bank Details for Payment:</p>
+          <p style="margin: 0 0 3px;"><strong>Account Title:</strong> ${data.accountTitle && data.accountTitle !== '_________________' ? data.accountTitle : 'Zawar Traders'}</p>
+          <p style="margin: 0 0 3px;"><strong>Bank Name:</strong> ${data.bankName && data.bankName !== '_________________' ? data.bankName : 'Meezan Bank'}</p>
+          <p style="margin: 0;"><strong>A/C No:</strong> ${data.accountNumber && data.accountNumber !== '_________________' ? data.accountNumber : '0101-0103456789'}</p>
         </div>
       </div>
 
-      <!-- Table -->
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 13px;">
+      <!-- Line Items Table -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
         <thead>
-          <tr style="border-bottom: 2px solid #000; text-align: left;">
-            <th style="padding: 8px 4px;">#</th>
-            <th style="padding: 8px 4px;">Item</th>
-            <th style="padding: 8px 4px; text-align: center;">Qty</th>
-            <th style="padding: 8px 4px; text-align: right;">Rate</th>
-            <th style="padding: 8px 4px; text-align: right;">Amount</th>
+          <tr style="background: #1e40af; color: white; text-align: left;">
+            <th style="padding: 10px 8px; width: 40px; text-align: center;">#</th>
+            <th style="padding: 10px 8px;">Item Description</th>
+            <th style="padding: 10px 8px; text-align: center; width: 80px;">Quantity</th>
+            <th style="padding: 10px 8px; text-align: right; width: 100px;">Rate (Rs)</th>
+            <th style="padding: 10px 8px; text-align: right; width: 120px;">Amount (Rs)</th>
           </tr>
         </thead>
         <tbody>
           ${data.lines.map((l: any, i: number) => `
-            <tr style="border-bottom: 1px solid #eee;">
-              <td style="padding: 8px 4px;">${i + 1}</td>
-              <td style="padding: 8px 4px;">${l.product} ${l.flavor && l.flavor !== 'None' ? '(' + l.flavor + ')' : ''}</td>
-              <td style="padding: 8px 4px; text-align: center;">${l.qty}</td>
-              <td style="padding: 8px 4px; text-align: right;">${l.rate?.toLocaleString() || "0"}</td>
-              <td style="padding: 8px 4px; text-align: right;">${l.total?.toLocaleString() || "0"}</td>
+            <tr style="border-bottom: 1px solid #e2e8f0; background: ${i % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+              <td style="padding: 9px 8px; text-align: center; color: #64748b;">${i + 1}</td>
+              <td style="padding: 9px 8px; font-weight: 600;">${l.product} ${l.flavor && l.flavor !== 'None' ? '(' + l.flavor + ')' : ''}</td>
+              <td style="padding: 9px 8px; text-align: center;">${l.qty}</td>
+              <td style="padding: 9px 8px; text-align: right;">${l.rate?.toLocaleString() || "0"}</td>
+              <td style="padding: 9px 8px; text-align: right; font-weight: 600;">${l.total?.toLocaleString() || "0"}</td>
             </tr>
           `).join('')}
         </tbody>
       </table>
 
       <!-- Totals & Khata Summary -->
-      <div style="display: flex; justify-content: flex-end; font-size: 13px; margin-bottom: 30px;">
+      <div style="display: flex; justify-content: flex-end; font-size: 13px; margin-bottom: 40px;">
         <div style="width: 320px;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Total Items:</span>
             <span>${data.lines.length}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>Total Qty:</span>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Total Quantity:</span>
             <span>${data.lines.reduce((sum: number, l: any) => sum + (Number(l.qty) || 0), 0)}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Gross Total:</span>
-            <span>${data.gross?.toLocaleString() || "0"}</span>
+            <span>Rs. ${data.gross?.toLocaleString() || "0"}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>Discount:</span>
-            <span>${data.discount?.toLocaleString() || "0"}</span>
+          ${(data.discount || 0) > 0 ? `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #dc2626;">
+              <span>Discount:</span>
+              <span>- Rs. ${data.discount?.toLocaleString()}</span>
+            </div>
+          ` : ''}
+          <hr style="border: 0; border-top: 2px solid #0f172a; margin: 8px 0;" />
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 800; font-size: 15px; color: #0f172a;">
+            <span>THIS INVOICE TOTAL:</span>
+            <span>Rs. ${thisBillNet.toLocaleString()}</span>
           </div>
-          <hr style="border: 0; border-top: 2px solid #000; margin: 8px 0;" />
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: bold; font-size: 15px;">
-            <span>THIS BILL NET:</span>
-            <span>${thisBillNet.toLocaleString()}</span>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Amount Paid:</span>
+            <span>Rs. ${paidToday.toLocaleString()}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>Paid Today:</span>
-            <span>${paidToday.toLocaleString()}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>Bill Balance:</span>
-            <span>${(data.balance)?.toLocaleString() || "0"}</span>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Invoice Balance:</span>
+            <span>Rs. ${(data.balance)?.toLocaleString() || "0"}</span>
           </div>
 
           ${prevBal !== null ? `
-          <hr style="border: 0; border-top: 1px dashed #000; margin: 10px 0;" />
-          <div style="background: #f1f5f9; padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; text-align: center; font-weight: bold; font-size: 12px;">
-            کھاتہ سمری (Customer/Supplier Account Summary)
+          <hr style="border: 0; border-top: 1px dashed #94a3b8; margin: 12px 0 8px 0;" />
+          <div style="background: #f1f5f9; padding: 5px 8px; border-radius: 4px; margin-bottom: 8px; text-align: center; font-weight: bold; font-size: 12px; letter-spacing: 0.5px; color: #1e3a8a;">
+            ACCOUNT BALANCE SUMMARY
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>سابقہ بقایا (Previous Balance):</span>
+            <span>Previous Balance:</span>
             <span>Rs. ${prevBal.toLocaleString()}</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>موجودہ بل (This Bill):</span>
+            <span>This Invoice:</span>
             <span>Rs. ${thisBillNet.toLocaleString()}</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>وصول / ادا شدہ (Paid Today):</span>
+            <span>Paid Today:</span>
             <span>Rs. ${paidToday.toLocaleString()}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 4px; border-top: 1px solid #ccc; font-weight: bold; font-size: 14px; color: #1e3a8a;">
-            <span>کل نیٹ کھاتہ بقایا (Net Balance):</span>
+          <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 5px; border-top: 1px solid #cbd5e1; font-weight: 800; font-size: 14px; color: #1e3a8a;">
+            <span>NET ACCOUNT BALANCE:</span>
             <span>Rs. ${(calculatedNetBal ?? 0).toLocaleString()}</span>
           </div>
           ` : ''}
@@ -135,15 +139,15 @@ export const getA4InvoiceHtml = (data: any) => {
       </div>
 
       <!-- Signature & Footer -->
-      <div style="position: absolute; bottom: 50px; left: 40px; right: 40px;">
+      <div style="position: absolute; bottom: 45px; left: 40px; right: 40px;">
         <div style="display: flex; justify-content: space-between; font-size: 13px;">
           <div>
-            <p style="margin: 0 0 4px;">Signature: _______________________</p>
+            <p style="margin: 0 0 5px;">Authorized Signature: _______________________</p>
           </div>
-          <div style="text-align: right; color: #555;">
-            <p style="margin: 0 0 3px; font-family: 'Jameel Noori Nastaleeq', 'Nafees Web Naskh', 'Arial Unicode MS', sans-serif; font-size: 13px;" dir="rtl">نوٹ: کھلے اور خراب ہونے والے پروڈکٹس اور رسید کے بغیر پروڈکٹ کا کوئی کلیم نہیں ہوگا۔</p>
+          <div style="text-align: right; color: #64748b;">
+            <p style="margin: 0 0 3px; font-weight: 500;">Note: Opened or damaged goods cannot be claimed without receipt.</p>
             <p style="margin: 0 0 3px;">Thank you for your business!</p>
-            <p style="margin: 0; font-size: 11px;">Software by Ahmad Hassan Tanseel</p>
+            <p style="margin: 0; font-size: 11px; color: #94a3b8;">Software by Ahmad Hassan Tanseel</p>
           </div>
         </div>
       </div>

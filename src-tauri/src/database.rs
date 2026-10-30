@@ -341,7 +341,8 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         (7, 'Operating Expense', 'EXPENSE', 'DEBIT', 7),
         (8, 'Damaged Goods Expense', 'EXPENSE', 'DEBIT', 8),
         (14, 'Salesman', 'ASSET', 'DEBIT', 14),
-        (15, 'Staff / Employee', 'LIABILITY', 'CREDIT', 15);
+        (15, 'Staff / Employee', 'LIABILITY', 'CREDIT', 15),
+        (16, 'Investor Capital', 'EQUITY', 'CREDIT', 16);
 
         -- SEED DEFAULT SYSTEM ACCOUNTS
         INSERT OR IGNORE INTO accounts (id, account_type_id, name, is_customer, is_supplier) VALUES 
@@ -351,7 +352,8 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         (4, 6, 'General Purchases', 0, 1),
         (5, 8, 'Damage Loss Account', 0, 0),
         (6, 1, 'Default Bank Account', 0, 0),
-        (7, 7, 'Operating Expense', 0, 0);
+        (7, 7, 'Operating Expense', 0, 0),
+        (8, 7, 'Investor Profit Distribution', 0, 0);
     "#;
 
     sqlx::query(schema)
@@ -453,6 +455,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
     if current < 14 {
         migration_014_bank_and_worker_enhancements(pool).await?;
         record_migration(pool, 14).await?;
+    }
+
+    if current < 15 {
+        migration_015_investor_accounts(pool).await?;
+        record_migration(pool, 15).await?;
     }
 
     Ok(())
@@ -835,6 +842,50 @@ async fn migration_014_bank_and_worker_enhancements(pool: &SqlitePool) -> Result
     // Default Bank Account (ID 6) metadata update if needed
     let _ = sqlx::query("UPDATE accounts SET bank_name = 'Meezan Bank', account_title = 'Zawar Traders', account_number = '0101-0103456789' WHERE id = 6 AND (bank_name IS NULL OR bank_name = '')")
         .execute(pool).await;
+
+    Ok(())
+}
+
+async fn migration_015_investor_accounts(pool: &SqlitePool) -> Result<(), String> {
+    // 1. Account type for Investor Capital
+    sqlx::query(
+        "INSERT OR IGNORE INTO account_types (id, name, nature, trial_bal_type, trial_order) 
+         VALUES (16, 'Investor Capital', 'EQUITY', 'CREDIT', 16)"
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to create investor account type: {}", e))?;
+
+    // 2. Account for Investor Profit Distribution
+    sqlx::query(
+        "INSERT OR IGNORE INTO accounts (id, account_type_id, name, is_customer, is_supplier) 
+         VALUES (8, 7, 'Investor Profit Distribution', 0, 0)"
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to create profit distribution account: {}", e))?;
+
+    // 3. Investor Transactions table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS investor_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            investor_account_id INTEGER NOT NULL,
+            trans_type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            trans_date TEXT NOT NULL,
+            payment_method TEXT NOT NULL,
+            bank_account_id INTEGER,
+            month_period TEXT,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(investor_account_id) REFERENCES accounts(id)
+        );
+        "#
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to create investor_transactions table: {}", e))?;
 
     Ok(())
 }

@@ -51,6 +51,33 @@ export interface CompanyAsset {
   sold_price?: number;
 }
 
+export interface InvestorSummary {
+  id: number;
+  name: string;
+  contact?: string | null;
+  address?: string | null;
+  agreement_terms?: string | null;
+  total_investment: number;
+  total_profit_paid: number;
+  current_capital: number;
+  last_payout_date?: string | null;
+  created_at: string;
+}
+
+export interface InvestorTransactionRecord {
+  id: number;
+  investor_account_id: number;
+  trans_type: 'INVESTMENT' | 'PROFIT_PAYOUT' | 'CAPITAL_WITHDRAWAL';
+  amount: number;
+  trans_date: string;
+  payment_method: string;
+  bank_account_id?: number | null;
+  bank_name?: string | null;
+  month_period?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
 export interface AppSetting { key: string; value: string; }
 
 interface AppContextType {
@@ -103,6 +130,45 @@ interface AppContextType {
   addCompanyAsset: (name: string, purchase_price: number, purchase_date: string) => Promise<void>;
   addCompanyAssetOpening: (name: string, purchase_price: number, purchase_date: string, notes?: string) => Promise<void>;
   sellCompanyAsset: (id: number, sold_price: number, sold_date: string) => Promise<void>;
+
+  investors: InvestorSummary[];
+  fetchInvestors: () => Promise<void>;
+  addInvestor: (params: {
+    name: string;
+    contact?: string;
+    address?: string;
+    agreement_terms?: string;
+    initial_capital?: number;
+    trans_date?: string;
+    payment_method?: string;
+    bank_account_id?: number | null;
+  }) => Promise<number>;
+  addInvestorCapital: (params: {
+    investor_id: number;
+    amount: number;
+    trans_date: string;
+    payment_method: string;
+    bank_account_id?: number | null;
+    notes?: string;
+  }) => Promise<void>;
+  payInvestorProfit: (params: {
+    investor_id: number;
+    amount: number;
+    trans_date: string;
+    month_period?: string;
+    payment_method: string;
+    bank_account_id?: number | null;
+    notes?: string;
+  }) => Promise<void>;
+  withdrawInvestorCapital: (params: {
+    investor_id: number;
+    amount: number;
+    trans_date: string;
+    payment_method: string;
+    bank_account_id?: number | null;
+    notes?: string;
+  }) => Promise<void>;
+  getInvestorStatement: (investor_id: number) => Promise<InvestorTransactionRecord[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -175,6 +241,111 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await fetchData();
   };
 
+  const [investors, setInvestors] = useState<InvestorSummary[]>([]);
+
+  const fetchInvestors = async () => {
+    try {
+      const data: InvestorSummary[] = await invoke('get_investors');
+      setInvestors(data);
+    } catch (err: any) {
+      console.error("Error fetching investors:", err);
+    }
+  };
+
+  const addInvestor = async (params: {
+    name: string;
+    contact?: string;
+    address?: string;
+    agreement_terms?: string;
+    initial_capital?: number;
+    trans_date?: string;
+    payment_method?: string;
+    bank_account_id?: number | null;
+  }): Promise<number> => {
+    const res: number = await invoke('add_investor', {
+      name: params.name,
+      contact: params.contact || null,
+      address: params.address || null,
+      agreementTerms: params.agreement_terms || null,
+      initialCapital: params.initial_capital || 0,
+      transDate: params.trans_date || new Date().toISOString().split('T')[0],
+      paymentMethod: params.payment_method || 'CASH',
+      bankAccountId: params.bank_account_id || null,
+    });
+    await fetchInvestors();
+    await fetchData();
+    return res;
+  };
+
+  const addInvestorCapital = async (params: {
+    investor_id: number;
+    amount: number;
+    trans_date: string;
+    payment_method: string;
+    bank_account_id?: number | null;
+    notes?: string;
+  }) => {
+    await invoke('add_investor_capital', {
+      investorId: params.investor_id,
+      amount: params.amount,
+      transDate: params.trans_date,
+      paymentMethod: params.payment_method,
+      bankAccountId: params.bank_account_id || null,
+      notes: params.notes || null,
+    });
+    await fetchInvestors();
+    await fetchData();
+  };
+
+  const payInvestorProfit = async (params: {
+    investor_id: number;
+    amount: number;
+    trans_date: string;
+    month_period?: string;
+    payment_method: string;
+    bank_account_id?: number | null;
+    notes?: string;
+  }) => {
+    await invoke('pay_investor_profit', {
+      investorId: params.investor_id,
+      amount: params.amount,
+      transDate: params.trans_date,
+      monthPeriod: params.month_period || null,
+      paymentMethod: params.payment_method,
+      bankAccountId: params.bank_account_id || null,
+      notes: params.notes || null,
+    });
+    await fetchInvestors();
+    await fetchData();
+  };
+
+  const withdrawInvestorCapital = async (params: {
+    investor_id: number;
+    amount: number;
+    trans_date: string;
+    payment_method: string;
+    bank_account_id?: number | null;
+    notes?: string;
+  }) => {
+    await invoke('withdraw_investor_capital', {
+      investorId: params.investor_id,
+      amount: params.amount,
+      transDate: params.trans_date,
+      paymentMethod: params.payment_method,
+      bankAccountId: params.bank_account_id || null,
+      notes: params.notes || null,
+    });
+    await fetchInvestors();
+    await fetchData();
+  };
+
+  const getInvestorStatement = async (investor_id: number): Promise<InvestorTransactionRecord[]> => {
+    const res: InvestorTransactionRecord[] = await invoke('get_investor_statement', {
+      investorId: investor_id
+    });
+    return res;
+  };
+
   const fetchData = async () => {
     try {
       const dbCategories: Category[] = await invoke('get_categories');
@@ -239,6 +410,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setSalesmen(dbSalesmen);
       await fetchCompanyAssets();
       await fetchFixedLiabilities();
+      await fetchInvestors();
 
     } catch (error) {
       console.error("Failed to load initial data from Tauri backend:", error);
@@ -618,7 +790,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         fixedLiabilities,
         fetchFixedLiabilities,
         createFixedLiability,
-        deleteFixedLiability
+        deleteFixedLiability,
+        investors,
+        fetchInvestors,
+        addInvestor,
+        addInvestorCapital,
+        payInvestorProfit,
+        withdrawInvestorCapital,
+        getInvestorStatement
       }}>
       {children}
     </AppContext.Provider>

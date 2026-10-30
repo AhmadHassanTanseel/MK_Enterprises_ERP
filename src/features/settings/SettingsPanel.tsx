@@ -129,6 +129,7 @@ export const SettingsPanel: React.FC = () => {
       setIsSubmitting(true);
       const res: string = await invoke('backup_to_local', { customPath: localBackupPath });
       toast.success(res);
+      window.dispatchEvent(new Event('backup_completed'));
     } catch (e: any) {
       toast.error(`Local backup failed: ${e.toString()}`);
     } finally {
@@ -468,6 +469,7 @@ function doGet(e) {
       }
 
       await invoke('record_cloud_sync_time');
+      window.dispatchEvent(new Event('backup_completed'));
       const nowStr = new Date().toLocaleString();
       setCloudConfig(prev => ({ ...prev, last_sync: nowStr }));
       toast.success(`Cloud backup successfully saved to Google Drive! (${payload.filename})`, { id: 'cloudBackup' });

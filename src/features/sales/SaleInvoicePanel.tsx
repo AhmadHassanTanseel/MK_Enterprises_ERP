@@ -375,9 +375,35 @@ export const SaleInvoicePanel: React.FC = () => {
                 />
               </div>
               <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1.5">
-                <span className="text-slate-600 font-medium">Balance (Bakaya):</span>
+                <span className="text-slate-600 font-medium">This Bill Balance:</span>
                 <span className={`font-bold ${balance > 0 ? 'text-amber-600' : 'text-slate-500'}`}>Rs. {balance.toLocaleString()}</span>
               </div>
+
+              {/* Live Customer Account Balance / Khata Card */}
+              {customer_id && customer_id !== 2 && (
+                (() => {
+                  const cust = accounts.find(a => a.id === customer_id);
+                  if (!cust) return null;
+                  const prevBal = cust.current_balance ?? 0;
+                  const netBal = prevBal + balance;
+                  return (
+                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1 space-y-1 text-[11px]">
+                      <div className="flex justify-between items-center text-slate-600">
+                        <span>Customer Prev. Balance:</span>
+                        <span className={`font-bold ${prevBal > 0 ? 'text-amber-700' : prevBal < 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                          Rs. {Math.abs(prevBal).toLocaleString()} {prevBal > 0 ? '(Receivable)' : prevBal < 0 ? '(Advance)' : ''}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-t border-slate-200 pt-1 text-slate-800 font-bold">
+                        <span>Net Account Balance:</span>
+                        <span className={`font-black ${netBal > 0 ? 'text-blue-700' : 'text-emerald-700'}`}>
+                          Rs. {Math.abs(netBal).toLocaleString()} {netBal > 0 ? '(Receivable)' : netBal < 0 ? '(Advance)' : ''}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
               {balance > 0.01 && (customer_id === 2 || accounts.find(a => a.id === customer_id)?.name.toLowerCase().includes('walk-in')) && (
                 <div className="flex flex-col gap-1 p-2 bg-rose-50 border border-rose-200 rounded text-[11px] text-rose-700 font-semibold mt-1">
                   <div className="flex items-center justify-between">

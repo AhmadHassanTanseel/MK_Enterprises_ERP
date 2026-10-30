@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText, Plus, Building2, Edit2 } from 'lucide-react';
+import { Wallet, Users, Layout, TrendingDown, DollarSign, Activity, FileText, Plus, Building2, Edit2, Landmark, ArrowUpRight, ArrowDownRight, Printer, Search, CheckCircle2, PiggyBank, RefreshCw } from 'lucide-react';
+import { printContent } from '../../utils/printHelper';
 import toast from 'react-hot-toast';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppContext } from '../../app/context/AppContext';
@@ -10,7 +11,22 @@ import { BankAccountSelect } from '../../shared/components/BankAccountSelect';
 export const OtherAccountsPanel: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'assets');
-  const { companyAssets, addCompanyAsset, addCompanyAssetOpening, sellCompanyAsset, fixedLiabilities, createFixedLiability, deleteFixedLiability } = useAppContext();
+  const { 
+    companyAssets, 
+    addCompanyAsset, 
+    addCompanyAssetOpening, 
+    sellCompanyAsset, 
+    fixedLiabilities, 
+    createFixedLiability, 
+    deleteFixedLiability,
+    investors,
+    fetchInvestors,
+    addInvestor,
+    addInvestorCapital,
+    payInvestorProfit,
+    withdrawInvestorCapital,
+    getInvestorStatement
+  } = useAppContext();
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -28,6 +44,7 @@ export const OtherAccountsPanel: React.FC = () => {
       items: [
         { id: 'banking', label: 'Bank Accounts & Cash Flow', icon: Building2 },
         { id: 'workers', label: 'Mulazmeen / Attendance', icon: Users },
+        { id: 'investors', label: 'Investors / سرمایہ کاری', icon: Landmark },
         { id: 'assets', label: 'Assets', icon: Activity },
         { id: 'expenses', label: 'Expenses', icon: DollarSign },
         { id: 'adjustments', label: 'Adjustments', icon: FileText },
@@ -38,6 +55,259 @@ export const OtherAccountsPanel: React.FC = () => {
   ];
 
   
+
+  // Investors State & Handlers
+  const [investorSearch, setInvestorSearch] = useState('');
+
+  // Add Investor Modal State
+  const [isAddInvestorOpen, setIsAddInvestorOpen] = useState(false);
+  const [newInvName, setNewInvName] = useState('');
+  const [newInvContact, setNewInvContact] = useState('');
+  const [newInvAddress, setNewInvAddress] = useState('');
+  const [newInvTerms, setNewInvTerms] = useState('');
+  const [newInvCapital, setNewInvCapital] = useState<number | ''>('');
+  const [newInvDate, setNewInvDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newInvMethod, setNewInvMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [newInvBankId, setNewInvBankId] = useState<number | null>(null);
+  const [isSubmittingInvestor, setIsSubmittingInvestor] = useState(false);
+
+  // Pay Monthly Profit Modal State
+  const [isPayProfitOpen, setIsPayProfitOpen] = useState(false);
+  const [selectedInvestorForProfit, setSelectedInvestorForProfit] = useState<any>(null);
+  const [profitAmount, setProfitAmount] = useState<number | ''>('');
+  const [profitDate, setProfitDate] = useState(new Date().toISOString().split('T')[0]);
+  const [profitMonth, setProfitMonth] = useState(() => {
+    const d = new Date();
+    return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  });
+  const [profitMethod, setProfitMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [profitBankId, setProfitBankId] = useState<number | null>(null);
+  const [profitNotes, setProfitNotes] = useState('');
+  const [isSubmittingProfit, setIsSubmittingProfit] = useState(false);
+
+  // Deposit Additional Capital Modal State
+  const [isAddCapitalOpen, setIsAddCapitalOpen] = useState(false);
+  const [selectedInvestorForCapital, setSelectedInvestorForCapital] = useState<any>(null);
+  const [addCapitalAmount, setAddCapitalAmount] = useState<number | ''>('');
+  const [addCapitalDate, setAddCapitalDate] = useState(new Date().toISOString().split('T')[0]);
+  const [addCapitalMethod, setAddCapitalMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [addCapitalBankId, setAddCapitalBankId] = useState<number | null>(null);
+  const [addCapitalNotes, setAddCapitalNotes] = useState('');
+  const [isSubmittingCapital, setIsSubmittingCapital] = useState(false);
+
+  // Withdraw Capital Modal State
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
+  const [selectedInvestorForWithdraw, setSelectedInvestorForWithdraw] = useState<any>(null);
+  const [withdrawAmount, setWithdrawAmount] = useState<number | ''>('');
+  const [withdrawDate, setWithdrawDate] = useState(new Date().toISOString().split('T')[0]);
+  const [withdrawMethod, setWithdrawMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [withdrawBankId, setWithdrawBankId] = useState<number | null>(null);
+  const [withdrawNotes, setWithdrawNotes] = useState('');
+  const [isSubmittingWithdraw, setIsSubmittingWithdraw] = useState(false);
+
+  // Investor Statement Modal State
+  const [isStatementOpen, setIsStatementOpen] = useState(false);
+  const [statementInvestor, setStatementInvestor] = useState<any>(null);
+  const [statementRecords, setStatementRecords] = useState<any[]>([]);
+  const [isStatementLoading, setIsStatementLoading] = useState(false);
+
+  const handleCreateInvestor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newInvName.trim()) {
+      toast.error('براہ کرم انویسٹر کا نام درج کریں');
+      return;
+    }
+    setIsSubmittingInvestor(true);
+    try {
+      await addInvestor({
+        name: newInvName.trim(),
+        contact: newInvContact.trim() || undefined,
+        address: newInvAddress.trim() || undefined,
+        agreement_terms: newInvTerms.trim() || undefined,
+        initial_capital: Number(newInvCapital) || 0,
+        trans_date: newInvDate,
+        payment_method: newInvMethod,
+        bank_account_id: newInvMethod === 'BANK' ? newInvBankId : null,
+      });
+      toast.success('سرمایہ کار اکاؤنٹ کامیابی سے شامل ہو گیا');
+      setIsAddInvestorOpen(false);
+      setNewInvName('');
+      setNewInvContact('');
+      setNewInvAddress('');
+      setNewInvTerms('');
+      setNewInvCapital('');
+      setNewInvMethod('CASH');
+    } catch (err: any) {
+      toast.error('انویسٹر شامل کرنے میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsSubmittingInvestor(false);
+    }
+  };
+
+  const handlePayProfit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInvestorForProfit || !profitAmount || Number(profitAmount) <= 0) {
+      toast.error('براہ کرم درست منافع رقم درج کریں');
+      return;
+    }
+    setIsSubmittingProfit(true);
+    try {
+      await payInvestorProfit({
+        investor_id: selectedInvestorForProfit.id,
+        amount: Number(profitAmount),
+        trans_date: profitDate,
+        month_period: profitMonth.trim() || undefined,
+        payment_method: profitMethod,
+        bank_account_id: profitMethod === 'BANK' ? profitBankId : null,
+        notes: profitNotes.trim() || undefined,
+      });
+      toast.success(`ماہانہ منافع کی ادائیگی کامیابی سے درج ہو گئی (${selectedInvestorForProfit.name})`);
+      setIsPayProfitOpen(false);
+      setSelectedInvestorForProfit(null);
+      setProfitAmount('');
+      setProfitNotes('');
+    } catch (err: any) {
+      toast.error('منافع ادائیگی میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsSubmittingProfit(false);
+    }
+  };
+
+  const handleAddCapital = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInvestorForCapital || !addCapitalAmount || Number(addCapitalAmount) <= 0) {
+      toast.error('براہ کرم درست سرمایہ رقم درج کریں');
+      return;
+    }
+    setIsSubmittingCapital(true);
+    try {
+      await addInvestorCapital({
+        investor_id: selectedInvestorForCapital.id,
+        amount: Number(addCapitalAmount),
+        trans_date: addCapitalDate,
+        payment_method: addCapitalMethod,
+        bank_account_id: addCapitalMethod === 'BANK' ? addCapitalBankId : null,
+        notes: addCapitalNotes.trim() || undefined,
+      });
+      toast.success(`مزید سرمایہ کاری کامیابی سے جمع ہو گئی (${selectedInvestorForCapital.name})`);
+      setIsAddCapitalOpen(false);
+      setSelectedInvestorForCapital(null);
+      setAddCapitalAmount('');
+      setAddCapitalNotes('');
+    } catch (err: any) {
+      toast.error('سرمایہ جمع کرنے میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsSubmittingCapital(false);
+    }
+  };
+
+  const handleWithdrawCapital = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInvestorForWithdraw || !withdrawAmount || Number(withdrawAmount) <= 0) {
+      toast.error('براہ کرم درست واپسی رقم درج کریں');
+      return;
+    }
+    if (Number(withdrawAmount) > selectedInvestorForWithdraw.current_capital) {
+      toast.error(`واپسی کی رقم کل کیپیٹل بیلنس (Rs. ${selectedInvestorForWithdraw.current_capital.toLocaleString()}) سے زیادہ نہیں ہو سکتی`);
+      return;
+    }
+    setIsSubmittingWithdraw(true);
+    try {
+      await withdrawInvestorCapital({
+        investor_id: selectedInvestorForWithdraw.id,
+        amount: Number(withdrawAmount),
+        trans_date: withdrawDate,
+        payment_method: withdrawMethod,
+        bank_account_id: withdrawMethod === 'BANK' ? withdrawBankId : null,
+        notes: withdrawNotes.trim() || undefined,
+      });
+      toast.success(`اصل سرمایہ کی واپسی کامیابی سے درج ہو گئی (${selectedInvestorForWithdraw.name})`);
+      setIsWithdrawOpen(false);
+      setSelectedInvestorForWithdraw(null);
+      setWithdrawAmount('');
+      setWithdrawNotes('');
+    } catch (err: any) {
+      toast.error('کیپیٹل واپسی میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsSubmittingWithdraw(false);
+    }
+  };
+
+  const handleOpenStatement = async (inv: any) => {
+    setStatementInvestor(inv);
+    setIsStatementOpen(true);
+    setIsStatementLoading(true);
+    try {
+      const records = await getInvestorStatement(inv.id);
+      setStatementRecords(records || []);
+    } catch (err: any) {
+      toast.error('اسٹیٹمنٹ لوڈ کرنے میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsStatementLoading(false);
+    }
+  };
+
+  const handlePrintStatement = () => {
+    if (!statementInvestor) return;
+    let runningCap = 0;
+    const rowsHtml = statementRecords.map((rec) => {
+      if (rec.trans_type === 'INVESTMENT') runningCap += rec.amount;
+      else if (rec.trans_type === 'CAPITAL_WITHDRAWAL') runningCap -= rec.amount;
+
+      const typeLabel = rec.trans_type === 'INVESTMENT' ? 'Capital Deposit' :
+        rec.trans_type === 'PROFIT_PAYOUT' ? 'Monthly Profit Payout' : 'Capital Return / Withdrawal';
+      const color = rec.trans_type === 'INVESTMENT' ? '#16a34a' :
+        rec.trans_type === 'PROFIT_PAYOUT' ? '#2563eb' : '#dc2626';
+
+      return `
+        <tr>
+          <td style="padding: 8px; border: 1px solid #e2e8f0;">${rec.trans_date}</td>
+          <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: 600; color: ${color};">${typeLabel}</td>
+          <td style="padding: 8px; border: 1px solid #e2e8f0;">${rec.payment_method}${rec.bank_name ? ` (${rec.bank_name})` : ''}</td>
+          <td style="padding: 8px; border: 1px solid #e2e8f0;">${rec.month_period ? `[${rec.month_period}] ` : ''}${rec.notes || '-'}</td>
+          <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600;">Rs. ${Number(rec.amount).toLocaleString()}</td>
+          <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: bold; background: #f8fafc;">Rs. ${runningCap.toLocaleString()}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; padding: 10px;">
+        <div style="background: #f1f5f9; border-radius: 8px; padding: 16px; margin-bottom: 20px; border: 1px solid #cbd5e1;">
+          <h2 style="margin: 0 0 8px 0; color: #1e293b; font-size: 18px;">Investor Account Statement</h2>
+          <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 13px; color: #334155;">
+            <div><strong>Investor Name:</strong> ${statementInvestor.name}</div>
+            <div><strong>Contact:</strong> ${statementInvestor.contact || 'N/A'}</div>
+            <div><strong>Address:</strong> ${statementInvestor.address || 'N/A'}</div>
+            <div><strong>Terms:</strong> ${statementInvestor.agreement_terms || 'Standard Agreement'}</div>
+          </div>
+          <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #cbd5e1; display: flex; gap: 24px; font-size: 14px;">
+            <div><strong>Total Invested:</strong> <span style="color: #16a34a; font-weight: bold;">Rs. ${Number(statementInvestor.total_investment).toLocaleString()}</span></div>
+            <div><strong>Total Profit Paid:</strong> <span style="color: #2563eb; font-weight: bold;">Rs. ${Number(statementInvestor.total_profit_paid).toLocaleString()}</span></div>
+            <div><strong>Current Capital Balance:</strong> <span style="color: #0f172a; font-weight: bold;">Rs. ${Number(statementInvestor.current_capital).toLocaleString()}</span></div>
+          </div>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+          <thead>
+            <tr style="background: #1e3a8a; color: white;">
+              <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: left;">Date</th>
+              <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: left;">Transaction Type</th>
+              <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: left;">Payment Method</th>
+              <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: left;">Period / Remarks</th>
+              <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: right;">Amount</th>
+              <th style="padding: 8px; border: 1px solid #cbd5e1; text-align: right;">Capital Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || '<tr><td colspan="6" style="padding: 16px; text-align: center; color: #64748b;">No transactions recorded yet.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    printContent(`Investor Statement - ${statementInvestor.name}`, html);
+  };
 
   // Fixed Liabilities State
   const [flName, setFlName] = useState('');
@@ -85,12 +355,12 @@ export const OtherAccountsPanel: React.FC = () => {
 
   const handleAddOpeningAsset = async () => {
     if (!assetName || !assetPrice) {
-      toast.error('براہ کرم اثاثے کا نام اور مالیت درج کریں');
+      toast.error('Please enter asset name and purchase price');
       return;
     }
     try {
       await addCompanyAssetOpening(assetName, Number(assetPrice), assetDate, assetNotes);
-      toast.success('پہلے سے موجود اثاثہ کامیابی سے درج ہو گیا (کیش دراز سے کوئی کٹوتی نہیں ہوئی)');
+      toast.success('Existing asset added successfully (No cash deducted)');
       setAssetTab('list');
       setAssetName('');
       setAssetPrice('');
@@ -619,21 +889,21 @@ export const OtherAccountsPanel: React.FC = () => {
               <button 
                 onClick={() => setAssetTab('list')}
                 className={`font-bold pb-2 px-2 ${assetTab === 'list' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >Assets List (تمام اثاثہ جات)</button>
+              >Assets List</button>
               <button 
                 onClick={() => setAssetTab('opening')}
                 className={`font-bold pb-2 px-3 flex items-center gap-1.5 ${assetTab === 'opening' ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50/70 rounded-t' : 'text-emerald-600 hover:text-emerald-800'}`}
               >
-                <Plus className="h-4 w-4" /> Add Existing Asset (موجودہ اثاثہ درج کریں - نو کیش کٹوتی)
+                <Plus className="h-4 w-4" /> Add Existing Asset (No Cash Deducted)
               </button>
               <button 
                 onClick={() => setAssetTab('buy')}
                 className={`font-bold pb-2 px-2 ${assetTab === 'buy' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >Purchase New Asset with Cash (نقد خریداری)</button>
+              >Purchase New Asset with Cash</button>
               <button 
                 onClick={() => setAssetTab('sell')}
                 className={`font-bold pb-2 px-2 ${assetTab === 'sell' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-              >Sell Asset (اثاثہ فروخت کریں)</button>
+              >Sell Asset</button>
             </div>
             
             {assetTab === 'list' && (
@@ -678,35 +948,35 @@ export const OtherAccountsPanel: React.FC = () => {
               <div className="space-y-4 max-w-xl bg-emerald-50/50 p-6 rounded-xl border border-emerald-200">
                 <div className="bg-white p-3.5 rounded-lg border border-emerald-100 shadow-xs">
                   <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-1.5 mb-1">
-                    <Activity className="h-4 w-4 text-emerald-600" /> پہلے سے موجود اثاثہ (Opening / Already Owned Asset)
+                    <Activity className="h-4 w-4 text-emerald-600" /> Existing / Opening Asset (Already Owned)
                   </h3>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    کاروبار شروع کرنے سے پہلے یا ذاتی ملکیت میں موجود اثاثے (جیسے سوزوکی گاڑی، دکان کا فرنیچر، ڈیپ فریزر / چِلر، عمارت یا کمپیوٹر سسٹم) کو یہاں درج کریں۔ اس کے اندراج سے دراز کیش یا بینک سے <strong>کوئی رقم منہا نہیں ہوگی</strong> بلکہ یہ کاروبار کے ابتدائی اثاثوں اور سرمائے میں شامل ہوگا۔
+                    Record existing assets owned before business operations or contributed as capital (e.g. Delivery Van, Shop Furniture, Display Chiller, Building, Computer System). Recording an existing asset adds it to fixed assets and owner equity <strong>without deducting any money from cash in drawer or bank</strong>.
                   </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">اثاثے کا نام / تفصیل (Asset Name) *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Asset Name / Description *</label>
                   <input 
                     type="text" 
                     value={assetName} 
                     onChange={e => setAssetName(e.target.value)} 
-                    placeholder="مثلاً: سوزوکی راوی 2021، ڈسپلے چِلر 4 فٹ، فرنیچر و کاؤنٹر" 
+                    placeholder="e.g. Suzuki Ravi 2021, Display Chiller 4ft, Office Counter" 
                     className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" 
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">تخمینہ قیمت / بک ویلیو (Rs) *</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Estimated Value / Cost (Rs) *</label>
                     <input 
                       type="number" 
                       value={assetPrice} 
                       onChange={e => setAssetPrice(Number(e.target.value) || '')} 
-                      placeholder="مثلاً: 350000" 
+                      placeholder="e.g. 350000" 
                       className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-slate-800" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">حصول یا اوپننگ تاریخ (Date)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Acquisition / Opening Date</label>
                     <input 
                       type="date" 
                       value={assetDate} 
@@ -716,12 +986,12 @@ export const OtherAccountsPanel: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">اضافی تفصیلات / نمبر پلیٹ / ریمارکس (اختیاری)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Additional Notes / Serial / Plate # (Optional)</label>
                   <input 
                     type="text" 
                     value={assetNotes} 
                     onChange={e => setAssetNotes(e.target.value)} 
-                    placeholder="مثلاً: رجسٹریشن نمبر LEB-2144 یا سفید رنگ" 
+                    placeholder="e.g. Registration # LEB-2144, Model 2021" 
                     className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" 
                   />
                 </div>
@@ -729,7 +999,7 @@ export const OtherAccountsPanel: React.FC = () => {
                   onClick={handleAddOpeningAsset} 
                   className="w-full bg-emerald-600 text-white py-2.5 rounded-lg font-bold hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2 mt-2"
                 >
-                  <Plus className="h-4 w-4" /> موجودہ اثاثہ محفوظ کریں (Save Opening Asset - No Cash Deducted)
+                  <Plus className="h-4 w-4" /> Save Existing Asset (No Cash Deducted)
                 </button>
               </div>
             )}
@@ -2016,6 +2286,925 @@ export const OtherAccountsPanel: React.FC = () => {
             )}
             </div>
           );
+
+      case 'investors': {
+        const filteredInvestors = investors.filter(inv =>
+          inv.name.toLowerCase().includes(investorSearch.toLowerCase()) ||
+          (inv.contact && inv.contact.includes(investorSearch)) ||
+          (inv.address && inv.address.toLowerCase().includes(investorSearch.toLowerCase()))
+        );
+
+        const totalInvestedSum = investors.reduce((sum, i) => sum + (i.total_investment || 0), 0);
+        const totalProfitPaidSum = investors.reduce((sum, i) => sum + (i.total_profit_paid || 0), 0);
+        const currentCapitalSum = investors.reduce((sum, i) => sum + (i.current_capital || 0), 0);
+
+        return (
+          <div className="space-y-6">
+            {/* Header & KPI Summary Cards */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <Landmark className="h-6 w-6 text-blue-600" />
+                  Investor Accounts & Capital Management (سرمایہ کار کھاتے)
+                </h1>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  کاروباری سرمایہ کار، ان کا اصل کیپیٹل، اور ماہانہ منافع کی تقسیم کا ریکارڈ
+                </p>
+              </div>
+
+              <button
+                onClick={() => setIsAddInvestorOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg transition-colors shadow-xs"
+              >
+                <Plus className="h-4 w-4" />
+                نیا سرمایہ کار شامل کریں (Add Investor)
+              </button>
+            </div>
+
+            {/* Metric KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-500">کل سرمایہ کار (Total Investors)</div>
+                  <div className="text-xl font-bold text-slate-800">{investors.length}</div>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+                  <ArrowDownRight className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-500">کل موصولہ سرمایہ (Total Invested)</div>
+                  <div className="text-xl font-bold text-emerald-600">
+                    Rs. {totalInvestedSum.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+                <div className="p-3 bg-purple-50 text-purple-600 rounded-lg">
+                  <PiggyBank className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-500">ادا شدہ ماہانہ منافع (Total Profit Paid)</div>
+                  <div className="text-xl font-bold text-purple-600">
+                    Rs. {totalProfitPaidSum.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+                <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
+                  <Wallet className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-500">موجودہ اصل کیپیٹل (Current Capital)</div>
+                  <div className="text-xl font-bold text-slate-900">
+                    Rs. {currentCapitalSum.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="سرمایہ کار تلاش کریں (نام، فون، یا پتہ)..."
+                  value={investorSearch}
+                  onChange={(e) => setInvestorSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-1.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              {investorSearch && (
+                <button
+                  onClick={() => setInvestorSearch('')}
+                  className="text-xs text-slate-500 hover:text-slate-800 px-2 py-1"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Investors Table */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="p-3.5">سرمایہ کار (Investor)</th>
+                      <th className="p-3.5">معاہدہ / منافع شرح (Terms)</th>
+                      <th className="p-3.5 text-right">کل سرمایہ کاری (Total Invested)</th>
+                      <th className="p-3.5 text-right">ادا شدہ منافع (Profit Paid)</th>
+                      <th className="p-3.5 text-right">موجودہ کیپیٹل (Current Capital)</th>
+                      <th className="p-3.5 text-center">آخری منافع ادائیگی</th>
+                      <th className="p-3.5 text-center">ایکشنز (Actions)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredInvestors.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-slate-500">
+                          کوئی سرمایہ کار نہیں ملا۔ اوپر موجود بٹن سے نیا سرمایہ کار شامل کریں۔
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredInvestors.map((inv) => (
+                        <tr key={inv.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3.5">
+                            <div className="font-bold text-slate-800 text-sm">{inv.name}</div>
+                            <div className="text-[11px] text-slate-500 flex gap-2 mt-0.5">
+                              {inv.contact && <span>📞 {inv.contact}</span>}
+                              {inv.address && <span>📍 {inv.address}</span>}
+                            </div>
+                          </td>
+                          <td className="p-3.5">
+                            <span className="inline-block px-2.5 py-1 bg-blue-50 text-blue-700 rounded-md font-semibold text-[11px] border border-blue-100">
+                              {inv.agreement_terms || 'Standard Agreement'}
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-right font-semibold text-emerald-600 text-sm">
+                            Rs. {Number(inv.total_investment || 0).toLocaleString()}
+                          </td>
+                          <td className="p-3.5 text-right font-semibold text-purple-600 text-sm">
+                            Rs. {Number(inv.total_profit_paid || 0).toLocaleString()}
+                          </td>
+                          <td className="p-3.5 text-right font-bold text-slate-900 text-sm">
+                            Rs. {Number(inv.current_capital || 0).toLocaleString()}
+                          </td>
+                          <td className="p-3.5 text-center text-slate-500 text-[11px]">
+                            {inv.last_payout_date || '—'}
+                          </td>
+                          <td className="p-3.5">
+                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                              {/* Pay Profit Button */}
+                              <button
+                                onClick={() => {
+                                  setSelectedInvestorForProfit(inv);
+                                  setProfitAmount('');
+                                  setProfitNotes('');
+                                  setIsPayProfitOpen(true);
+                                }}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium text-[11px] transition-colors shadow-2xs flex items-center gap-1"
+                                title="ماہانہ منافع ادا کریں"
+                              >
+                                <DollarSign className="h-3 w-3" />
+                                منافع ادائیگی
+                              </button>
+
+                              {/* Add Additional Capital */}
+                              <button
+                                onClick={() => {
+                                  setSelectedInvestorForCapital(inv);
+                                  setAddCapitalAmount('');
+                                  setAddCapitalNotes('');
+                                  setIsAddCapitalOpen(true);
+                                }}
+                                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium text-[11px] transition-colors shadow-2xs flex items-center gap-1"
+                                title="مزید سرمایہ جمع کریں"
+                              >
+                                <Plus className="h-3 w-3" />
+                                +سرمایہ
+                              </button>
+
+                              {/* Withdraw Capital */}
+                              <button
+                                onClick={() => {
+                                  setSelectedInvestorForWithdraw(inv);
+                                  setWithdrawAmount('');
+                                  setWithdrawNotes('');
+                                  setIsWithdrawOpen(true);
+                                }}
+                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded font-medium text-[11px] transition-colors shadow-2xs flex items-center gap-1"
+                                title="اصل سرمایہ واپس کریں"
+                              >
+                                <ArrowUpRight className="h-3 w-3" />
+                                واپسی
+                              </button>
+
+                              {/* View Statement */}
+                              <button
+                                onClick={() => handleOpenStatement(inv)}
+                                className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded font-medium text-[11px] transition-colors shadow-2xs flex items-center gap-1"
+                                title="اسٹیٹمنٹ / لیجر دیکھیں"
+                              >
+                                <FileText className="h-3 w-3" />
+                                اسٹیٹمنٹ
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* --- MODAL 1: ADD NEW INVESTOR --- */}
+            {isAddInvestorOpen && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[60] p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
+                  <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                    <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <Landmark className="h-4 w-4 text-blue-600" />
+                      نیا سرمایہ کار اکاؤنٹ شامل کریں (Add New Investor)
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddInvestorOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCreateInvestor} className="p-5 space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        سرمایہ کار کا نام (Investor Name) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newInvName}
+                        onChange={(e) => setNewInvName(e.target.value)}
+                        placeholder="e.g. حاجی محمد اسلم / Haji Aslam"
+                        className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          رابطہ نمبر (Phone / Mobile)
+                        </label>
+                        <input
+                          type="text"
+                          value={newInvContact}
+                          onChange={(e) => setNewInvContact(e.target.value)}
+                          placeholder="0300-1234567"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          پتہ / شہر (Address)
+                        </label>
+                        <input
+                          type="text"
+                          value={newInvAddress}
+                          onChange={(e) => setNewInvAddress(e.target.value)}
+                          placeholder="e.g. بھوآنہ / Bhowana"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        معاہدہ / منافع شرح (Profit Agreement Terms)
+                      </label>
+                      <input
+                        type="text"
+                        value={newInvTerms}
+                        onChange={(e) => setNewInvTerms(e.target.value)}
+                        placeholder="e.g. 5% Monthly Profit, or Rs. 25,000 Fixed / month"
+                        className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+                      <div className="text-xs font-bold text-slate-800 border-b pb-1">
+                        ابتدائی سرمایہ کی تفصیل (Initial Capital Details)
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            سرمایہ رقم (Capital Amount Rs.)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={newInvCapital}
+                            onChange={(e) => setNewInvCapital(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="0.00"
+                            className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                          <input
+                            type="date"
+                            value={newInvDate}
+                            onChange={(e) => setNewInvDate(e.target.value)}
+                            className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {Number(newInvCapital) > 0 && (
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            سرمایہ کی وصولی کا ذریعہ (Received In)
+                          </label>
+                          <div className="grid grid-cols-2 gap-2 mb-2">
+                            <button
+                              type="button"
+                              onClick={() => setNewInvMethod('CASH')}
+                              className={`py-1.5 px-3 text-xs font-bold rounded-lg border transition-all ${
+                                newInvMethod === 'CASH'
+                                  ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-2xs'
+                                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              💵 کیش دراز (Cash in Drawer)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewInvMethod('BANK')}
+                              className={`py-1.5 px-3 text-xs font-bold rounded-lg border transition-all ${
+                                newInvMethod === 'BANK'
+                                  ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-2xs'
+                                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              🏦 بینک اکاؤنٹ (Bank)
+                            </button>
+                          </div>
+
+                          {newInvMethod === 'BANK' && (
+                            <BankAccountSelect
+                              value={newInvBankId}
+                              onChange={setNewInvBankId}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3 pt-3 border-t">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddInvestorOpen(false)}
+                        className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50 transition-colors"
+                      >
+                        کینسل (Cancel)
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmittingInvestor}
+                        className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                      >
+                        {isSubmittingInvestor ? 'شامل ہو رہا ہے...' : 'محفوظ کریں (Save Investor)'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* --- MODAL 2: PAY MONTHLY PROFIT --- */}
+            {isPayProfitOpen && selectedInvestorForProfit && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[60] p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
+                  <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-emerald-50">
+                    <div>
+                      <h2 className="text-sm font-bold text-emerald-800 flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-emerald-600" />
+                        ماہانہ منافع کی ادائیگی (Pay Monthly Profit)
+                      </h2>
+                      <p className="text-xs text-emerald-700 font-semibold mt-0.5">
+                        {selectedInvestorForProfit.name} | کیپیٹل: Rs. {Number(selectedInvestorForProfit.current_capital).toLocaleString()}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsPayProfitOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <form onSubmit={handlePayProfit} className="p-5 space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          منافع رقم (Profit Amount Rs.) *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          step="any"
+                          value={profitAmount}
+                          onChange={(e) => setProfitAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                          placeholder="0.00"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-emerald-700 text-base"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          مہینہ / دورانیہ (Month / Period)
+                        </label>
+                        <input
+                          type="text"
+                          value={profitMonth}
+                          onChange={(e) => setProfitMonth(e.target.value)}
+                          placeholder="e.g. October 2026"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        ادائیگی کا ذریعہ (Paid From) *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setProfitMethod('CASH')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            profitMethod === 'CASH'
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-2xs'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          💵 کیش دراز (Cash in Drawer)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProfitMethod('BANK')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            profitMethod === 'BANK'
+                              ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-2xs'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          🏦 بینک اکاؤنٹ (Bank)
+                        </button>
+                      </div>
+                    </div>
+
+                    {profitMethod === 'BANK' && (
+                      <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                        <BankAccountSelect
+                          value={profitBankId}
+                          onChange={setProfitBankId}
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                        <input
+                          type="date"
+                          value={profitDate}
+                          onChange={(e) => setProfitDate(e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          چیک نمبر / حوالہ (Ref / Cheque)
+                        </label>
+                        <input
+                          type="text"
+                          value={profitNotes}
+                          onChange={(e) => setProfitNotes(e.target.value)}
+                          placeholder="e.g. Cheque # 12345"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-3 border-t">
+                      <button
+                        type="button"
+                        onClick={() => setIsPayProfitOpen(false)}
+                        className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50 transition-colors"
+                      >
+                        کینسل (Cancel)
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmittingProfit}
+                        className="flex-1 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                      >
+                        {isSubmittingProfit ? 'ادائیگی جاری ہے...' : 'منافع کی ادائیگی تصدیق کریں'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* --- MODAL 3: DEPOSIT ADDITIONAL CAPITAL --- */}
+            {isAddCapitalOpen && selectedInvestorForCapital && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[60] p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
+                  <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-blue-50">
+                    <div>
+                      <h2 className="text-sm font-bold text-blue-800 flex items-center gap-2">
+                        <Plus className="h-4 w-4 text-blue-600" />
+                        مزید سرمایہ کاری جمع کریں (Add Additional Capital)
+                      </h2>
+                      <p className="text-xs text-blue-700 font-semibold mt-0.5">
+                        {selectedInvestorForCapital.name} | موجودہ کیپیٹل: Rs. {Number(selectedInvestorForCapital.current_capital).toLocaleString()}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddCapitalOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleAddCapital} className="p-5 space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        اضافی سرمایہ رقم (Additional Capital Rs.) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        step="any"
+                        value={addCapitalAmount}
+                        onChange={(e) => setAddCapitalAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="0.00"
+                        className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-700 text-base"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        سرمایہ وصولی کا ذریعہ (Received In) *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAddCapitalMethod('CASH')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            addCapitalMethod === 'CASH'
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-2xs'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          💵 کیش دراز (Cash in Drawer)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddCapitalMethod('BANK')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            addCapitalMethod === 'BANK'
+                              ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-2xs'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          🏦 بینک اکاؤنٹ (Bank)
+                        </button>
+                      </div>
+                    </div>
+
+                    {addCapitalMethod === 'BANK' && (
+                      <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                        <BankAccountSelect
+                          value={addCapitalBankId}
+                          onChange={setAddCapitalBankId}
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                        <input
+                          type="date"
+                          value={addCapitalDate}
+                          onChange={(e) => setAddCapitalDate(e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">نوٹس (Notes)</label>
+                        <input
+                          type="text"
+                          value={addCapitalNotes}
+                          onChange={(e) => setAddCapitalNotes(e.target.value)}
+                          placeholder="e.g. Additional investment"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-3 border-t">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddCapitalOpen(false)}
+                        className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50 transition-colors"
+                      >
+                        کینسل (Cancel)
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmittingCapital}
+                        className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                      >
+                        {isSubmittingCapital ? 'جمع ہو رہا ہے...' : 'سرمایہ جمع کریں (Confirm Deposit)'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* --- MODAL 4: WITHDRAW CAPITAL --- */}
+            {isWithdrawOpen && selectedInvestorForWithdraw && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[60] p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
+                  <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-amber-50">
+                    <div>
+                      <h2 className="text-sm font-bold text-amber-800 flex items-center gap-2">
+                        <ArrowUpRight className="h-4 w-4 text-amber-600" />
+                        اصل سرمایہ کی واپسی (Capital Withdrawal / Return)
+                      </h2>
+                      <p className="text-xs text-amber-700 font-semibold mt-0.5">
+                        {selectedInvestorForWithdraw.name} | موجودہ کیپیٹل بیلنس: Rs. {Number(selectedInvestorForWithdraw.current_capital).toLocaleString()}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsWithdrawOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleWithdrawCapital} className="p-5 space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        واپسی رقم (Withdrawal Amount Rs.) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max={selectedInvestorForWithdraw.current_capital}
+                        step="any"
+                        value={withdrawAmount}
+                        onChange={(e) => setWithdrawAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="0.00"
+                        className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-amber-500 outline-none font-bold text-amber-800 text-base"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        ادائیگی کا ذریعہ (Paid From) *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setWithdrawMethod('CASH')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            withdrawMethod === 'CASH'
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-2xs'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          💵 کیش دراز (Cash in Drawer)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWithdrawMethod('BANK')}
+                          className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
+                            withdrawMethod === 'BANK'
+                              ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-2xs'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          🏦 بینک اکاؤنٹ (Bank)
+                        </button>
+                      </div>
+                    </div>
+
+                    {withdrawMethod === 'BANK' && (
+                      <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                        <BankAccountSelect
+                          value={withdrawBankId}
+                          onChange={setWithdrawBankId}
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                        <input
+                          type="date"
+                          value={withdrawDate}
+                          onChange={(e) => setWithdrawDate(e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">تفصیل / نوٹس</label>
+                        <input
+                          type="text"
+                          value={withdrawNotes}
+                          onChange={(e) => setWithdrawNotes(e.target.value)}
+                          placeholder="e.g. Principal return"
+                          className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-3 border-t">
+                      <button
+                        type="button"
+                        onClick={() => setIsWithdrawOpen(false)}
+                        className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50 transition-colors"
+                      >
+                        کینسل (Cancel)
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmittingWithdraw}
+                        className="flex-1 py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                      >
+                        {isSubmittingWithdraw ? 'واپسی جاری ہے...' : 'کیپیٹل واپسی تصدیق کریں'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* --- MODAL 5: INVESTOR STATEMENT --- */}
+            {isStatementOpen && statementInvestor && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[60] p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col max-h-[90vh] border border-slate-200">
+                  <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                        <Landmark className="h-5 w-5 text-blue-600" />
+                        سرمایہ کار کھاتہ اسٹیٹمنٹ (Investor Account Statement)
+                      </h2>
+                      <p className="text-xs text-slate-600 font-medium mt-0.5">
+                        {statementInvestor.name} | معاہدہ: {statementInvestor.agreement_terms || 'Standard'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsStatementOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <div className="p-4 bg-blue-50/50 border-b border-blue-100 flex flex-wrap gap-6 text-xs">
+                    <div>
+                      <span className="text-slate-500">کل موصولہ سرمایہ:</span>{' '}
+                      <strong className="text-emerald-600 font-bold">
+                        Rs. {Number(statementInvestor.total_investment || 0).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">کل ادا شدہ منافع:</span>{' '}
+                      <strong className="text-purple-600 font-bold">
+                        Rs. {Number(statementInvestor.total_profit_paid || 0).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">موجودہ اصل کیپیٹل:</span>{' '}
+                      <strong className="text-slate-900 font-bold text-sm">
+                        Rs. {Number(statementInvestor.current_capital || 0).toLocaleString()}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="p-0 overflow-y-auto flex-1">
+                    {isStatementLoading ? (
+                      <div className="p-8 text-center text-slate-500 text-xs">لوڈ ہو رہا ہے...</div>
+                    ) : (
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead className="bg-slate-100 text-slate-600 sticky top-0 shadow-xs text-[11px] uppercase">
+                          <tr>
+                            <th className="p-3 border-b border-slate-200 font-semibold">تاریخ (Date)</th>
+                            <th className="p-3 border-b border-slate-200 font-semibold">قسم (Type)</th>
+                            <th className="p-3 border-b border-slate-200 font-semibold">ذریعہ (Method)</th>
+                            <th className="p-3 border-b border-slate-200 font-semibold">دورانیہ / تفصیل (Remarks)</th>
+                            <th className="p-3 border-b border-slate-200 font-semibold text-right">رقم (Amount)</th>
+                            <th className="p-3 border-b border-slate-200 font-semibold text-right">کیپیٹل بیلنس (Capital)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(() => {
+                            let runningCap = 0;
+                            if (statementRecords.length === 0) {
+                              return (
+                                <tr>
+                                  <td colSpan={6} className="p-6 text-center text-slate-500">
+                                    اس سرمایہ کار کا کوئی ٹرانزیکشن ریکارڈ موجود نہیں۔
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            return statementRecords.map((rec, idx) => {
+                              if (rec.trans_type === 'INVESTMENT') runningCap += rec.amount;
+                              else if (rec.trans_type === 'CAPITAL_WITHDRAWAL') runningCap -= rec.amount;
+
+                              const isInvest = rec.trans_type === 'INVESTMENT';
+                              const isProfit = rec.trans_type === 'PROFIT_PAYOUT';
+                              const isWithdraw = rec.trans_type === 'CAPITAL_WITHDRAWAL';
+
+                              return (
+                                <tr key={idx} className="hover:bg-slate-50">
+                                  <td className="p-3 text-slate-600 whitespace-nowrap">{rec.trans_date}</td>
+                                  <td className="p-3">
+                                    {isInvest && (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        + سرمایہ کاری (Deposit)
+                                      </span>
+                                    )}
+                                    {isProfit && (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                        ماہانہ منافع (Profit)
+                                      </span>
+                                    )}
+                                    {isWithdraw && (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                        - کیپیٹل واپسی (Withdraw)
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-slate-600">
+                                    {rec.payment_method}
+                                    {rec.bank_name ? ` (${rec.bank_name})` : ''}
+                                  </td>
+                                  <td className="p-3 text-slate-600">
+                                    {rec.month_period && (
+                                      <span className="font-semibold text-blue-700 mr-1">
+                                        [{rec.month_period}]
+                                      </span>
+                                    )}
+                                    {rec.notes || '—'}
+                                  </td>
+                                  <td className={`p-3 text-right font-bold ${
+                                    isInvest ? 'text-emerald-600' : isProfit ? 'text-purple-600' : 'text-amber-600'
+                                  }`}>
+                                    Rs. {Number(rec.amount).toLocaleString()}
+                                  </td>
+                                  <td className="p-3 text-right font-bold text-slate-900 bg-slate-50/50">
+                                    Rs. {runningCap.toLocaleString()}
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+                    <button
+                      onClick={handlePrintStatement}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors shadow-xs"
+                    >
+                      <Printer className="h-4 w-4" />
+                      پرنٹ اسٹیٹمنٹ (Print Statement)
+                    </button>
+                    <button
+                      onClick={() => setIsStatementOpen(false)}
+                      className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-medium rounded-lg transition-colors"
+                    >
+                      بند کریں (Close)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
 
       default:
         return <div>Select a section</div>;

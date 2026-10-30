@@ -214,20 +214,32 @@ export const generateGenericReportPDF = async (
   toDate: string
 ) => {
   const doc = new jsPDF('landscape');
+  const pageWidth = doc.internal.pageSize.getWidth();
   
-  doc.setFontSize(18);
-  doc.text('Zawar Traders', 14, 18);
-  
-  doc.setFontSize(9);
-  doc.setTextColor(80);
-  doc.text('Main Jhang Chiniot Road Near Cheesy Crunch Bhowana | Contact: 03457611825', 14, 24);
-
-  doc.setFontSize(13);
-  doc.setTextColor(0);
-  doc.text(report.title, 14, 32);
+  // Financial Statement Style Header
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('ZAWAR TRADERS', pageWidth / 2, 16, { align: 'center' });
   
   doc.setFontSize(10);
-  doc.text(`Period: ${fromDate} to ${toDate}`, 14, 38);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Wholesale Dealer & General Order Supplier', pageWidth / 2, 22, { align: 'center' });
+  
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Main Jhang Chiniot Road, Near Cheesy Crunch, Bhowana | Cell / WhatsApp: 0345-7611825', pageWidth / 2, 27, { align: 'center' });
+
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 64, 175);
+  doc.text(report.title.toUpperCase(), pageWidth / 2, 35, { align: 'center' });
+  
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Period: ${fromDate} to ${toDate}`, pageWidth / 2, 40, { align: 'center' });
 
   const tableData = [...report.rows];
 
@@ -245,8 +257,17 @@ export const generateGenericReportPDF = async (
     head: [report.headers],
     body: tableData,
     theme: 'grid',
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [66, 139, 202] },
+    styles: { fontSize: 8.5, cellPadding: 3 },
+    headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: 'bold' },
+    footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    didDrawPage: () => {
+      const pageStr = `Page ${doc.internal.pages.length - 1}`;
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text(pageStr, pageWidth - 20, doc.internal.pageSize.getHeight() - 8);
+      doc.text('Zawar Traders Business Management System', 14, doc.internal.pageSize.getHeight() - 8);
+    }
   });
 
   await savePdf(doc, `${report.title.replace(/ /g, '_')}_${fromDate}_to_${toDate}.pdf`, 'Document');

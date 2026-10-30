@@ -69,6 +69,7 @@ export function printThermalReceipt(data: ReceiptData) {
     : (prevBal !== null ? (prevBal + (thisBillNet - paidToday)) : null);
 
   const html = `
+    <!DOCTYPE html>
     <html>
     <head>
       <title>${data.title}</title>
@@ -84,15 +85,15 @@ export function printThermalReceipt(data: ReceiptData) {
           height: auto !important;
         }
         body { 
-          font-family: 'Courier New', Courier, monospace; 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
           width: 72mm;
           margin: 0 auto;
-          padding: 2mm 3mm;
+          padding: 3mm 4mm;
           color: #000;
           font-size: 13px;
-          -webkit-font-smoothing: none;
-          font-weight: 600;
-          line-height: 1.3;
+          -webkit-font-smoothing: antialiased;
+          font-weight: 500;
+          line-height: 1.35;
         }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
@@ -102,63 +103,72 @@ export function printThermalReceipt(data: ReceiptData) {
         .mb-2 { margin-bottom: 8px; }
         .mt-1 { margin-top: 4px; }
         .mt-2 { margin-top: 8px; }
-        .border-top { border-top: 1px dashed #000; padding-top: 4px; }
-        .border-bottom { border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
+        .border-top { border-top: 1px dashed #000; padding-top: 5px; }
+        .border-bottom { border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px; }
+        .border-solid { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 0; }
         
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 2px 0; vertical-align: top; font-size: 13px; font-weight: 600; }
+        th, td { padding: 3px 0; vertical-align: top; font-size: 12px; }
+        th { font-weight: bold; border-bottom: 1px solid #000; }
         
         .item-name { width: 100%; display: block; font-size: 13px; font-weight: bold; margin-bottom: 1px; }
         
-        .grid-2 { display: grid; grid-template-columns: auto auto; justify-content: space-between; row-gap: 2px; }
-        .totals-grid { display: grid; grid-template-columns: 1fr 1fr; row-gap: 3px; font-size: 13px; font-weight: 600; }
+        .grid-2 { display: grid; grid-template-columns: auto auto; justify-content: space-between; row-gap: 2px; font-size: 12px; }
+        .totals-grid { display: grid; grid-template-columns: 1fr 1fr; row-gap: 3px; font-size: 13px; }
         
-        .urdu-title {
-          font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif;
-          font-size: 24px;
-          font-weight: bold;
-          line-height: 1.3;
-          margin: 0;
-          direction: rtl;
-        }
-        .urdu-text {
-          font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif;
-          direction: rtl;
-        }
         .logo-img {
-          width: 58px;
-          height: 58px;
-          margin: 0 auto 3px auto;
+          width: 60px;
+          height: 60px;
+          margin: 0 auto 4px auto;
           display: block;
           border-radius: 50%;
+        }
+        .store-title {
+          font-size: 20px;
+          font-weight: 900;
+          letter-spacing: 0.5px;
+          margin: 0;
+          text-transform: uppercase;
+        }
+        .store-subtitle {
+          font-size: 11px;
+          font-weight: 600;
+          color: #333;
+          margin-top: 1px;
+        }
+        .store-meta {
+          font-size: 11px;
+          color: #222;
+          margin-top: 2px;
+          line-height: 1.25;
         }
       </style>
     </head>
     <body>
-      <!-- Header with Logo, Address & Contact -->
+      <!-- Header with Logo, Address & Contact (100% English) -->
       <div class="text-center mb-2">
         <img src="${ZAWAR_LOGO_BASE64}" class="logo-img" alt="Logo" />
-        <div class="urdu-title">زوار ٹریڈرز</div>
-        <div style="font-weight: bold; font-size: 12px; margin-top: -2px;">Zawar Traders</div>
-        <div class="urdu-text" style="font-size: 13px;">ہول سیل ڈیلر اینڈ جنرل آرڈر سپلائر</div>
-        <div class="urdu-text" style="font-size: 12px; margin-top: 2px;">مین جھنگ چنیوٹ روڈ نزد چیزی کرنچ بھوآنہ</div>
-        <div style="font-size: 12px; font-weight: bold; margin-top: 2px;">رابطہ: 03457611825</div>
+        <div class="store-title">ZAWAR TRADERS</div>
+        <div class="store-subtitle">Wholesale Dealer & General Order Supplier</div>
+        <div class="store-meta">Main Jhang Chiniot Road, Near Cheesy Crunch, Bhowana</div>
+        <div class="store-meta font-bold">Cell / WhatsApp: 0345-7611825</div>
       </div>
       
       <!-- Transaction Meta -->
-      <div class="text-center font-bold mb-2 border-bottom border-top" style="font-size: 13px;">
+      <div class="text-center font-bold mb-2 border-solid" style="font-size: 13px; letter-spacing: 1px;">
         ${data.title}
       </div>
       
       <div class="grid-2 mb-1">
-        <span>Inv #: ${data.refNo || 'Auto'}</span>
+        <span>Invoice #: <strong>${data.refNo || 'Auto'}</strong></span>
         <span>Date: ${data.date}</span>
       </div>
       <div class="grid-2 mb-2">
         <span>Time: ${timeString}</span>
+        ${data.paymentMethod ? `<span>Pay Method: ${data.paymentMethod}</span>` : ''}
       </div>
       
-      <div class="mb-2">
+      <div class="mb-2" style="font-size: 12px;">
         <div><span class="font-bold">${data.accountLabel}:</span> ${data.accountName}</div>
         ${data.address ? `<div><span class="font-bold">Address:</span> ${data.address}</div>` : ''}
         ${data.phone ? `<div><span class="font-bold">Phone:</span> ${data.phone}</div>` : ''}
@@ -169,10 +179,10 @@ export function printThermalReceipt(data: ReceiptData) {
       <div class="border-bottom">
         <table>
           <thead>
-            <tr style="border-bottom: 1px solid #000;">
-              <th class="text-left" style="width: 45%;">Item</th>
-              <th class="text-center" style="width: 25%;">Qty x Rate</th>
-              <th class="text-right" style="width: 30%;">Amount</th>
+            <tr>
+              <th class="text-left" style="width: 50%;">Item</th>
+              <th class="text-center" style="width: 22%;">Qty x Rate</th>
+              <th class="text-right" style="width: 28%;">Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -195,56 +205,58 @@ export function printThermalReceipt(data: ReceiptData) {
         <div>Total Items:</div>
         <div class="text-right">${totalItems}</div>
         
-        <div>Total Qty:</div>
+        <div>Total Quantity:</div>
         <div class="text-right">${totalQty}</div>
         
-        <div>Net Bill:</div>
-        <div class="text-right">${(data.gross ?? data.totalGross)?.toLocaleString() || "0"}</div>
+        <div>Gross Amount:</div>
+        <div class="text-right">Rs. ${(data.gross ?? data.totalGross)?.toLocaleString() || "0"}</div>
         
-        <div>Discount:</div>
-        <div class="text-right">${(data.discount ?? data.totalDiscount)?.toLocaleString() || "0"}</div>
+        ${((data.discount ?? data.totalDiscount) || 0) > 0 ? `
+          <div>Discount:</div>
+          <div class="text-right">- Rs. ${(data.discount ?? data.totalDiscount)?.toLocaleString()}</div>
+        ` : ''}
         
-        <div class="font-bold mt-1" style="font-size: 14px;">THIS BILL:</div>
-        <div class="text-right font-bold mt-1" style="font-size: 14px;">${thisBillNet.toLocaleString()}</div>
+        <div class="font-bold mt-1" style="font-size: 14px;">THIS INVOICE TOTAL:</div>
+        <div class="text-right font-bold mt-1" style="font-size: 14px;">Rs. ${thisBillNet.toLocaleString()}</div>
         
-        <div class="mt-1">Paid Today:</div>
-        <div class="text-right mt-1">${paidToday.toLocaleString()}</div>
+        <div class="mt-1">Amount Paid:</div>
+        <div class="text-right mt-1">Rs. ${paidToday.toLocaleString()}</div>
         
-        <div>Bill Balance:</div>
-        <div class="text-right">${(data.balance)?.toLocaleString() || "0"}</div>
+        <div>Invoice Balance:</div>
+        <div class="text-right">Rs. ${(data.balance)?.toLocaleString() || "0"}</div>
       </div>
 
-      <!-- KHATA / ACCOUNT LEDGER SUMMARY (سابقہ اور کل کھاتہ بقایا) -->
+      <!-- KHATA / ACCOUNT LEDGER SUMMARY (100% English) -->
       ${prevBal !== null ? `
       <div class="border-bottom mt-2 pb-2">
-        <div class="urdu-text text-center font-bold mb-1" style="font-size: 14px; background: #eee; padding: 2px;">
-          کھاتہ بقایا جات (Account Balance Summary)
+        <div class="text-center font-bold mb-1" style="font-size: 12px; background: #e5e7eb; padding: 3px; letter-spacing: 0.5px; border-radius: 2px;">
+          ${data.isSupplier ? 'SUPPLIER LEDGER SUMMARY' : 'CUSTOMER ACCOUNT SUMMARY'}
         </div>
-        <div class="totals-grid">
-          <div>سابقہ بقایا (Previous Bal):</div>
-          <div class="text-right">${prevBal.toLocaleString()}</div>
+        <div class="totals-grid" style="font-size: 12px;">
+          <div>Previous Balance:</div>
+          <div class="text-right">Rs. ${prevBal.toLocaleString()}</div>
 
-          <div>موجودہ بل (This Bill):</div>
-          <div class="text-right">${thisBillNet.toLocaleString()}</div>
+          <div>Current Invoice:</div>
+          <div class="text-right">Rs. ${thisBillNet.toLocaleString()}</div>
 
-          <div>آج ادا شدہ (Paid Today):</div>
-          <div class="text-right">${paidToday.toLocaleString()}</div>
+          <div>Paid Today:</div>
+          <div class="text-right">Rs. ${paidToday.toLocaleString()}</div>
 
-          <div class="font-bold mt-1" style="font-size: 14px;">کل نیٹ بقایا (Net Balance):</div>
-          <div class="text-right font-bold mt-1" style="font-size: 14px;">${(calculatedNetBal ?? 0).toLocaleString()}</div>
+          <div class="font-bold mt-1" style="font-size: 13px;">NET ACCOUNT BALANCE:</div>
+          <div class="text-right font-bold mt-1" style="font-size: 13px;">Rs. ${(calculatedNetBal ?? 0).toLocaleString()}</div>
         </div>
       </div>
       ` : ''}
       
-      <div class="mt-2 mb-2" style="font-size: 13px; font-weight: 600;">
+      <div class="mt-2 mb-2" style="font-size: 12px; font-weight: 600;">
         <span class="font-bold">Signature:</span> _________________ <span style="margin-left:10px;">${data.staffName ? '(' + data.staffName + ')' : ''}</span>
       </div>
 
-      <div class="text-center mt-2 border-top" style="padding-top: 6px; font-size: 10px;">
-        <div class="urdu-text" style="font-size: 11px; margin-bottom: 4px;">نوٹ: کھلے اور خراب ہونے والے پروڈکٹس اور رسید کے بغیر پروڈکٹ کا کوئی کلیم نہیں ہوگا۔</div>
+      <div class="text-center mt-2 border-top" style="padding-top: 6px; font-size: 11px; color: #444;">
+        <div style="font-weight: 600; margin-bottom: 2px;">Note: Opened or damaged goods cannot be claimed or returned without receipt.</div>
         Thank you for your business!
         <br/>
-        Software by Ahmad Hassan Tanseel
+        <span style="font-size: 10px; color: #777;">Software by Ahmad Hassan Tanseel</span>
       </div>
     </body>
     </html>

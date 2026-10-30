@@ -68,6 +68,12 @@ pub async fn perform_backup(app_handle: AppHandle, db: &sqlx::SqlitePool) -> Res
     let backup_path = backup_dir.join(format!("Zawar_Traders_Backup_{}.db", timestamp));
     
     fs::copy(&db_path, &backup_path).map_err(|e| e.to_string())?;
+
+    let today_date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let _ = sqlx::query("INSERT INTO system_config (key, value) VALUES ('last_backup_date', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .bind(&today_date_str)
+        .execute(db)
+        .await;
     
     Ok(format!("Backup created: {}", backup_path.to_string_lossy()))
 }
@@ -147,6 +153,20 @@ pub async fn backup_to_local(
 
     let action_msg = format!("Local Backup created: {}", dest_filename);
     let _ = crate::audit::log_audit(&db, &action_msg, "Operator").await;
+
+    // Record last backup date in system_config
+    let today_date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let _ = sqlx::query("INSERT INTO system_config (key, value) VALUES ('last_backup_date', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .bind(&today_date_str)
+        .execute(&*db)
+        .await;
+
+    // If custom target directory was used, also duplicate to default app_dir/backups
+    let default_backup_dir = app_dir.join("backups");
+    if target_dir != default_backup_dir {
+        let _ = fs::create_dir_all(&default_backup_dir);
+        let _ = fs::copy(&db_path, default_backup_dir.join(&dest_filename));
+    }
 
     Ok(format!("Backup successfully created: {}", dest_path.to_string_lossy()))
 }
@@ -265,6 +285,13 @@ pub async fn record_cloud_sync_time(db: State<'_, sqlx::SqlitePool>) -> Result<(
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     sqlx::query("INSERT INTO system_config (key, value) VALUES ('gdrive_last_sync', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         .bind(now).execute(&*db).await.map_err(|e| e.to_string())?;
+    
+    let today_date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let _ = sqlx::query("INSERT INTO system_config (key, value) VALUES ('last_backup_date', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .bind(&today_date_str)
+        .execute(&*db)
+        .await;
+
     Ok(())
 }
 

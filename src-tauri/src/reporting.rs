@@ -1152,21 +1152,21 @@ pub async fn get_financial_summary(
 ) -> Result<FinancialSummary, String> {
     let mut conn = db.acquire().await.map_err(|e| e.to_string())?;
 
-    // Default dates if none provided
+    let has_date_filter = start_date.is_some() && end_date.is_some();
     let sd = start_date.unwrap_or_else(|| "1970-01-01".to_string());
     let ed = end_date.unwrap_or_else(|| "2999-12-31".to_string());
 
-    // For Revenue and Expenses, we use the date range.
+    // For Revenue (Income) and Expenses, we use the date range.
     // For Assets, Liabilities, and Equity, we sum everything up to the end_date.
     let rows = sqlx::query(
         r#"
         SELECT at.nature, 
-               SUM(CASE WHEN at.nature IN ('REVENUE', 'EXPENSE') THEN 
+               SUM(CASE WHEN at.nature IN ('INCOME', 'REVENUE', 'EXPENSE') THEN 
                        CASE WHEN date(je.entry_date) BETWEEN date(?) AND date(?) THEN je.debit ELSE 0 END
                    ELSE 
                        CASE WHEN date(je.entry_date) <= date(?) THEN je.debit ELSE 0 END
                    END) as total_debit,
-               SUM(CASE WHEN at.nature IN ('REVENUE', 'EXPENSE') THEN 
+               SUM(CASE WHEN at.nature IN ('INCOME', 'REVENUE', 'EXPENSE') THEN 
                        CASE WHEN date(je.entry_date) BETWEEN date(?) AND date(?) THEN je.credit ELSE 0 END
                    ELSE 
                        CASE WHEN date(je.entry_date) <= date(?) THEN je.credit ELSE 0 END
@@ -1204,18 +1204,27 @@ pub async fn get_financial_summary(
         }
     }
 
-    // --- NEW: Calculate All-Time Fixed Liabilities ---
-    let first_date_opt: Option<(Option<String>,)> = sqlx::query_as("SELECT MIN(entry_date) FROM journal_entries")
-        .fetch_optional(&mut *conn).await.map_err(|e| e.to_string())?;
-    
+    // --- Fixed Liabilities: Calculated for filtered date range or all-time ---
     let mut days = 1;
-    if let Some((Some(first_date_str),)) = first_date_opt {
-        // extract YYYY-MM-DD from first_date_str which might contain time
-        let fd_clean = first_date_str.split(' ').next().unwrap_or(&first_date_str);
-        if let Ok(fd) = chrono::NaiveDate::parse_from_str(fd_clean, "%Y-%m-%d") {
-            let td = chrono::Local::now().naive_local().date();
-            days = (td - fd).num_days() + 1;
+    if has_date_filter {
+        if let (Ok(s), Ok(e)) = (
+            chrono::NaiveDate::parse_from_str(&sd, "%Y-%m-%d"),
+            chrono::NaiveDate::parse_from_str(&ed, "%Y-%m-%d"),
+        ) {
+            days = (e - s).num_days() + 1;
             if days < 1 { days = 1; }
+        }
+    } else {
+        let first_date_opt: Option<(Option<String>,)> = sqlx::query_as("SELECT MIN(entry_date) FROM journal_entries")
+            .fetch_optional(&mut *conn).await.map_err(|e| e.to_string())?;
+        
+        if let Some((Some(first_date_str),)) = first_date_opt {
+            let fd_clean = first_date_str.split(' ').next().unwrap_or(&first_date_str);
+            if let Ok(fd) = chrono::NaiveDate::parse_from_str(fd_clean, "%Y-%m-%d") {
+                let td = chrono::Local::now().naive_local().date();
+                days = (td - fd).num_days() + 1;
+                if days < 1 { days = 1; }
+            }
         }
     }
 
