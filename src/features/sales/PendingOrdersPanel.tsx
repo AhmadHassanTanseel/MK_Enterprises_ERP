@@ -30,7 +30,9 @@ interface Dispatch {
 }
 
 export const PendingOrdersPanel: React.FC = () => {
-  const { products, salesmen, fetchData } = useAppContext();
+  const { products, salesmen, accounts, fetchData } = useAppContext();
+  const bankAccountsList = accounts.filter(a => !!a.bank_name && a.bank_name.trim() !== '');
+  const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   
   // Modals state
@@ -53,6 +55,7 @@ export const PendingOrdersPanel: React.FC = () => {
   useGridNavigation(createContainerRef, () => setNewLines([...newLines, {product_id: null, qty: 1}]), () => handleCreateDispatch());
 
   // Settle Form State
+  const [settleAccountId, setSettleAccountId] = useState<number | null>(null);
   const [settleLines, setSettleLines] = useState<{dispatch_item_id: number, product_id: number, qty_sold: number, qty_returned: number, unit_price: number, discount_percent: number}[]>([]);
   const [amountReceivedCash, setAmountReceivedCash] = useState<number | ''>('');
   const [amountReceivedBank, setAmountReceivedBank] = useState<number | ''>('');
@@ -73,7 +76,9 @@ export const PendingOrdersPanel: React.FC = () => {
   };
 
   const handleCreateDispatch = async () => {
-    
+    if (!newSalesmanId) {
+      return toast.error('براہ کرم سیلز مین منتخب کریں (Please select a salesman)');
+    }
     const validLines = newLines.filter(l => l.product_id && l.qty > 0);
     if (validLines.length === 0) return toast.error('Add at least one product');
     
@@ -88,8 +93,8 @@ export const PendingOrdersPanel: React.FC = () => {
     setIsSubmitting(true);
     try {
       await invoke('create_dispatch', {
-        salesmanId: dispatchType === 'salesman' ? newSalesmanId : 0,
-        customerId: dispatchType === 'customer' ? newCustomerId : 0,
+        salesmanId: newSalesmanId,
+        customerId: 0,
         lines: validLines
       });
       toast.success('Dispatch created successfully');
@@ -107,6 +112,7 @@ export const PendingOrdersPanel: React.FC = () => {
 
   const openSettleModal = (dispatch: Dispatch) => {
     setCurrentDispatch(dispatch);
+    setSettleAccountId(null);
     setSettleLines(dispatch.items.map(item => ({
       dispatch_item_id: item.id,
       product_id: item.product_id,
@@ -115,6 +121,9 @@ export const PendingOrdersPanel: React.FC = () => {
       unit_price: item.sale_price,
       discount_percent: 0
     })));
+    setAmountReceivedCash('');
+    setAmountReceivedBank('');
+    setSelectedBankId(bankAccountsList[0]?.id || null);
     setIsSettleModalOpen(true);
   };
 
@@ -129,16 +138,29 @@ export const PendingOrdersPanel: React.FC = () => {
       }
     }
 
+    if (Number(amountReceivedBank) > 0) {
+      if (bankAccountsList.length === 0) {
+        return toast.error('کوئی بینک اکاؤنٹ شامل نہیں ہے۔ بینک میں رقم وصول کرنے کے لیے پہلے Other Accounts -> Bank Accounts میں جا کر اپنا بینک شامل کریں!');
+      }
+      if (!selectedBankId) {
+        return toast.error('براہ کرم وصول کنندہ بینک منتخب کریں (Please select receiving bank account)');
+      }
+    }
+
     setIsSubmitting(true);
     try {
       await invoke('settle_dispatch', {
           dispatchId: currentDispatch.id,
           lines: settleLines,
-          amountReceivedCash: amountReceivedCash === '' ? null : Number(amountReceivedCash), amountReceivedBank: amountReceivedBank === '' ? null : Number(amountReceivedBank)
+          amountReceivedCash: amountReceivedCash === '' ? null : Number(amountReceivedCash),
+          amountReceivedBank: amountReceivedBank === '' ? null : Number(amountReceivedBank),
+          bankAccountId: selectedBankId,
+          targetAccountId: null
         });
-      toast.success('Dispatch settled and Sale Invoice generated');
+      toast.success('Dispatch settled into Salesman Khata successfully');
       setIsSettleModalOpen(false);
       setCurrentDispatch(null);
+      setSettleAccountId(null);
       await loadDispatches();
       await fetchData(); // refresh inventory & ledger
     } catch (err) {
@@ -224,33 +246,17 @@ export const PendingOrdersPanel: React.FC = () => {
             
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Dispatch To</label>
-                  <div className="flex gap-4 mb-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" checked={dispatchType === 'salesman'} onChange={() => setDispatchType('salesman')} className="text-blue-600" />
-                      <span className="text-sm font-medium text-slate-700">Salesman (Van Loading)</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" checked={dispatchType === 'customer'} onChange={() => setDispatchType('customer')} className="text-blue-600" />
-                      <span className="text-sm font-medium text-slate-700">Buyer (Pending Pickup)</span>
-                    </label>
-                  </div>
-                  
-                  {dispatchType === 'salesman' ? (
-                    <EntitySelect autoFocus 
-                      type="salesman" 
-                      value={newSalesmanId || 0} 
-                      onChange={setNewSalesmanId} 
-                    />
-                  ) : (
-                    <EntitySelect 
-                      type="account"
-                      accountRole="customer"
-                      filter={(a: any) => a.is_customer}
-                      value={newCustomerId || 0} 
-                      onChange={setNewCustomerId} 
-                    />
-                  )}
+                  <label className="block text-sm font-bold text-slate-700 mb-1.5">
+                    Dispatch To Salesman (سیلز مین / وان لوڈنگ):
+                  </label>
+                  <EntitySelect autoFocus 
+                    type="salesman" 
+                    value={newSalesmanId || 0} 
+                    onChange={setNewSalesmanId} 
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Select the salesman responsible for this delivery van inventory.
+                  </p>
                 </div>
               
               <div>
@@ -318,9 +324,18 @@ export const PendingOrdersPanel: React.FC = () => {
             </div>
             
             <div className="p-6 overflow-y-auto flex-1">
-              <div className="mb-4 text-sm text-slate-600 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                <strong>Salesman:</strong> {currentDispatch.salesman_name} <br/>
-                Record what was sold vs returned. Sold items will generate a cash invoice. Returned items will restock.
+              <div className="mb-4 text-sm text-slate-600 bg-blue-50 p-3.5 rounded-xl border border-blue-100 flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-slate-800 text-base">
+                    Salesman Khata (سیلز مین کھاتہ): <span className="text-blue-700 font-extrabold">{currentDispatch.salesman_name || 'Driver / Salesman'}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    فروخت شدہ مال اور بقایا رقم براہ راست سیلز مین کے کھاتے میں درج ہوگی۔ (Sold stock and remaining balance will be recorded in this salesman's khata).
+                  </p>
+                </div>
+                <div className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-bold rounded-lg border border-blue-200">
+                  DISP-{currentDispatch.id}
+                </div>
               </div>
 
               <table className="w-full min-w-[800px] text-left border-collapse border border-slate-200">
@@ -416,7 +431,7 @@ export const PendingOrdersPanel: React.FC = () => {
                       <td className="p-3">
                         <input 
                           type="number"
-                          placeholder="Auto (Full)"
+                          placeholder="0 (Cash collected)"
                           className="w-full p-2 border-2 border-emerald-400 rounded-lg focus:ring-2 focus:ring-emerald-500 text-right font-bold text-lg"
                           value={amountReceivedCash}
                           onChange={(e) => setAmountReceivedCash(e.target.value === '' ? '' : Number(e.target.value))}
@@ -435,6 +450,47 @@ export const PendingOrdersPanel: React.FC = () => {
                         />
                       </td>
                     </tr>
+                    <tr className="bg-blue-50/50 border-t border-blue-200">
+                      <td colSpan={6} className="p-3 text-right font-bold text-blue-900 text-sm">
+                        Receiving Bank (وصول کنندہ بینک کھاتہ):
+                      </td>
+                      <td className="p-3">
+                        <select 
+                          className="w-full p-2 border-2 border-blue-400 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500 bg-white"
+                          value={selectedBankId || ''}
+                          onChange={(e) => setSelectedBankId(Number(e.target.value) || null)}
+                        >
+                          {bankAccountsList.length === 0 ? (
+                            <option value="">-- کوئی بینک موجود نہیں (پہلے بینک شامل کریں) --</option>
+                          ) : (
+                            <>
+                              <option value="">-- منتخب کریں (Choose Bank Account) --</option>
+                              {bankAccountsList.map(b => (
+                                <option key={b.id} value={b.id}>
+                                  {b.bank_name || b.name} - {b.account_title || b.name} ({b.account_number || 'A/C'})
+                                </option>
+                              ))}
+                            </>
+                          )}
+                        </select>
+                      </td>
+                    </tr>
+                    {(() => {
+                      const totalBill = settleLines.reduce((sum, l) => sum + (l.qty_sold * l.unit_price * (1 - l.discount_percent/100)), 0);
+                      const cashRecv = Number(amountReceivedCash) || 0;
+                      const bankRecv = Number(amountReceivedBank) || 0;
+                      const driverDebt = totalBill - (cashRecv + bankRecv);
+                      return (
+                        <tr className="bg-amber-50/80 border-t border-amber-300">
+                          <td colSpan={6} className="p-3 text-right font-bold text-amber-900 text-sm">
+                            Balance to Salesman / Driver Khata (ڈرائیور / سیلز مین کھاتہ میں بقایا):
+                          </td>
+                          <td className="p-3 text-right font-black text-amber-900 text-lg">
+                            Rs. {driverDebt.toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </tfoot>
                 </table>
               </div>

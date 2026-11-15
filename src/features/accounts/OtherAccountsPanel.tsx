@@ -45,11 +45,13 @@ export const OtherAccountsPanel: React.FC = () => {
         { id: 'banking', label: 'Bank Accounts & Cash Flow', icon: Building2 },
         { id: 'workers', label: 'Mulazmeen / Attendance', icon: Users },
         { id: 'investors', label: 'Investors / سرمایہ کاری', icon: Landmark },
+        { id: 'owner_drawings', label: 'Owner Drawings / مالک کا ذاتی خرچ', icon: Wallet },
+        { id: 'loans_amanat', label: 'Loan & Amanat (قرضہ و امانت)', icon: PiggyBank },
         { id: 'assets', label: 'Assets', icon: Activity },
         { id: 'expenses', label: 'Expenses', icon: DollarSign },
         { id: 'adjustments', label: 'Adjustments', icon: FileText },
         { id: 'payables_receivables', label: 'Payables & Receivables', icon: Users },
-        { id: 'fixed_liabilities', label: 'Fixed Liabilities', icon: TrendingDown },
+        { id: 'fixed_liabilities', label: 'Recurring Expenses / Overheads (ماہانہ مقررہ اخراجات)', icon: TrendingDown },
       ]
     }
   ];
@@ -622,9 +624,24 @@ export const OtherAccountsPanel: React.FC = () => {
   const [editBankOB, setEditBankOB] = useState<number | string>('');
   const [editBankOBType, setEditBankOBType] = useState<'DEBIT' | 'CREDIT'>('DEBIT');
 
+  // Contra Transfer Modal State (Interbank & Cash Transfers)
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferFromId, setTransferFromId] = useState<number>(1);
+  const [transferToId, setTransferToId] = useState<number>(0);
+  const [transferAmount, setTransferAmount] = useState<number | ''>('');
+  const [transferDate, setTransferDate] = useState(new Date().toISOString().split('T')[0]);
+  const [transferNotes, setTransferNotes] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  // Cash in Drawer Opening Balance Modal State
+  const [isCashDrawerOBModalOpen, setIsCashDrawerOBModalOpen] = useState(false);
+  const [cashDrawerOBAmount, setCashDrawerOBAmount] = useState<number | ''>('');
+  const [isSavingCashDrawerOB, setIsSavingCashDrawerOB] = useState(false);
+
   // Fixed Liability Payment State
   const [payLiabilityModalOpen, setPayLiabilityModalOpen] = useState(false);
   const [payingLiability, setPayingLiability] = useState<any>(null);
+  const [confirmExtraPay, setConfirmExtraPay] = useState(false);
   const [payLiabAmount, setPayLiabAmount] = useState<number | ''>('');
   const [payLiabMethod, setPayLiabMethod] = useState<'CASH' | 'BANK'>('CASH');
   const [payLiabBankId, setPayLiabBankId] = useState<number | null>(null);
@@ -632,10 +649,291 @@ export const OtherAccountsPanel: React.FC = () => {
   const [payLiabNotes, setPayLiabNotes] = useState('');
   const [isPayingLiab, setIsPayingLiab] = useState(false);
 
-  const bankAccountsList = accounts.filter(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name);
+  const bankAccountsList = accounts.filter(a => !!a.bank_name && a.bank_name.trim() !== '');
   const cashInDrawerAcc = accounts.find(a => a.id === 1);
   const totalInBanks = bankAccountsList.reduce((sum, b) => sum + (b.current_balance ?? 0), 0);
   const totalInCashDrawer = cashInDrawerAcc ? (cashInDrawerAcc.current_balance ?? 0) : 0;
+
+  // Owner Drawings State & Handlers
+  const [isAddDrawingOpen, setIsAddDrawingOpen] = useState(false);
+  const [drawingOwnerAccId, setDrawingOwnerAccId] = useState<number>(24);
+  const [drawingAmount, setDrawingAmount] = useState<number | ''>('');
+  const [drawingMethod, setDrawingMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [drawingBankId, setDrawingBankId] = useState<number | null>(null);
+  const [drawingDate, setDrawingDate] = useState(new Date().toISOString().split('T')[0]);
+  const [drawingNotes, setDrawingNotes] = useState('');
+  const [isSubmittingDrawing, setIsSubmittingDrawing] = useState(false);
+
+  useEffect(() => {
+    if (accounts.length > 0) {
+      const owner = accounts.find(a => a.account_type_id === 16 && a.id !== 18 && a.name.toLowerCase().includes('arslan')) || accounts.find(a => a.account_type_id === 16 && a.id !== 18);
+      if (owner && (!drawingOwnerAccId || drawingOwnerAccId === 24)) {
+        setDrawingOwnerAccId(owner.id);
+      }
+    }
+  }, [accounts]);
+
+  const handleRecordDrawing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!drawingAmount || Number(drawingAmount) <= 0) {
+      toast.error('براہ کرم درست رقم درج کریں');
+      return;
+    }
+    if (drawingMethod === 'BANK' && !drawingBankId) {
+      toast.error('براہ کرم ادائیگی کے لیے بینک اکاؤنٹ منتخب کریں');
+      return;
+    }
+    setIsSubmittingDrawing(true);
+    try {
+      const targetAccId = drawingOwnerAccId || 24;
+      await invoke('process_cash_transaction', {
+        transType: 'PAYMENT',
+        accountId: targetAccId,
+        amount: Number(drawingAmount),
+        transDate: drawingDate,
+        description: drawingNotes.trim() ? `Owner Drawing: ${drawingNotes.trim()}` : 'مالک کا ذاتی خرچ (Owner Drawing)',
+        paymentMethod: drawingMethod,
+        refNo: `DRW-${Date.now().toString().slice(-6)}`,
+        attachmentPath: null,
+        bankAccountId: drawingMethod === 'BANK' ? drawingBankId : null,
+      });
+      toast.success('مالک کا ذاتی خرچ (Owner Drawing) کامیابی سے درج ہو گیا');
+      setIsAddDrawingOpen(false);
+      setDrawingAmount('');
+      setDrawingNotes('');
+      await fetchData();
+    } catch (err: any) {
+      toast.error('ذاتی خرچ درج کرنے میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsSubmittingDrawing(false);
+    }
+  };
+
+  // Loan & Amanat State & Handlers
+  const [loanAmanatTab, setLoanAmanatTab] = useState<'LOANS' | 'AMANAT'>('LOANS');
+  const [loanSearch, setLoanSearch] = useState('');
+
+  // Give Loan Modal
+  const [isGiveLoanOpen, setIsGiveLoanOpen] = useState(false);
+  const [loanName, setLoanName] = useState('');
+  const [loanContact, setLoanContact] = useState('');
+  const [loanAddress, setLoanAddress] = useState('');
+  const [loanAmount, setLoanAmount] = useState<number | ''>('');
+  const [loanMethod, setLoanMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [loanBankId, setLoanBankId] = useState<number | null>(null);
+  const [loanDate, setLoanDate] = useState(new Date().toISOString().split('T')[0]);
+  const [loanNotes, setLoanNotes] = useState('');
+  const [isSubmittingLoan, setIsSubmittingLoan] = useState(false);
+
+  // Repay Loan Modal
+  const [isRepayLoanOpen, setIsRepayLoanOpen] = useState(false);
+  const [selectedLoanAcc, setSelectedLoanAcc] = useState<any>(null);
+  const [repayAmount, setRepayAmount] = useState<number | ''>('');
+  const [repayMethod, setRepayMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [repayBankId, setRepayBankId] = useState<number | null>(null);
+  const [repayDate, setRepayDate] = useState(new Date().toISOString().split('T')[0]);
+  const [repayNotes, setRepayNotes] = useState('');
+  const [isSubmittingRepay, setIsSubmittingRepay] = useState(false);
+
+  // Accept Amanat Modal
+  const [isAcceptAmanatOpen, setIsAcceptAmanatOpen] = useState(false);
+  const [amanatName, setAmanatName] = useState('');
+  const [amanatContact, setAmanatContact] = useState('');
+  const [amanatAddress, setAmanatAddress] = useState('');
+  const [amanatAmount, setAmanatAmount] = useState<number | ''>('');
+  const [amanatMethod, setAmanatMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [amanatBankId, setAmanatBankId] = useState<number | null>(null);
+  const [amanatDate, setAmanatDate] = useState(new Date().toISOString().split('T')[0]);
+  const [amanatNotes, setAmanatNotes] = useState('');
+  const [isSubmittingAmanat, setIsSubmittingAmanat] = useState(false);
+
+  // Return Amanat Modal
+  const [isReturnAmanatOpen, setIsReturnAmanatOpen] = useState(false);
+  const [selectedAmanatAcc, setSelectedAmanatAcc] = useState<any>(null);
+  const [returnAmount, setReturnAmount] = useState<number | ''>('');
+  const [returnMethod, setReturnMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [returnBankId, setReturnBankId] = useState<number | null>(null);
+  const [returnDate, setReturnDate] = useState(new Date().toISOString().split('T')[0]);
+  const [returnNotes, setReturnNotes] = useState('');
+  const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
+
+  const handleGiveLoan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loanName.trim() || !loanAmount || Number(loanAmount) <= 0) {
+      toast.error('براہ کرم قرض دار کا نام اور درست رقم درج کریں');
+      return;
+    }
+    if (loanMethod === 'BANK' && !loanBankId) {
+      toast.error('براہ کرم بینک منتخب کریں');
+      return;
+    }
+    setIsSubmittingLoan(true);
+    try {
+      let existing = accounts.find(a => a.account_type_id === 17 && a.name.toLowerCase() === loanName.trim().toLowerCase());
+      let accId = existing?.id;
+      if (!accId) {
+        accId = await createAccount(
+          17,
+          loanName.trim(),
+          loanContact.trim() || undefined,
+          loanAddress.trim() || undefined,
+          undefined,
+          0,
+          'DEBIT',
+          false,
+          false
+        );
+      }
+      await invoke('process_cash_transaction', {
+        transType: 'PAYMENT',
+        accountId: accId,
+        amount: Number(loanAmount),
+        transDate: loanDate,
+        description: loanNotes.trim() ? `Loan Given: ${loanNotes.trim()}` : `قرضہ دیا برائے ${loanName.trim()}`,
+        paymentMethod: loanMethod,
+        refNo: `LOAN-${Date.now().toString().slice(-6)}`,
+        attachmentPath: null,
+        bankAccountId: loanMethod === 'BANK' ? loanBankId : null,
+      });
+      toast.success(`قرضہ کامیابی سے ادا اور کھاتے میں درج کر دیا گیا (${loanName})`);
+      setIsGiveLoanOpen(false);
+      setLoanName('');
+      setLoanContact('');
+      setLoanAddress('');
+      setLoanAmount('');
+      setLoanNotes('');
+      await fetchData();
+    } catch (err: any) {
+      toast.error('قرضہ کے اندراج میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsSubmittingLoan(false);
+    }
+  };
+
+  const handleRepayLoan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLoanAcc || !repayAmount || Number(repayAmount) <= 0) {
+      toast.error('براہ کرم درست واپسی رقم درج کریں');
+      return;
+    }
+    if (repayMethod === 'BANK' && !repayBankId) {
+      toast.error('براہ کرم بینک منتخب کریں');
+      return;
+    }
+    setIsSubmittingRepay(true);
+    try {
+      await invoke('process_cash_transaction', {
+        transType: 'RECEIVE',
+        accountId: selectedLoanAcc.id,
+        amount: Number(repayAmount),
+        transDate: repayDate,
+        description: repayNotes.trim() ? `Loan Repayment: ${repayNotes.trim()}` : `قرضہ کی واپسی وصولی از ${selectedLoanAcc.name}`,
+        paymentMethod: repayMethod,
+        refNo: `LREP-${Date.now().toString().slice(-6)}`,
+        attachmentPath: null,
+        bankAccountId: repayMethod === 'BANK' ? repayBankId : null,
+      });
+      toast.success(`قرضہ کی واپسی رقم کامیابی سے وصول کر لی گئی (${selectedLoanAcc.name})`);
+      setIsRepayLoanOpen(false);
+      setSelectedLoanAcc(null);
+      setRepayAmount('');
+      setRepayNotes('');
+      await fetchData();
+    } catch (err: any) {
+      toast.error('قرضہ واپسی کے اندراج میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsSubmittingRepay(false);
+    }
+  };
+
+  const handleAcceptAmanat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!amanatName.trim() || !amanatAmount || Number(amanatAmount) <= 0) {
+      toast.error('براہ کرم امانت دار کا نام اور درست رقم درج کریں');
+      return;
+    }
+    if (amanatMethod === 'BANK' && !amanatBankId) {
+      toast.error('براہ کرم بینک منتخب کریں');
+      return;
+    }
+    setIsSubmittingAmanat(true);
+    try {
+      let existing = accounts.find(a => a.account_type_id === 18 && a.name.toLowerCase() === amanatName.trim().toLowerCase());
+      let accId = existing?.id;
+      if (!accId) {
+        accId = await createAccount(
+          18,
+          amanatName.trim(),
+          amanatContact.trim() || undefined,
+          amanatAddress.trim() || undefined,
+          undefined,
+          0,
+          'CREDIT',
+          false,
+          false
+        );
+      }
+      await invoke('process_cash_transaction', {
+        transType: 'RECEIVE',
+        accountId: accId,
+        amount: Number(amanatAmount),
+        transDate: amanatDate,
+        description: amanatNotes.trim() ? `Amanat Received: ${amanatNotes.trim()}` : `امانت وصول کی از ${amanatName.trim()}`,
+        paymentMethod: amanatMethod,
+        refNo: `AMN-${Date.now().toString().slice(-6)}`,
+        attachmentPath: null,
+        bankAccountId: amanatMethod === 'BANK' ? amanatBankId : null,
+      });
+      toast.success(`امانت کامیابی سے وصول کر لی گئی (${amanatName})`);
+      setIsAcceptAmanatOpen(false);
+      setAmanatName('');
+      setAmanatContact('');
+      setAmanatAddress('');
+      setAmanatAmount('');
+      setAmanatNotes('');
+      await fetchData();
+    } catch (err: any) {
+      toast.error('امانت کے اندراج میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsSubmittingAmanat(false);
+    }
+  };
+
+  const handleReturnAmanat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAmanatAcc || !returnAmount || Number(returnAmount) <= 0) {
+      toast.error('براہ کرم درست واپسی رقم درج کریں');
+      return;
+    }
+    if (returnMethod === 'BANK' && !returnBankId) {
+      toast.error('براہ کرم بینک منتخب کریں');
+      return;
+    }
+    setIsSubmittingReturn(true);
+    try {
+      await invoke('process_cash_transaction', {
+        transType: 'PAYMENT',
+        accountId: selectedAmanatAcc.id,
+        amount: Number(returnAmount),
+        transDate: returnDate,
+        description: returnNotes.trim() ? `Amanat Returned: ${returnNotes.trim()}` : `امانت واپس کی گئی بہ ${selectedAmanatAcc.name}`,
+        paymentMethod: returnMethod,
+        refNo: `AMNRET-${Date.now().toString().slice(-6)}`,
+        attachmentPath: null,
+        bankAccountId: returnMethod === 'BANK' ? returnBankId : null,
+      });
+      toast.success(`امانت کامیابی سے واپس ادا کر دی گئی (${selectedAmanatAcc.name})`);
+      setIsReturnAmanatOpen(false);
+      setSelectedAmanatAcc(null);
+      setReturnAmount('');
+      setReturnNotes('');
+      await fetchData();
+    } catch (err: any) {
+      toast.error('امانت واپسی کے اندراج میں خرابی: ' + (err?.message || err));
+    } finally {
+      setIsSubmittingReturn(false);
+    }
+  };
 
   const handleCreateBankAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -666,6 +964,64 @@ export const OtherAccountsPanel: React.FC = () => {
       toast.error(err.toString());
     } finally {
       setIsBankSubmitting(false);
+    }
+  };
+
+  const handleProcessTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferFromId || !transferToId) {
+      toast.error('بھیجنے اور وصول کرنے والے دونوں کھاتے منتخب کریں');
+      return;
+    }
+    if (transferFromId === transferToId) {
+      toast.error('بھیجنے اور وصول کرنے والا کھاتہ ایک جیسا نہیں ہو سکتا');
+      return;
+    }
+    if (!transferAmount || Number(transferAmount) <= 0) {
+      toast.error('درست رقم درج کریں');
+      return;
+    }
+    setIsTransferring(true);
+    try {
+      const msg: string = await invoke('process_contra_transfer', {
+        fromAccountId: transferFromId,
+        toAccountId: transferToId,
+        amount: Number(transferAmount),
+        transDate: transferDate,
+        notes: transferNotes || null
+      });
+      toast.success(msg || 'رقم کامیابی سے ٹرانسفر ہو گئی!');
+      setIsTransferModalOpen(false);
+      setTransferAmount('');
+      setTransferNotes('');
+      await fetchData();
+    } catch (err: any) {
+      toast.error('ٹرانسفر ناکام: ' + err.toString());
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  const handleSaveCashDrawerOB = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cashDrawerOBAmount === '' || Number(cashDrawerOBAmount) < 0) {
+      toast.error('درست اوپننگ رقم درج کریں');
+      return;
+    }
+    setIsSavingCashDrawerOB(true);
+    try {
+      await invoke('set_account_opening_balance', {
+        accountId: 1, // Cash in Drawer
+        openingBalance: Number(cashDrawerOBAmount),
+        openingBalanceType: 'DEBIT'
+      });
+      toast.success('دراز کا ابتدائی بیلنس (Opening Cash in Drawer) محفوظ ہو گیا!');
+      setIsCashDrawerOBModalOpen(false);
+      await fetchData();
+    } catch (err: any) {
+      toast.error('محفوظ کرنے میں غلطی: ' + err.toString());
+    } finally {
+      setIsSavingCashDrawerOB(false);
     }
   };
 
@@ -720,7 +1076,9 @@ export const OtherAccountsPanel: React.FC = () => {
 
   const handleOpenPayLiability = (fl: any) => {
     setPayingLiability(fl);
-    setPayLiabAmount(fl.amount || '');
+    setConfirmExtraPay(false);
+    const defaultAmt = (fl.remaining_due !== undefined && fl.remaining_due > 0) ? fl.remaining_due : fl.amount;
+    setPayLiabAmount(defaultAmt || '');
     setPayLiabMethod('CASH');
     setPayLiabBankId(null);
     setPayLiabDate(new Date().toISOString().split('T')[0]);
@@ -736,6 +1094,10 @@ export const OtherAccountsPanel: React.FC = () => {
     }
     if (payLiabMethod === 'BANK' && !payLiabBankId) {
       toast.error('بینک اکاؤنٹ منتخب کریں (Select a bank account)');
+      return;
+    }
+    if (payingLiability.is_paid && !confirmExtraPay) {
+      toast.error('یہ خرچہ اس مہینے پہلے ہی مکمل ادا ہو چکا ہے۔ اضافی ادائیگی کے لیے تصدیقی باکس پر نشان لگائیں!');
       return;
     }
     setIsPayingLiab(true);
@@ -763,21 +1125,61 @@ export const OtherAccountsPanel: React.FC = () => {
     }
   };
 
-  const toReceiveAccounts = accounts.filter(a => (a.is_customer || a.is_supplier) && a.current_balance > 0);
-  const toPayAccounts = accounts.filter(a => (a.is_customer || a.is_supplier) && a.current_balance < 0);
-  const settledAccounts = accounts.filter(a => (a.is_customer || a.is_supplier) && a.current_balance === 0);
+  // Payables & Receivables Category Filter
+  type PRCategory = 'ALL' | 'CUSTOMERS' | 'SUPPLIERS' | 'SALESMEN' | 'WORKERS' | 'INVESTORS' | 'LOANS_AMANAT';
+  const [prCategoryFilter, setPrCategoryFilter] = useState<PRCategory>('ALL');
+
+  const isExcludedPRAccount = (a: any) => {
+    return [1, 3, 4, 5, 6, 7, 11, 12, 18].includes(a.id) || a.account_type_id === 1 || [5, 6, 7, 8, 9, 11].includes(a.account_type_id);
+  };
+
+  const getAccountCategoryLabel = (a: any) => {
+    if (a.is_customer || a.account_type_id === 2) return 'Customer (گاہک)';
+    if (a.is_supplier || a.account_type_id === 4) return 'Supplier (سپلائر)';
+    if (a.account_type_id === 14) return 'Salesman / Driver (سیلز مین / ڈرائیور)';
+    if (a.account_type_id === 15) return 'Worker (ملازم)';
+    if (a.account_type_id === 16) return 'Investor (سرمایہ کار)';
+    if (a.account_type_id === 17) return 'Loan Given (قرضہ دیا)';
+    if (a.account_type_id === 18) return 'Amanat Held (امانت رکھی)';
+    return 'Party';
+  };
+
+  const matchesPRCategory = (a: any) => {
+    if (isExcludedPRAccount(a)) return false;
+    switch (prCategoryFilter) {
+      case 'CUSTOMERS':
+        return a.is_customer || a.account_type_id === 2;
+      case 'SUPPLIERS':
+        return a.is_supplier || a.account_type_id === 4;
+      case 'SALESMEN':
+        return a.account_type_id === 14;
+      case 'WORKERS':
+        return a.account_type_id === 15;
+      case 'INVESTORS':
+        return a.account_type_id === 16;
+      case 'LOANS_AMANAT':
+        return a.account_type_id === 17 || a.account_type_id === 18 || a.name.toLowerCase().includes('loan') || a.name.toLowerCase().includes('amanat') || a.name.includes('قرض') || a.name.includes('امانت');
+      case 'ALL':
+      default:
+        return true;
+    }
+  };
+
+  const toReceiveAccounts = accounts.filter(a => matchesPRCategory(a) && a.current_balance > 0.001);
+  const toPayAccounts = accounts.filter(a => matchesPRCategory(a) && a.current_balance < -0.001);
+  const settledAccounts = accounts.filter(a => matchesPRCategory(a) && Math.abs(a.current_balance) <= 0.001);
 
   // History calculations
   const prHistory = ledgerEntries
     .filter(le => 
-      (le.ref_type === 'CASH_RECEIPT' || le.ref_type === 'CASH_PAYMENT') && 
-      accounts.some(a => a.id === le.account_id && (a.is_customer || a.is_supplier))
+      (le.ref_type === 'CASH_RECEIPT' || le.ref_type === 'CASH_PAYMENT' || le.ref_type === 'BANK_RECEIPT' || le.ref_type === 'BANK_PAYMENT') && 
+      accounts.some(a => a.id === le.account_id && !isExcludedPRAccount(a))
     )
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   
   const expenseTypes = accountTypes.filter(t => t.nature === 'EXPENSE').map(t => t.id);
-  const expenseAccounts = accounts.filter(a => expenseTypes.includes(a.account_type_id));
+  const expenseAccounts = accounts.filter(a => [7, 11].includes(a.account_type_id));
 
   const handleAddExpense = async () => {
     if (!expCategory || !expAmount) {
@@ -789,8 +1191,8 @@ export const OtherAccountsPanel: React.FC = () => {
       let accId = accounts.find(a => a.name.toLowerCase() === expCategory.toLowerCase() && expenseTypes.includes(a.account_type_id))?.id;
       
       if (!accId) {
-        // Create it
-        const typeId = expenseTypes[0] || 7; // fallback to 7 (Operating Expense)
+        // Create it strictly as Operating Expense (Account Type 7)
+        const typeId = 7;
         accId = await invoke('create_account', {
           accountTypeId: typeId,
           name: expCategory,
@@ -831,45 +1233,461 @@ export const OtherAccountsPanel: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'loan':
+      case 'owner_drawings': {
+        const ownerAccounts = accounts.filter(a => a.account_type_id === 16 && a.id !== 18);
+        const defaultOwner = accounts.find(a => a.account_type_id === 16 && a.id !== 18 && a.name.toLowerCase().includes('arslan')) || ownerAccounts[0] || { id: 24 };
+        
+        const drawingEntries = ledgerEntries.filter(e => 
+          e.account_id === 24 || 
+          (e.ref_no && e.ref_no.startsWith('DRW-')) ||
+          ((e.narration || e.description || '').toLowerCase().includes('owner drawing') || 
+           (e.narration || e.description || '').includes('ذاتی خرچ') || 
+           (e.narration || e.description || '').toLowerCase().includes('drawing'))
+        ).sort((a, b) => new Date(b.entry_date || b.created_at || '').getTime() - new Date(a.entry_date || a.created_at || '').getTime());
+
+        const totalDrawingsAmount = drawingEntries.reduce((sum, e) => sum + (e.dr_amount ?? e.debit ?? 0), 0);
+        const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+        const thisMonthDrawingsAmount = drawingEntries.filter(e => (e.entry_date || '').startsWith(currentMonthPrefix)).reduce((sum, e) => sum + (e.dr_amount ?? e.debit ?? 0), 0);
+        const totalOwnerCapital = ownerAccounts.reduce((sum, a) => sum + (a.current_balance ?? 0), 0);
+
         return (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h2 className="text-xl font-bold text-slate-800 mb-6">Manage Loans</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Loan Type</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="loanDir" className="w-4 h-4 text-blue-600" defaultChecked />
-                    <span>Give (Lend)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="loanDir" className="w-4 h-4 text-blue-600" />
-                    <span>Take (Borrow)</span>
-                  </label>
+                <div className="flex items-center gap-2 text-indigo-700 font-bold text-lg mb-1">
+                  <Wallet className="h-6 w-6 text-indigo-600" />
+                  <span>مالک کا ذاتی خرچ / ڈرائنگز (Owner Drawings)</span>
+                </div>
+                <p className="text-sm text-slate-500">
+                  مالک یا شراکت داروں کے ذاتی و گھریلو استعمال کے لیے نکالی گئی رقم کا الگ باضابطہ ریکارڈ
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setDrawingOwnerAccId(defaultOwner.id);
+                  setDrawingAmount('');
+                  setDrawingMethod('CASH');
+                  setDrawingBankId(null);
+                  setDrawingDate(new Date().toISOString().split('T')[0]);
+                  setDrawingNotes('');
+                  setIsAddDrawingOpen(true);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+              >
+                <Plus className="h-4 w-4" /> نیا ذاتی خرچ درج کریں (Record Drawing)
+              </button>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">کل ذاتی اخراجات (Total Drawings)</div>
+                  <div className="text-2xl font-black text-indigo-700">Rs. {totalDrawingsAmount.toLocaleString()}</div>
+                  <div className="text-xs text-slate-400 mt-1">{drawingEntries.length} کل ٹرانزیکشنز</div>
+                </div>
+                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <Wallet className="h-6 w-6" />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Interest Structure</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="loanInt" className="w-4 h-4 text-blue-600" defaultChecked />
-                    <span>Interest-free</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="loanInt" className="w-4 h-4 text-blue-600" />
-                    <span>Interest</span>
-                  </label>
+
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">رواں ماہ کے ذاتی اخراجات (This Month)</div>
+                  <div className="text-2xl font-black text-amber-600">Rs. {thisMonthDrawingsAmount.toLocaleString()}</div>
+                  <div className="text-xs text-slate-400 mt-1">{new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}</div>
+                </div>
+                <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                  <TrendingDown className="h-6 w-6" />
+                </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">مالکان کا موجودہ سرمایہ (Net Capital / Equity)</div>
+                  <div className="text-2xl font-black text-emerald-700">Rs. {totalOwnerCapital.toLocaleString()}</div>
+                  <div className="text-xs text-slate-400 mt-1">کیپیٹل بیلنس برائے مالکان و انویسٹرز</div>
+                </div>
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                  <Landmark className="h-6 w-6" />
                 </div>
               </div>
             </div>
-            <div className="space-y-4">
-              <input type="text" placeholder="Party Name" className="w-full border border-slate-300 rounded p-2" />
-              <input type="number" placeholder="Amount" className="w-full border border-slate-300 rounded p-2" />
-              <button onClick={handleNotConnected} className="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700">Save Loan</button>
+
+            {/* Concise Status Note */}
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-xs text-slate-600 flex items-center justify-between">
+              <span>ℹ️ <strong>Owner Drawings:</strong> مالکانہ سرمائے (Equity) میں کمی کے طور پر درج ہوتا ہے، آپریٹنگ اخراجات پر اثر انداز نہیں ہوتا۔</span>
+              <span className="text-slate-400 font-mono hidden sm:inline">Debit: Drawings | Credit: Cash / Bank</span>
+            </div>
+
+            {/* Ledger Table */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-slate-800 text-sm">ذاتی اخراجات کا مکمل کھاتہ (Owner Drawings History)</h3>
+                <span className="text-xs text-slate-500 font-medium">{drawingEntries.length} اندراجات</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead className="bg-slate-100/70 text-slate-600 text-xs font-bold uppercase">
+                    <tr>
+                      <th className="px-4 py-3">#</th>
+                      <th className="px-4 py-3">تاریخ (Date)</th>
+                      <th className="px-4 py-3">واؤچر نمبر</th>
+                      <th className="px-4 py-3">اکاؤنٹ / مالک</th>
+                      <th className="px-4 py-3">ادائیگی کا ذریعہ</th>
+                      <th className="px-4 py-3">تفصیل / وجہ (Remarks)</th>
+                      <th className="px-4 py-3 text-right">رقم (Amount Rs.)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {drawingEntries.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                          کوئی ذاتی خرچ ریکارڈ نہیں ہوا — اوپر بٹن دبا کر نیا ذاتی خرچ درج کریں۔
+                        </td>
+                      </tr>
+                    ) : (
+                      drawingEntries.map((e, idx) => {
+                        const targetAcc = accounts.find(a => a.id === e.account_id);
+                        const isBank = (e.ref_type || e.voucher_type || '').includes('BANK') || 
+                                       (e.description || e.narration || '').toLowerCase().includes('bank');
+                        const amountVal = Number(e.dr_amount ?? e.debit ?? 0);
+                        return (
+                          <tr key={e.id || idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
+                            <td className="px-4 py-3 font-medium text-slate-700 whitespace-nowrap">{e.entry_date || '-'}</td>
+                            <td className="px-4 py-3 font-mono text-xs text-indigo-600 font-semibold">{e.ref_no || '-'}</td>
+                            <td className="px-4 py-3 font-semibold text-slate-800">{targetAcc?.name || 'Owner Drawings'}</td>
+                            <td className="px-4 py-3 text-xs">
+                              <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                                {isBank ? '🏦 Bank Transfer' : '💵 Cash in Drawer'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">{e.description || e.narration || '-'}</td>
+                            <td className="px-4 py-3 text-right font-black text-rose-600">Rs. {amountVal.toLocaleString()}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
+      }
+
+      case 'loans_amanat':
+      case 'loan': {
+        const loanAccounts = accounts.filter(a => a.account_type_id === 17);
+        const amanatAccounts = accounts.filter(a => a.account_type_id === 18);
+
+        const filteredLoanAccounts = loanAccounts.filter(a => 
+          a.name.toLowerCase().includes(loanSearch.toLowerCase()) || 
+          (a.contact && a.contact.includes(loanSearch))
+        );
+        const filteredAmanatAccounts = amanatAccounts.filter(a => 
+          a.name.toLowerCase().includes(loanSearch.toLowerCase()) || 
+          (a.contact && a.contact.includes(loanSearch))
+        );
+
+        const totalActiveLoans = loanAccounts.reduce((sum, a) => sum + Math.max(0, a.current_balance ?? 0), 0);
+        const totalActiveAmanat = amanatAccounts.reduce((sum, a) => sum + Math.max(0, -(a.current_balance ?? 0)), 0);
+
+        return (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-blue-700 font-bold text-lg mb-1">
+                  <PiggyBank className="h-6 w-6 text-blue-600" />
+                  <span>قرضہ و امانت کھاتے (Loans & Amanat Management)</span>
+                </div>
+                <p className="text-sm text-slate-500">
+                  لوگوں کو دیا گیا عارضی قرضہ (Current Asset) اور لوگوں کی کاروبار میں رکھی گئی امانتیں (Current Liability)
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {loanAmanatTab === 'LOANS' ? (
+                  <button
+                    onClick={() => {
+                      setLoanName('');
+                      setLoanContact('');
+                      setLoanAddress('');
+                      setLoanAmount('');
+                      setLoanMethod('CASH');
+                      setLoanBankId(null);
+                      setLoanDate(new Date().toISOString().split('T')[0]);
+                      setLoanNotes('');
+                      setIsGiveLoanOpen(true);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4" /> نیا قرضہ دیں (Give New Loan)
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setAmanatName('');
+                      setAmanatContact('');
+                      setAmanatAddress('');
+                      setAmanatAmount('');
+                      setAmanatMethod('CASH');
+                      setAmanatBankId(null);
+                      setAmanatDate(new Date().toISOString().split('T')[0]);
+                      setAmanatNotes('');
+                      setIsAcceptAmanatOpen(true);
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4" /> نئی امانت وصول کریں (Accept Amanat)
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Sub-tabs switcher */}
+            <div className="flex gap-3 border-b border-slate-200 pb-3">
+              <button
+                onClick={() => setLoanAmanatTab('LOANS')}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm transition-all cursor-pointer ${
+                  loanAmanatTab === 'LOANS'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <span>قرضہ دیا (Loans Given - وصول طلب)</span>
+                <span className={`px-2 py-0.5 text-xs rounded-full ${loanAmanatTab === 'LOANS' ? 'bg-blue-800 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                  {loanAccounts.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setLoanAmanatTab('AMANAT')}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm transition-all cursor-pointer ${
+                  loanAmanatTab === 'AMANAT'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <span>امانت رکھی (Amanat Held - واجب الادا)</span>
+                <span className={`px-2 py-0.5 text-xs rounded-full ${loanAmanatTab === 'AMANAT' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                  {amanatAccounts.length}
+                </span>
+              </button>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {loanAmanatTab === 'LOANS' ? (
+                <>
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">کل وصول طلب قرضہ جات (Active Loans Receivable)</div>
+                      <div className="text-2xl font-black text-blue-700">Rs. {totalActiveLoans.toLocaleString()}</div>
+                      <div className="text-xs text-slate-400 mt-1">بیلنس شیٹ میں موجودہ اثاثہ جات (Current Asset)</div>
+                    </div>
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                      <ArrowUpRight className="h-6 w-6" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">قرض دار افراد کی تعداد (Total Borrowers)</div>
+                      <div className="text-2xl font-black text-slate-800">{loanAccounts.length} افراد</div>
+                      <div className="text-xs text-slate-400 mt-1">جنہوں نے قرضہ واپس کرنا ہے</div>
+                    </div>
+                    <div className="p-3 bg-slate-50 text-slate-600 rounded-xl">
+                      <Users className="h-6 w-6" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">کل واجب الادا امانتیں (Active Amanat Held)</div>
+                      <div className="text-2xl font-black text-emerald-700">Rs. {totalActiveAmanat.toLocaleString()}</div>
+                      <div className="text-xs text-slate-400 mt-1">بیلنس شیٹ میں موجودہ واجبات (Current Liability)</div>
+                    </div>
+                    <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                      <ArrowDownRight className="h-6 w-6" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">امانت رکھنے والے افراد (Amanat Depositors)</div>
+                      <div className="text-2xl font-black text-slate-800">{amanatAccounts.length} افراد</div>
+                      <div className="text-xs text-slate-400 mt-1">جن کی رقم بطور امانت محفوظ ہے</div>
+                    </div>
+                    <div className="p-3 bg-slate-50 text-slate-600 rounded-xl">
+                      <Users className="h-6 w-6" />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Standard Accounting Rule Note */}
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-xs text-slate-600 flex items-center justify-between">
+              <span>
+                ℹ️ <strong>{loanAmanatTab === 'LOANS' ? 'قرضہ (Loan Receivable):' : 'امانت (Amanat Payable):'}</strong> {loanAmanatTab === 'LOANS' ? 'کاروبار کا موجودہ اثاثہ ہے جو وصول ہونا ہے۔' : 'کاروبار کی ذمہ داری ہے جو واپس ادا کرنی ہے۔'}
+              </span>
+              <span className="text-slate-400 font-mono hidden sm:inline">{loanAmanatTab === 'LOANS' ? 'Asset (Receivable)' : 'Liability (Payable)'}</span>
+            </div>
+
+            {/* Search Filter */}
+            <div className="flex items-center gap-2 max-w-sm">
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="نام یا فون نمبر تلاش کریں..."
+                  value={loanSearch}
+                  onChange={(e) => setLoanSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                />
+              </div>
+            </div>
+
+            {/* Table */}
+            {loanAmanatTab === 'LOANS' ? (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead className="bg-slate-100/70 text-slate-600 text-xs font-bold uppercase">
+                      <tr>
+                        <th className="px-4 py-3">#</th>
+                        <th className="px-4 py-3">قرض دار کا نام (Borrower)</th>
+                        <th className="px-4 py-3">رابطہ / فون</th>
+                        <th className="px-4 py-3">پتہ / علاقہ</th>
+                        <th className="px-4 py-3 text-right">بقایا رقم (Balance Owed)</th>
+                        <th className="px-4 py-3 text-center">ایکشنز (Actions)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredLoanAccounts.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                            کوئی قرضہ کھاتہ موجود نہیں ہے — اوپر دیے گئے بٹن سے نیا قرضہ درج کریں۔
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredLoanAccounts.map((acc, idx) => {
+                          const bal = acc.current_balance ?? 0;
+                          return (
+                            <tr key={acc.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
+                              <td className="px-4 py-3 font-bold text-slate-800">{acc.name}</td>
+                              <td className="px-4 py-3 text-slate-600">{acc.contact || '-'}</td>
+                              <td className="px-4 py-3 text-slate-500 text-xs">{acc.address || '-'}</td>
+                              <td className="px-4 py-3 text-right font-black text-blue-700">
+                                Rs. {Math.max(0, bal).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedLoanAcc(acc);
+                                      setRepayAmount('');
+                                      setRepayMethod('CASH');
+                                      setRepayBankId(null);
+                                      setRepayDate(new Date().toISOString().split('T')[0]);
+                                      setRepayNotes('');
+                                      setIsRepayLoanOpen(true);
+                                    }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                                  >
+                                    واپسی وصول کریں
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenLedger(acc)}
+                                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-3 py-1 rounded text-xs font-semibold transition-colors cursor-pointer"
+                                  >
+                                    کھاتہ دیکھیں
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead className="bg-slate-100/70 text-slate-600 text-xs font-bold uppercase">
+                      <tr>
+                        <th className="px-4 py-3">#</th>
+                        <th className="px-4 py-3">امانت دار کا نام (Depositor)</th>
+                        <th className="px-4 py-3">رابطہ / فون</th>
+                        <th className="px-4 py-3">پتہ / علاقہ</th>
+                        <th className="px-4 py-3 text-right">امانت رقم (Amanat Balance Held)</th>
+                        <th className="px-4 py-3 text-center">ایکشنز (Actions)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredAmanatAccounts.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                            کوئی امانت کھاتہ موجود نہیں ہے — اوپر دیے گئے بٹن سے نئی امانت وصول کریں۔
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredAmanatAccounts.map((acc, idx) => {
+                          const bal = Math.max(0, -(acc.current_balance ?? 0));
+                          return (
+                            <tr key={acc.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
+                              <td className="px-4 py-3 font-bold text-slate-800">{acc.name}</td>
+                              <td className="px-4 py-3 text-slate-600">{acc.contact || '-'}</td>
+                              <td className="px-4 py-3 text-slate-500 text-xs">{acc.address || '-'}</td>
+                              <td className="px-4 py-3 text-right font-black text-emerald-700">
+                                Rs. {bal.toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedAmanatAcc(acc);
+                                      setReturnAmount('');
+                                      setReturnMethod('CASH');
+                                      setReturnBankId(null);
+                                      setReturnDate(new Date().toISOString().split('T')[0]);
+                                      setReturnNotes('');
+                                      setIsReturnAmanatOpen(true);
+                                    }}
+                                    className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                                  >
+                                    امانت واپس کریں
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenLedger(acc)}
+                                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-3 py-1 rounded text-xs font-semibold transition-colors cursor-pointer"
+                                  >
+                                    کھاتہ دیکھیں
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
       case 'workers':
         return (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -1343,13 +2161,40 @@ export const OtherAccountsPanel: React.FC = () => {
                   Manage all business bank accounts, track live balances and cash flow across accounts.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsAddBankModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm shadow-sm transition-colors"
-              >
-                <Plus className="h-4 w-4" /> Add Bank Account (نیا بینک کھاتہ)
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const drawerAcc = accounts.find(a => a.id === 1);
+                    setCashDrawerOBAmount(drawerAcc?.opening_balance ?? '');
+                    setIsCashDrawerOBModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-xs transition-colors"
+                >
+                  <DollarSign className="h-4 w-4" /> دراز کا ابتدائی کیش (Set Opening Cash)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstBank = bankAccountsList[0]?.id || 0;
+                    setTransferFromId(1);
+                    setTransferToId(firstBank);
+                    setTransferAmount('');
+                    setTransferNotes('');
+                    setIsTransferModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-xs transition-colors"
+                >
+                  <Activity className="h-4 w-4" /> رقم ٹرانسفر (Interbank & Cash Transfer)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddBankModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-xs transition-colors"
+                >
+                  <Plus className="h-4 w-4" /> نیا بینک کھاتہ (Add Bank Account)
+                </button>
+              </div>
             </div>
 
             {/* Cash Flow Summary Cards */}
@@ -1570,7 +2415,164 @@ export const OtherAccountsPanel: React.FC = () => {
               </div>
             )}
 
-            {/* Add Bank Account Modal */}
+            {/* Transfer Funds Modal (Interbank & Cash Transfers / Contra Voucher) */}
+            {isTransferModalOpen && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2 flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-indigo-600" />
+                    رقم ٹرانسفر (Interbank & Cash Transfer)
+                  </h3>
+                  <p className="text-xs text-slate-500 mb-4">
+                    بینک سے بینک، کیش سے بینک (کیش جمع)، یا بینک سے دراز میں کیش منتقل کریں (Contra Voucher)۔
+                  </p>
+                  <form onSubmit={handleProcessTransfer} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        کہاں سے بھیج رہے ہیں؟ (From Account / بھیجنے والا کھاتہ) *
+                      </label>
+                      <select
+                        value={transferFromId}
+                        onChange={e => setTransferFromId(Number(e.target.value))}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm font-semibold bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      >
+                        <option value={1}>💵 دراز میں کیش (Cash in Drawer: Rs. {totalInCashDrawer.toLocaleString()})</option>
+                        {bankAccountsList.map(b => (
+                          <option key={b.id} value={b.id}>
+                            🏦 {b.bank_name || b.name} ({b.account_number || 'A/C'}) - Live: Rs. {(b.current_balance ?? 0).toLocaleString()}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        کس کھاتے میں بھیج رہے ہیں؟ (To Account / وصول کرنے والا کھاتہ) *
+                      </label>
+                      <select
+                        value={transferToId}
+                        onChange={e => setTransferToId(Number(e.target.value))}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm font-semibold bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                      >
+                        <option value={0}>-- منتخب کریں (Select Destination) --</option>
+                        <option value={1}>💵 دراز میں کیش (Cash in Drawer)</option>
+                        {bankAccountsList.map(b => (
+                          <option key={b.id} value={b.id}>
+                            🏦 {b.bank_name || b.name} ({b.account_number || 'A/C'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          رقم (Transfer Amount Rs.) *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          step="0.01"
+                          placeholder="0.00"
+                          value={transferAmount}
+                          onChange={e => setTransferAmount(Number(e.target.value) || '')}
+                          className="w-full border border-slate-300 rounded-lg p-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          تاریخ (Date) *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={transferDate}
+                          onChange={e => setTransferDate(e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        تفصیل / ریمارکس (Remarks / Notes)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Cash deposited in Meezan, or ATM withdrawal"
+                        value={transferNotes}
+                        onChange={e => setTransferNotes(e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t">
+                      <button
+                        type="button"
+                        onClick={() => setIsTransferModalOpen(false)}
+                        className="px-4 py-2 border rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                      >
+                        منسوخ کریں (Cancel)
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isTransferring}
+                        className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors disabled:opacity-50"
+                      >
+                        {isTransferring ? 'ٹرانسفر ہو رہا ہے...' : 'رقم منتقل کریں (Confirm Transfer)'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Set Cash in Drawer Opening Balance Modal */}
+            {isCashDrawerOBModalOpen && (
+              <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+                  <h3 className="text-lg font-bold text-slate-800 mb-3 border-b pb-2 flex items-center gap-2">
+                    <DollarSign className="h-5 w-5 text-emerald-600" />
+                    دراز کا ابتدائی کیش (Cash in Drawer Opening Balance)
+                  </h3>
+                  <p className="text-xs text-slate-500 mb-4">
+                    سافٹ ویئر شروع کرتے وقت آپ کی دراز میں موجود ابتدائی نقد رقم درج کریں۔
+                  </p>
+                  <form onSubmit={handleSaveCashDrawerOB} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        ابتدائی نقد رقم (Opening Cash in Hand Rs.) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        step="0.01"
+                        placeholder="e.g. 50000"
+                        value={cashDrawerOBAmount}
+                        onChange={e => setCashDrawerOBAmount(Number(e.target.value) || '')}
+                        className="w-full border-2 border-emerald-400 rounded-lg p-2.5 text-base font-black text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2 border-t">
+                      <button
+                        type="button"
+                        onClick={() => setIsCashDrawerOBModalOpen(false)}
+                        className="px-4 py-2 border rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                      >
+                        منسوخ کریں (Cancel)
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingCashDrawerOB}
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors disabled:opacity-50"
+                      >
+                        {isSavingCashDrawerOB ? 'محفوظ ہو رہا ہے...' : 'محفوظ کریں (Save Opening Cash)'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
             {isAddBankModalOpen && (
               <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
@@ -1709,15 +2711,35 @@ export const OtherAccountsPanel: React.FC = () => {
                   placeholder="Search name..." 
                   value={prSearch}
                   onChange={e => setPrSearch(e.target.value)}
-                  className="border border-slate-300 rounded px-3 py-1 text-sm outline-none focus:border-blue-500 w-64"
+                  className="border border-slate-300 rounded px-3 py-1.5 text-sm outline-none focus:border-blue-500 w-64 shadow-xs"
                 />
-                <button
-                  onClick={() => setIsAddPartyModalOpen(true)}
-                  className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
-                >
-                  <Plus className="h-4 w-4" /> Add Party
-                </button>
               </div>
+            </div>
+
+            {/* Filter Tabs for Payables & Receivables (Item 12) */}
+            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">فلٹر (Filter):</span>
+              {[
+                { id: 'ALL', label: 'سب اکاؤنٹس (All)' },
+                { id: 'CUSTOMERS', label: 'گاہک (Customers)' },
+                { id: 'SUPPLIERS', label: 'سپلائرز (Suppliers)' },
+                { id: 'SALESMEN', label: 'ڈرائیورز و سیلز مین (Drivers/Salesmen)' },
+                { id: 'WORKERS', label: 'ملازمین (Workers)' },
+                { id: 'INVESTORS', label: 'سرمایہ کار (Investors)' },
+                { id: 'LOANS_AMANAT', label: 'قرضے و امانتیں (Loans & Amanat)' },
+              ].map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setPrCategoryFilter(cat.id as any)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 ${
+                    prCategoryFilter === cat.id
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
             </div>
 
             {prViewTab === 'balances' && (
@@ -1734,7 +2756,7 @@ export const OtherAccountsPanel: React.FC = () => {
                       <div key={a.id} className="flex justify-between items-center bg-emerald-50 p-3 rounded border border-emerald-100">
                         <div>
                           <div className="font-semibold text-slate-800">{a.name}</div>
-                          <div className="text-xs text-slate-500">{a.is_customer ? 'Customer' : 'Supplier'}</div>
+                          <div className="text-xs text-slate-500">{getAccountCategoryLabel(a)}</div>
                           <div className="text-[11px] text-slate-400 mt-0.5">
                             OB: Rs. {(a.opening_balance || 0).toLocaleString()} ({a.opening_balance_type === 'CREDIT' ? 'Cr' : 'Dr'})
                           </div>
@@ -1787,7 +2809,7 @@ export const OtherAccountsPanel: React.FC = () => {
                       <div key={a.id} className="flex justify-between items-center bg-rose-50 p-3 rounded border border-rose-100">
                         <div>
                           <div className="font-semibold text-slate-800">{a.name}</div>
-                          <div className="text-xs text-slate-500">{a.is_supplier ? 'Supplier' : 'Customer'}</div>
+                          <div className="text-xs text-slate-500">{getAccountCategoryLabel(a)}</div>
                           <div className="text-[11px] text-slate-400 mt-0.5">
                             OB: Rs. {(a.opening_balance || 0).toLocaleString()} ({a.opening_balance_type === 'CREDIT' ? 'Cr' : 'Dr'})
                           </div>
@@ -1822,7 +2844,10 @@ export const OtherAccountsPanel: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 {settledAccounts.filter(a => a.name.toLowerCase().includes(prSearch.toLowerCase())).slice(0, 10).map(a => (
                    <div key={a.id} className="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-200">
-                     <span className="text-sm font-medium text-slate-700">{a.name}</span>
+                     <div>
+                       <span className="text-sm font-medium text-slate-700">{a.name}</span>
+                       <span className="text-[11px] text-slate-400 ml-2">({getAccountCategoryLabel(a)})</span>
+                     </div>
                      <div className="flex gap-2 items-center">
                        <button 
                          onClick={() => handleOpenOB(a)}
@@ -2110,7 +3135,10 @@ export const OtherAccountsPanel: React.FC = () => {
                 case 'fixed_liabilities':
           return (
             <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
-              <h2 className="text-xl font-bold text-slate-800 mb-6">Fixed Liabilities</h2>
+              <div className="mb-6">
+                <h2 className="text-xl font-bold text-slate-800">Recurring Expenses & Overheads (ماہانہ مقررہ اخراجات)</h2>
+                <p className="text-xs text-slate-500 mt-1">ماہانہ یا روزانہ مقررہ اخراجات (جیسے دکان کا کرایہ، بجلی و یوٹیلیٹی بلز) جن کی باقاعدگی سے ادائیگی کی جاتی ہے</p>
+              </div>
               
               <div className="grid grid-cols-4 gap-4 mb-6">
                 <div>
@@ -2130,7 +3158,7 @@ export const OtherAccountsPanel: React.FC = () => {
                 </div>
                 <div className="flex items-end">
                   <button onClick={handleAddFixedLiability} className="w-full bg-blue-600 text-white font-medium py-2 px-4 rounded hover:bg-blue-700 transition-colors">
-                    Add Liability
+                    Add Expense / Bill
                   </button>
                 </div>
               </div>
@@ -2139,34 +3167,70 @@ export const OtherAccountsPanel: React.FC = () => {
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                     <tr>
-                      <th className="px-4 py-3 font-medium">Name</th>
-                      <th className="px-4 py-3 font-medium">Frequency</th>
-                      <th className="px-4 py-3 font-medium">Amount</th>
+                      <th className="px-4 py-3 font-medium">Name (نام)</th>
+                      <th className="px-4 py-3 font-medium">Frequency (میعاد)</th>
+                      <th className="px-4 py-3 font-medium">Amount (رقم)</th>
+                      <th className="px-4 py-3 font-medium text-center">Status (ادائیگی کی حالت)</th>
                       <th className="px-4 py-3 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {fixedLiabilities.length === 0 ? (
-                      <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">No fixed liabilities configured.</td></tr>
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">No fixed liabilities configured.</td></tr>
                     ) : (
                       fixedLiabilities.map(fl => (
-                        <tr key={fl.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 font-medium">{fl.name}</td>
+                        <tr key={fl.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 font-medium">
+                            <div className="text-slate-800 font-bold">{fl.name}</div>
+                            {fl.last_payment_date && (
+                              <div className="text-[11px] text-slate-400">
+                                آخری ادائیگی: {fl.last_payment_date.split('T')[0]} (Rs. {(fl.paid_in_period || 0).toLocaleString()})
+                              </div>
+                            )}
+                          </td>
                           <td className="px-4 py-3">
                             <span className={`px-2 py-1 text-xs rounded-full font-medium ${fl.frequency === 'DAILY' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>
                               {fl.frequency}
                             </span>
                           </td>
-                          <td className="px-4 py-3 font-medium">Rs. {fl.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                          <td className="px-4 py-3 font-medium">
+                            <div className="text-slate-800">Rs. {fl.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                            {fl.is_paid ? (
+                              <div className="text-[11px] text-emerald-600 font-bold">✓ اس ماہ مکمل ادا شدہ</div>
+                            ) : (fl.remaining_due ?? fl.amount) > 0 && (fl.paid_in_period || 0) > 0 ? (
+                              <div className="text-[11px] text-amber-600 font-bold">باقی واجب الادا: Rs. {(fl.remaining_due ?? fl.amount).toLocaleString()}</div>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {fl.is_paid ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold shadow-xs">
+                                ✓ ادا شدہ (Paid for Nov)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-bold shadow-xs">
+                                ⚠️ واجب الادا (Due: Rs. {(fl.remaining_due ?? fl.amount).toLocaleString()})
+                              </span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenPayLiability(fl)}
-                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-colors shadow-xs"
-                              >
-                                ادائیگی کریں (Pay)
-                              </button>
+                              {fl.is_paid ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPayLiability(fl)}
+                                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded text-xs font-medium transition-colors shadow-xs"
+                                >
+                                  اضافی ادائیگی (Pay Extra)
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPayLiability(fl)}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-colors shadow-xs"
+                                >
+                                  ادائیگی کریں (Pay Now)
+                                </button>
+                              )}
                               <button onClick={() => deleteFixedLiability(fl.id)} className="text-red-500 hover:text-red-700 font-medium text-xs">Delete</button>
                             </div>
                           </td>
@@ -2185,6 +3249,25 @@ export const OtherAccountsPanel: React.FC = () => {
                     <TrendingDown className="h-5 w-5 text-emerald-600" />
                     ادائیگی برائے: {payingLiability.name}
                   </h3>
+                  {payingLiability.is_paid && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 mb-3 space-y-1">
+                      <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                        ⚠️ توجہ فرمائیں: یہ خرچہ اس مہینے پہلے ہی ادا ہو چکا ہے!
+                      </div>
+                      <p>
+                        اس مہینے برائے "{payingLiability.name}" پہلے ہی Rs. {(payingLiability.paid_in_period || 0).toLocaleString()} ادا ہو چکے ہیں۔
+                      </p>
+                      <label className="flex items-center gap-2 mt-2 pt-1 border-t border-amber-200 font-bold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={confirmExtraPay}
+                          onChange={(e) => setConfirmExtraPay(e.target.checked)}
+                          className="rounded text-amber-600"
+                        />
+                        <span>میں تصدیق کرتا ہوں کہ یہ اضافی ادائیگی ہے (Confirm Extra Payment)</span>
+                      </label>
+                    </div>
+                  )}
                   <form onSubmit={submitPayLiability} className="space-y-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -2274,7 +3357,7 @@ export const OtherAccountsPanel: React.FC = () => {
                       </button>
                       <button
                         type="submit"
-                        disabled={isPayingLiab}
+                        disabled={isPayingLiab || (payingLiability?.is_paid && !confirmExtraPay)}
                         className="flex-1 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
                       >
                         {isPayingLiab ? 'ادائیگی جاری ہے...' : 'ادائیگی تصدیق کریں (Confirm Pay)'}
@@ -2473,7 +3556,7 @@ export const OtherAccountsPanel: React.FC = () => {
                                 +سرمایہ
                               </button>
 
-                              {/* Withdraw Capital */}
+                              {/* Withdraw Capital / Owner Drawings */}
                               <button
                                 onClick={() => {
                                   setSelectedInvestorForWithdraw(inv);
@@ -2482,10 +3565,10 @@ export const OtherAccountsPanel: React.FC = () => {
                                   setIsWithdrawOpen(true);
                                 }}
                                 className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded font-medium text-[11px] transition-colors shadow-2xs flex items-center gap-1"
-                                title="اصل سرمایہ واپس کریں"
+                                title="اصل سرمایہ واپس کریں یا مالک کا ذاتی خرچ (Owner Drawings) نکالیں"
                               >
                                 <ArrowUpRight className="h-3 w-3" />
-                                واپسی
+                                ذاتی خرچ / واپسی (Drawings)
                               </button>
 
                               {/* View Statement */}
@@ -2940,10 +4023,10 @@ export const OtherAccountsPanel: React.FC = () => {
                     <div>
                       <h2 className="text-sm font-bold text-amber-800 flex items-center gap-2">
                         <ArrowUpRight className="h-4 w-4 text-amber-600" />
-                        اصل سرمایہ کی واپسی (Capital Withdrawal / Return)
+                        اصل سرمایہ کی واپسی / ذاتی خرچ (Capital Return / Owner Drawings)
                       </h2>
                       <p className="text-xs text-amber-700 font-semibold mt-0.5">
-                        {selectedInvestorForWithdraw.name} | موجودہ کیپیٹل بیلنس: Rs. {Number(selectedInvestorForWithdraw.current_capital).toLocaleString()}
+                        {selectedInvestorForWithdraw.name} | موجودہ کیپیٹل بیلنس: Rs. {Number(selectedInvestorForWithdraw.current_capital).toLocaleString()} (مالک کے ذاتی اخراجات سرمایہ میں کمی کے طور پر درج ہوتے ہیں)
                       </p>
                     </div>
                     <button
@@ -3318,6 +4401,697 @@ export const OtherAccountsPanel: React.FC = () => {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* --- MODAL: RECORD OWNER DRAWING --- */}
+      {isAddDrawingOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
+              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-indigo-600" />
+                نیا ذاتی خرچ درج کریں (Record Owner Drawing)
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsAddDrawingOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordDrawing} className="p-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  مالک کا نام / کھاتہ (Owner / Equity Account)
+                </label>
+                <select
+                  value={drawingOwnerAccId}
+                  onChange={(e) => setDrawingOwnerAccId(Number(e.target.value))}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  {accounts
+                    .filter((a) => a.account_type_id === 16 && a.id !== 18)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  رقم (Amount Rs.) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  step="any"
+                  value={drawingAmount}
+                  onChange={(e) => setDrawingAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="e.g. 25000"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ادائیگی کا ذریعہ (Paid Via)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDrawingMethod('CASH')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      drawingMethod === 'CASH'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    💵 دراز کیش (Cash in Drawer)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDrawingMethod('BANK')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      drawingMethod === 'BANK'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🏦 بینک اکاؤنٹ (Bank)
+                  </button>
+                </div>
+              </div>
+
+              {drawingMethod === 'BANK' && (
+                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                  <BankAccountSelect
+                    value={drawingBankId}
+                    onChange={setDrawingBankId}
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                  <input
+                    type="date"
+                    value={drawingDate}
+                    onChange={(e) => setDrawingDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">وجہ / تفصیل (Purpose)</label>
+                  <input
+                    type="text"
+                    value={drawingNotes}
+                    onChange={(e) => setDrawingNotes(e.target.value)}
+                    placeholder="e.g. ذاتی گھریلو خرچ"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsAddDrawingOpen(false)}
+                  className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50 cursor-pointer"
+                >
+                  کینسل (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDrawing}
+                  className="flex-1 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingDrawing ? 'محفوظ ہو رہا ہے...' : 'ذاتی خرچ محفوظ کریں'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: GIVE NEW LOAN --- */}
+      {isGiveLoanOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-blue-50/50">
+              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <PiggyBank className="h-4 w-4 text-blue-600" />
+                نیا قرضہ دیں (Give New Loan)
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsGiveLoanOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleGiveLoan} className="p-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  قرض دار کا نام (Borrower Name) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={loanName}
+                  onChange={(e) => setLoanName(e.target.value)}
+                  placeholder="e.g. محمد احمد"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">فون نمبر (Contact)</label>
+                  <input
+                    type="text"
+                    value={loanContact}
+                    onChange={(e) => setLoanContact(e.target.value)}
+                    placeholder="0300-1234567"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">پتہ / علاقہ (Address)</label>
+                  <input
+                    type="text"
+                    value={loanAddress}
+                    onChange={(e) => setLoanAddress(e.target.value)}
+                    placeholder="e.g. جھنگ"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  قرضہ کی رقم (Amount Rs.) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  step="any"
+                  value={loanAmount}
+                  onChange={(e) => setLoanAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="e.g. 50000"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm font-bold text-blue-700 focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ادائیگی کا ذریعہ (Paid Via)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLoanMethod('CASH')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      loanMethod === 'CASH'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    💵 دراز کیش (Cash in Drawer)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLoanMethod('BANK')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      loanMethod === 'BANK'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🏦 بینک اکاؤنٹ (Bank)
+                  </button>
+                </div>
+              </div>
+
+              {loanMethod === 'BANK' && (
+                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                  <BankAccountSelect
+                    value={loanBankId}
+                    onChange={setLoanBankId}
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                  <input
+                    type="date"
+                    value={loanDate}
+                    onChange={(e) => setLoanDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تفصیل / واپسی وعدہ</label>
+                  <input
+                    type="text"
+                    value={loanNotes}
+                    onChange={(e) => setLoanNotes(e.target.value)}
+                    placeholder="e.g. واپسی 1 ماہ بعد"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsGiveLoanOpen(false)}
+                  className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50 cursor-pointer"
+                >
+                  کینسل (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingLoan}
+                  className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingLoan ? 'محفوظ ہو رہا ہے...' : 'قرضہ کی ادائیگی محفوظ کریں'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: RECEIVE LOAN REPAYMENT --- */}
+      {isRepayLoanOpen && selectedLoanAcc && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
+              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                قرضہ کی واپسی وصول کریں ({selectedLoanAcc.name})
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsRepayLoanOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleRepayLoan} className="p-4 space-y-4">
+              <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200 flex justify-between items-center">
+                <span className="text-xs text-blue-900 font-bold">موجودہ واجب الوصول بقایا:</span>
+                <span className="text-sm font-black text-blue-800">
+                  Rs. {Math.max(0, selectedLoanAcc.current_balance ?? 0).toLocaleString()}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  وصول شدہ رقم (Repayment Amount Rs.) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  step="any"
+                  value={repayAmount}
+                  onChange={(e) => setRepayAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="e.g. 10000"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  وصولی کا ذریعہ (Receive In)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRepayMethod('CASH')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      repayMethod === 'CASH'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    💵 دراز کیش (Cash in Drawer)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRepayMethod('BANK')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      repayMethod === 'BANK'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🏦 بینک اکاؤنٹ (Bank)
+                  </button>
+                </div>
+              </div>
+
+              {repayMethod === 'BANK' && (
+                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                  <BankAccountSelect
+                    value={repayBankId}
+                    onChange={setRepayBankId}
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                  <input
+                    type="date"
+                    value={repayDate}
+                    onChange={(e) => setRepayDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تفصیل / ریمارکس</label>
+                  <input
+                    type="text"
+                    value={repayNotes}
+                    onChange={(e) => setRepayNotes(e.target.value)}
+                    placeholder="e.g. قسط کی واپسی"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsRepayLoanOpen(false)}
+                  className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50 cursor-pointer"
+                >
+                  کینسل (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingRepay}
+                  className="flex-1 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingRepay ? 'محفوظ ہو رہا ہے...' : 'واپسی وصولی تصدیق کریں'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: ACCEPT NEW AMANAT --- */}
+      {isAcceptAmanatOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
+              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <PiggyBank className="h-4 w-4 text-emerald-600" />
+                نئی امانت وصول کریں / محفوظ کریں (Accept Amanat)
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsAcceptAmanatOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleAcceptAmanat} className="p-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  امانت رکھنے والے کا نام (Depositor Name) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={amanatName}
+                  onChange={(e) => setAmanatName(e.target.value)}
+                  placeholder="e.g. حاجی اصغر"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">فون نمبر (Contact)</label>
+                  <input
+                    type="text"
+                    value={amanatContact}
+                    onChange={(e) => setAmanatContact(e.target.value)}
+                    placeholder="0300-1234567"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">پتہ / علاقہ (Address)</label>
+                  <input
+                    type="text"
+                    value={amanatAddress}
+                    onChange={(e) => setAmanatAddress(e.target.value)}
+                    placeholder="e.g. جھنگ بازار"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  امانت کی رقم (Amanat Amount Rs.) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  step="any"
+                  value={amanatAmount}
+                  onChange={(e) => setAmanatAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="e.g. 100000"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  وصولی کا ذریعہ (Received In)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAmanatMethod('CASH')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      amanatMethod === 'CASH'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    💵 دراز کیش (Cash in Drawer)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAmanatMethod('BANK')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      amanatMethod === 'BANK'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🏦 بینک اکاؤنٹ (Bank)
+                  </button>
+                </div>
+              </div>
+
+              {amanatMethod === 'BANK' && (
+                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                  <BankAccountSelect
+                    value={amanatBankId}
+                    onChange={setAmanatBankId}
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                  <input
+                    type="date"
+                    value={amanatDate}
+                    onChange={(e) => setAmanatDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تفصیل / امانت یادداشت</label>
+                  <input
+                    type="text"
+                    value={amanatNotes}
+                    onChange={(e) => setAmanatNotes(e.target.value)}
+                    placeholder="e.g. عارضی حفاظت برائے چند روز"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsAcceptAmanatOpen(false)}
+                  className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50 cursor-pointer"
+                >
+                  کینسل (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAmanat}
+                  className="flex-1 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingAmanat ? 'محفوظ ہو رہا ہے...' : 'امانت وصولی محفوظ کریں'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: RETURN AMANAT --- */}
+      {isReturnAmanatOpen && selectedAmanatAcc && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-amber-50/50">
+              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <ArrowUpRight className="h-4 w-4 text-amber-600" />
+                امانت واپس کریں ({selectedAmanatAcc.name})
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsReturnAmanatOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleReturnAmanat} className="p-4 space-y-4">
+              <div className="p-3 bg-amber-50/50 rounded-lg border border-amber-200 flex justify-between items-center">
+                <span className="text-xs text-amber-900 font-bold">موجود امانت رقم:</span>
+                <span className="text-sm font-black text-amber-800">
+                  Rs. {Math.max(0, -(selectedAmanatAcc.current_balance ?? 0)).toLocaleString()}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  واپس کی جانے والی رقم (Return Amount Rs.) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  step="any"
+                  value={returnAmount}
+                  onChange={(e) => setReturnAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="e.g. 50000"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ادائیگی کا ذریعہ (Pay From)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setReturnMethod('CASH')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      returnMethod === 'CASH'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    💵 دراز کیش (Cash in Drawer)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReturnMethod('BANK')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      returnMethod === 'BANK'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🏦 بینک اکاؤنٹ (Bank)
+                  </button>
+                </div>
+              </div>
+
+              {returnMethod === 'BANK' && (
+                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
+                  <BankAccountSelect
+                    value={returnBankId}
+                    onChange={setReturnBankId}
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
+                  <input
+                    type="date"
+                    value={returnDate}
+                    onChange={(e) => setReturnDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">تفصیل / ریمارکس</label>
+                  <input
+                    type="text"
+                    value={returnNotes}
+                    onChange={(e) => setReturnNotes(e.target.value)}
+                    placeholder="e.g. امانت کی مکمل واپسی"
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsReturnAmanatOpen(false)}
+                  className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-xs font-medium hover:bg-slate-50 cursor-pointer"
+                >
+                  کینسل (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReturn}
+                  className="flex-1 py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingReturn ? 'محفوظ ہو رہا ہے...' : 'امانت واپسی تصدیق کریں'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

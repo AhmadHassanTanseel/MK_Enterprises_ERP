@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { exit } from '@tauri-apps/plugin-process';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { GlobalSearch } from './GlobalSearch';
 import logoImg from '../../assets/logo.png';
 import { 
   LayoutDashboard, Wallet, Receipt, FileText, 
-  Package, List, Users, Settings, Search, Bell, User, ChevronDown, ChevronRight, Menu, MapPin, TrendingUp, ArrowLeft, X
+  Package, List, Users, Settings, Search, Bell, User, ChevronDown, ChevronRight, Menu, MapPin, TrendingUp, ArrowLeft, X, AlertTriangle, Database
 } from 'lucide-react';
 
 interface AppNotification {
@@ -27,13 +29,61 @@ export const MainLayout: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
 
   const notifRef = useRef<HTMLDivElement>(null);
+  const [showExitModal, setShowExitModal] = useState(false);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const setupCloseListener = async () => {
+      try {
+        unlisten = await listen('request_app_exit', () => {
+          setShowExitModal(true);
+        });
+      } catch (err) {
+        console.error("Failed to setup request_app_exit listener", err);
+      }
+    };
+    setupCloseListener();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  const handleExitConfirm = async () => {
+    try {
+      await invoke('force_exit_app');
+    } catch {
+      try {
+        await exit(0);
+      } catch {
+        window.close();
+      }
+    }
+  };
+
+  const handleBackupAndNavigate = () => {
+    setShowExitModal(false);
+    navigate('/settings#backup');
+    setTimeout(() => {
+      const el = document.getElementById('backup-section');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 150);
+  };
 
   const handleNotificationClick = (notif: AppNotification) => {
     setShowNotifications(false);
     if (notif.link) {
       navigate(notif.link);
     } else if (notif.id.includes('backup') || notif.title.toLowerCase().includes('backup')) {
-      navigate('/settings');
+      navigate('/settings#backup');
+      setTimeout(() => {
+        const el = document.getElementById('backup-section');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 150);
     } else if (notif.id.includes('stock') || notif.title.toLowerCase().includes('stock')) {
       navigate('/inventory');
     } else {
@@ -126,7 +176,7 @@ export const MainLayout: React.FC = () => {
       {sidebarOpen && (
         <div className="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20 transition-all duration-300">
           <div className="h-16 flex items-center gap-3 px-5 bg-slate-950 border-b border-slate-800">
-            <img src={logoImg} alt="Zawar Traders" className="h-10 w-10 rounded-full object-cover border border-amber-500/30 bg-white p-0.5 shadow-sm" />
+            <img src={logoImg} alt="Zawar Traders" className="h-10 w-auto max-w-[45px] object-contain rounded-md border border-amber-500/30 bg-white p-0.5 shadow-sm" />
             <div className="flex flex-col">
               <h1 className="text-base font-black tracking-wider text-white">ZAWAR TRADERS</h1>
               <span className="text-[10px] text-slate-400 font-medium tracking-tight">Wholesale & Order Supplier</span>
@@ -295,7 +345,7 @@ export const MainLayout: React.FC = () => {
                 <span className="text-xs text-slate-500">Administrator</span>
               </div>
               <div className="h-9 w-9 rounded-full overflow-hidden border border-blue-300 shadow-sm bg-white flex items-center justify-center">
-                <img src={logoImg} alt="Admin" className="h-full w-full object-cover" />
+                <img src={logoImg} alt="Admin" className="h-full w-full object-contain p-0.5 bg-white" />
               </div>
             </div>
           </div>
@@ -307,6 +357,80 @@ export const MainLayout: React.FC = () => {
         </main>
 
       </div>
+
+      {/* EXIT CONFIRMATION & DAILY BACKUP REMINDER MODAL */}
+      {showExitModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden transform transition-all scale-100">
+            
+            {/* Header */}
+            <div className="p-5 pb-4 bg-slate-900 text-white flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-black tracking-wide">Exit Zawar Traders ERP?</h3>
+                <p className="text-xs text-slate-400 font-medium">کیا آپ سافٹ ویئر بند کرنا چاہتے ہیں؟</p>
+              </div>
+              <button 
+                onClick={() => setShowExitModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-5 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3.5">
+                <Database className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wide">
+                    Daily Backup Reminder (روزانہ بیک اپ کی یاد دہانی)
+                  </h4>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    Have you taken a system backup today? Taking regular backups protects your invoices, stock, and ledger records against accidental data loss.
+                  </p>
+                  <p className="text-xs text-amber-900 font-semibold leading-relaxed pt-0.5">
+                    کیا آپ نے آج کا بیک اپ لے لیا ہے؟ روزانہ بیک اپ بنانا کھاتہ جات اور ڈیٹا کے تحفظ کے لیے ضروری ہے۔
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 text-center">
+                You can quickly save a backup to your computer or Google Drive before exiting.
+              </p>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowExitModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition-colors"
+              >
+                Cancel (کینسل)
+              </button>
+              <button
+                type="button"
+                onClick={handleBackupAndNavigate}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+              >
+                <Database className="h-3.5 w-3.5" />
+                Backup First (پہلے بیک اپ لیں)
+              </button>
+              <button
+                type="button"
+                onClick={handleExitConfirm}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors shadow-sm"
+              >
+                Exit Software (بند کریں)
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

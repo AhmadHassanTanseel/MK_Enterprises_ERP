@@ -41,11 +41,13 @@ export function printContent(title: string, contentHtml: string) {
           margin-bottom: 16px;
         }
         .store-logo {
-          width: 65px;
-          height: 65px;
-          border-radius: 50%;
+          max-width: 180px;
+          max-height: 65px;
+          width: auto;
+          height: auto;
           margin: 0 auto 6px auto;
           display: block;
+          object-fit: contain;
         }
         .store-name {
           font-size: 24px;

@@ -1,6 +1,6 @@
 {
   "productName": "Zawar Traders Business Management System By Tanseel",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "identifier": "com.business-mgmt-system.dev",
   "build": {
     "beforeDevCommand": "npm run dev",

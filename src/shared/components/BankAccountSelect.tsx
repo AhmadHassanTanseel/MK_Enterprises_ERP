@@ -19,7 +19,7 @@ export const BankAccountSelect: React.FC<BankAccountSelectProps> = ({
 
   // Find all bank accounts (Account type 1 is Cash & Bank; ID 1 is Cash in Drawer, so banks are either ID 6 or accounts with type 1 and ID != 1 or having bank_name)
   const bankAccounts = useMemo(() => {
-    return accounts.filter(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name);
+    return accounts.filter(a => !!a.bank_name && a.bank_name.trim() !== '');
   }, [accounts]);
 
   const selectedBank = useMemo(() => {

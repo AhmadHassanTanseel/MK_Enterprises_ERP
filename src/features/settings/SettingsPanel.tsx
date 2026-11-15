@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { stat } from '@tauri-apps/plugin-fs';
 import { open as openShell } from '@tauri-apps/plugin-shell';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppContext } from '../../app/context/AppContext';
 import { Settings, Shield, Database, Users, Download, Trash2, AlertTriangle, Building, Save, X, RefreshCw, Cloud, Globe, CheckCircle, Copy, Key } from 'lucide-react';
@@ -17,6 +17,7 @@ interface AuditLog {
 }
 
 export const SettingsPanel: React.FC = () => {
+  const location = useLocation();
   const { settings, saveSetting, fetchData } = useAppContext();
   const [companyName, setCompanyName] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
@@ -72,6 +73,18 @@ export const SettingsPanel: React.FC = () => {
       return navigator.onLine;
     }
   };
+
+  // Scroll to backup section if requested
+  useEffect(() => {
+    if (location.hash === '#backup' || window.location.hash === '#backup') {
+      setTimeout(() => {
+        const el = document.getElementById('backup-section');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 150);
+    }
+  }, [location]);
 
   useEffect(() => {
     // Load local backup path
@@ -767,7 +780,7 @@ function doGet(e) {
       <div className="max-w-4xl space-y-6">
 
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div id="backup-section" className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-6 border-b border-slate-200">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
               <Database className="h-5 w-5 text-blue-600" />

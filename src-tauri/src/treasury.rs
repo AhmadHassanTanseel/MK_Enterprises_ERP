@@ -24,9 +24,9 @@ pub async fn process_cash_transaction(
     amount: f64,
     trans_date: String,
     description: Option<String>,
-    _payment_method: Option<String>,
-    _ref_no: Option<String>,
-    _attachment_path: Option<String>,
+    payment_method: Option<String>,
+    ref_no: Option<String>,
+    attachment_path: Option<String>,
     bank_account_id: Option<i64>,
     db: State<'_, SqlitePool>
 ) -> Result<String, String> {
@@ -40,15 +40,16 @@ pub async fn process_cash_transaction(
     let entry_date = trans_date.clone();
 
     let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let _ = &attachment_path;
     
     // Check if the payment method implies Bank.
     let mut is_bank = false;
-    if let Some(pm) = &_payment_method {
+    if let Some(pm) = &payment_method {
         if pm.to_uppercase() == "BANK" {
             is_bank = true;
         }
     }
-    // Also try to infer from narration if _payment_method wasn't passed accurately
+    // Also try to infer from narration if payment_method wasn't passed accurately
     if narration.to_uppercase().starts_with("BANK -") {
         is_bank = true;
     }
@@ -63,23 +64,23 @@ pub async fn process_cash_transaction(
     if trans_type == "RECEIVE" {
         // Debit Treasury
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, ?, ?, ?, ?, ?)")
-            .bind(treasury_account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
+            .bind(treasury_account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         // Credit the account (reduces receivable)
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, ?, ?, ?, ?, ?)")
-            .bind(account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
+            .bind(account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
     } else {
         // PAYMENT: Debit the account (expense / supplier reduction)
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, ?, ?, ?, ?, ?)")
-            .bind(account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
+            .bind(account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         // Credit Treasury
         sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, ?, ?, ?, ?, ?)")
-            .bind(treasury_account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&_ref_no)
+            .bind(treasury_account_id).bind(amount).bind(&voucher_type).bind(&narration).bind(&entry_date).bind(&created_at).bind(&ref_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
     tx.commit().await.map_err(|e| e.to_string())?;
@@ -110,7 +111,7 @@ pub struct JvLine {
 #[tauri::command]
 pub async fn process_journal_voucher(
     trans_date: String,
-    _ref_no: Option<String>,
+    ref_no: Option<String>,
     lines: Vec<JvLine>,
     db: State<'_, SqlitePool>
 ) -> Result<String, String> {
@@ -135,7 +136,7 @@ pub async fn process_journal_voucher(
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
 
     let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let internal_ref = _ref_no.unwrap_or_else(|| format!("JV-{}", chrono::Local::now().format("%y%m%d%H%M%S")));
+    let internal_ref = ref_no.unwrap_or_else(|| format!("JV-{}", chrono::Local::now().format("%y%m%d%H%M%S")));
 
     // Create a simple reference record by inserting a small JV header into system_config (or could be a JV table). We'll just insert lines with a common ref
     for line in &lines {
@@ -281,4 +282,79 @@ pub async fn get_ledger_entries_by_ref(
         .map_err(|e| e.to_string())?;
         
     Ok(entries)
+}
+
+#[tauri::command]
+pub async fn process_contra_transfer(
+    from_account_id: i64,
+    to_account_id: i64,
+    amount: f64,
+    trans_date: String,
+    notes: Option<String>,
+    db: State<'_, SqlitePool>,
+) -> Result<String, String> {
+    if from_account_id == to_account_id {
+        return Err("Source and destination accounts cannot be the same (بھیجنے اور وصول کرنے والا کھاتہ ایک جیسا نہیں ہو سکتا)".into());
+    }
+    if amount <= 0.0 {
+        return Err("Transfer amount must be greater than zero (رقم صفر سے زیادہ ہونی چاہیے)".into());
+    }
+
+    let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+
+    let from_name: String = sqlx::query_scalar("SELECT name FROM accounts WHERE id = ?")
+        .bind(from_account_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| format!("Source account not found: {}", e))?;
+
+    let to_name: String = sqlx::query_scalar("SELECT name FROM accounts WHERE id = ?")
+        .bind(to_account_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| format!("Destination account not found: {}", e))?;
+
+    let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let ref_no = format!("TRF-{}", chrono::Local::now().format("%y%m%d%H%M%S"));
+    let user_notes = notes.unwrap_or_default();
+    let narration = if user_notes.trim().is_empty() {
+        format!("Fund Transfer: {} -> {}", from_name, to_name)
+    } else {
+        format!("Fund Transfer ({} -> {}): {}", from_name, to_name, user_notes.trim())
+    };
+
+    // 1. Debit destination account (Funds increase in receiving account)
+    sqlx::query(
+        "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'CONTRA', ?, ?, ?, ?)"
+    )
+    .bind(to_account_id)
+    .bind(amount)
+    .bind(&narration)
+    .bind(&trans_date)
+    .bind(&created_at)
+    .bind(&ref_no)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // 2. Credit source account (Funds decrease in sending account)
+    sqlx::query(
+        "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'CONTRA', ?, ?, ?, ?)"
+    )
+    .bind(from_account_id)
+    .bind(amount)
+    .bind(&narration)
+    .bind(&trans_date)
+    .bind(&created_at)
+    .bind(&ref_no)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+
+    let audit_msg = format!("Transferred Rs. {:.2} from {} to {}", amount, from_name, to_name);
+    let _ = crate::audit::log_audit(&db, &audit_msg, "Operator").await;
+
+    Ok(format!("Rs. {:.2} successfully transferred from {} to {}.", amount, from_name, to_name))
 }

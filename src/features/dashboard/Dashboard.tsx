@@ -1,27 +1,83 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { invoke } from '@tauri-apps/api/core';
 import { 
   FileText, ShoppingCart, PlusCircle, Users, ArrowDownRight, ArrowUpRight,
-
   Tags, Bookmark, CornerDownLeft, CornerUpRight,
   MapPin, Activity, DollarSign, Package, TrendingUp, Users as UsersIcon, Box
 } from 'lucide-react';
 import { useAppContext } from '../../app/context/AppContext';
 
+interface PeriodProfit {
+  sales: number;
+  cogs: number;
+  gross_profit: number;
+  expenses: number;
+  fixed_liabilities: number;
+  net_profit: number;
+}
+
+interface ProfitMetrics {
+  today: PeriodProfit;
+  week: PeriodProfit;
+  month: PeriodProfit;
+}
+
 export const Dashboard: React.FC = () => {
   const { invoices, accounts, ledgerEntries } = useAppContext();
 
-  const [hideCashBank, setHideCashBank] = useState<boolean>(() => {
-    return localStorage.getItem('hide_dashboard_cash_bank') === 'true';
+  const [profitMetrics, setProfitMetrics] = useState<ProfitMetrics | null>(null);
+
+  useEffect(() => {
+    invoke<ProfitMetrics>('get_profit_metrics')
+      .then(setProfitMetrics)
+      .catch(err => console.error('Failed to load profit metrics', err));
+  }, [invoices, ledgerEntries]);
+
+  const [hideCash, setHideCash] = useState<boolean>(() => {
+    return localStorage.getItem('hide_dashboard_cash_flow') === 'true';
+  });
+  const [hideBank, setHideBank] = useState<boolean>(() => {
+    return localStorage.getItem('hide_dashboard_bank_flow') === 'true';
+  });
+  const [hideProfit, setHideProfit] = useState<boolean>(() => {
+    return localStorage.getItem('hide_dashboard_profit') === 'true';
   });
 
-  const toggleHideCashBank = () => {
-    setHideCashBank(prev => {
+  const toggleHideCash = () => {
+    setHideCash(prev => {
       const next = !prev;
-      localStorage.setItem('hide_dashboard_cash_bank', String(next));
+      localStorage.setItem('hide_dashboard_cash_flow', String(next));
       return next;
     });
+  };
+
+  const toggleHideBank = () => {
+    setHideBank(prev => {
+      const next = !prev;
+      localStorage.setItem('hide_dashboard_bank_flow', String(next));
+      return next;
+    });
+  };
+
+  const toggleHideProfit = () => {
+    setHideProfit(prev => {
+      const next = !prev;
+      localStorage.setItem('hide_dashboard_profit', String(next));
+      return next;
+    });
+  };
+
+  const allHidden = hideCash && hideBank && hideProfit;
+  const toggleHideAll = () => {
+    const next = !allHidden;
+    setHideCash(next);
+    setHideBank(next);
+    setHideProfit(next);
+    localStorage.setItem('hide_dashboard_cash_flow', String(next));
+    localStorage.setItem('hide_dashboard_bank_flow', String(next));
+    localStorage.setItem('hide_dashboard_profit', String(next));
   };
 
   // The 8 specific shortcuts (removed Category)
@@ -150,24 +206,26 @@ export const Dashboard: React.FC = () => {
         <h2 className="text-base font-bold text-slate-800">Business Overview</h2>
         <button
           type="button"
-          onClick={toggleHideCashBank}
+          onClick={toggleHideAll}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border shadow-sm ${
-            hideCashBank
+            allHidden
               ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
               : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900'
           }`}
-          title={hideCashBank ? "Show Cash & Bank Balances" : "Hide Cash & Bank Balances"}
+          title={allHidden ? "Show All Balances" : "Hide All Balances"}
         >
-          {hideCashBank ? <Eye className="h-4 w-4 text-blue-600" /> : <EyeOff className="h-4 w-4 text-slate-500" />}
-          <span>{hideCashBank ? "Show Cash & Bank Flow" : "Hide Cash & Bank Flow"}</span>
-          {hideCashBank && (
-            <span className="ml-1 px-1.5 py-0.2 bg-amber-200 text-amber-900 rounded text-[10px]">Hidden</span>
+          {allHidden ? <Eye className="h-4 w-4 text-blue-600" /> : <EyeOff className="h-4 w-4 text-slate-500" />}
+          <span>{allHidden ? "Show All Balances" : "Hide All Balances"}</span>
+          {allHidden && (
+            <span className="ml-1 px-1.5 py-0.5 text-[10px] font-black bg-amber-200/80 text-amber-900 rounded">
+              Hidden
+            </span>
           )}
         </button>
       </div>
       
       {/* 5 Summary Sections - Auto-Adaptive, Uncompressed */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {/* Sales Summary */}
         <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
@@ -214,6 +272,55 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* Net Profit Summary */}
+        <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 truncate" title="Daily Profit: (Sold Items Sale Price - Purchase Cost) - Daily Expenses">
+              <TrendingUp className="h-4 w-4 text-emerald-600 shrink-0" /> Net Profit
+            </h3>
+            <button
+              type="button"
+              onClick={toggleHideProfit}
+              className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              title={hideProfit ? "Show Profit" : "Hide Profit"}
+            >
+              {hideProfit ? <Eye className="h-3.5 w-3.5 text-emerald-600" /> : <EyeOff className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">Today</span>
+              {hideProfit ? (
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••</span>
+              ) : (
+                <span className={`font-bold tabular-nums ${(profitMetrics?.today.net_profit ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {formatRs(profitMetrics?.today.net_profit ?? 0)}
+                </span>
+              )}
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-500 whitespace-nowrap">This Week</span>
+              {hideProfit ? (
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••</span>
+              ) : (
+                <span className={`font-bold tabular-nums ${(profitMetrics?.week.net_profit ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {formatRs(profitMetrics?.week.net_profit ?? 0)}
+                </span>
+              )}
+            </div>
+            <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1">
+              <span className="text-slate-600 font-semibold whitespace-nowrap">This Month</span>
+              {hideProfit ? (
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••</span>
+              ) : (
+                <span className={`font-bold tabular-nums ${(profitMetrics?.month.net_profit ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                  {formatRs(profitMetrics?.month.net_profit ?? 0)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Customers Summary */}
         <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-200 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
@@ -245,16 +352,16 @@ export const Dashboard: React.FC = () => {
             </h3>
             <button
               type="button"
-              onClick={toggleHideCashBank}
+              onClick={toggleHideCash}
               className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-              title={hideCashBank ? "Show Cash Flow" : "Hide Cash Flow"}
+              title={hideCash ? "Show Cash Flow" : "Hide Cash Flow"}
             >
-              {hideCashBank ? <Eye className="h-3.5 w-3.5 text-emerald-600" /> : <EyeOff className="h-3.5 w-3.5" />}
+              {hideCash ? <Eye className="h-3.5 w-3.5 text-emerald-600" /> : <EyeOff className="h-3.5 w-3.5" />}
             </button>
           </div>
           <div className="mb-1.5 pb-1.5 border-b border-slate-100 flex justify-between items-center">
             <span className="text-xs font-bold text-slate-600 whitespace-nowrap">Total in Hand</span>
-            {hideCashBank ? (
+            {hideCash ? (
               <span className="text-xs font-black tracking-widest text-slate-400 font-mono">••••••••</span>
             ) : (
               <span className={`text-xs font-bold tabular-nums ${metrics.cashAllTime >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatRs(metrics.cashAllTime)}</span>
@@ -263,7 +370,7 @@ export const Dashboard: React.FC = () => {
           <div className="space-y-1">
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-500 whitespace-nowrap">Today</span>
-              {hideCashBank ? (
+              {hideCash ? (
                 <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
                 <span className={`font-bold tabular-nums ${metrics.cashToday >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatRs(metrics.cashToday)}</span>
@@ -271,7 +378,7 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-500 whitespace-nowrap">This Week</span>
-              {hideCashBank ? (
+              {hideCash ? (
                 <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
                 <span className={`font-bold tabular-nums ${metrics.cashWeek >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatRs(metrics.cashWeek)}</span>
@@ -279,7 +386,7 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1">
               <span className="text-slate-600 font-semibold whitespace-nowrap">This Month</span>
-              {hideCashBank ? (
+              {hideCash ? (
                 <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
                 <span className={`font-bold tabular-nums ${metrics.cashMonth >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatRs(metrics.cashMonth)}</span>
@@ -296,16 +403,16 @@ export const Dashboard: React.FC = () => {
             </h3>
             <button
               type="button"
-              onClick={toggleHideCashBank}
+              onClick={toggleHideBank}
               className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-              title={hideCashBank ? "Show Bank Flow" : "Hide Bank Flow"}
+              title={hideBank ? "Show Bank Flow" : "Hide Bank Flow"}
             >
-              {hideCashBank ? <Eye className="h-3.5 w-3.5 text-blue-600" /> : <EyeOff className="h-3.5 w-3.5" />}
+              {hideBank ? <Eye className="h-3.5 w-3.5 text-blue-600" /> : <EyeOff className="h-3.5 w-3.5" />}
             </button>
           </div>
           <div className="mb-1.5 pb-1.5 border-b border-slate-100 flex justify-between items-center">
             <span className="text-xs font-bold text-slate-600 whitespace-nowrap">Total in Bank</span>
-            {hideCashBank ? (
+            {hideBank ? (
               <span className="text-xs font-black tracking-widest text-slate-400 font-mono">••••••••</span>
             ) : (
               <span className={`text-xs font-bold tabular-nums ${metrics.bankAllTime >= 0 ? 'text-blue-700' : 'text-rose-600'}`}>{formatRs(metrics.bankAllTime)}</span>
@@ -314,7 +421,7 @@ export const Dashboard: React.FC = () => {
           <div className="space-y-1">
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-500 whitespace-nowrap">Today</span>
-              {hideCashBank ? (
+              {hideBank ? (
                 <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
                 <span className={`font-bold tabular-nums ${metrics.bankToday >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>{formatRs(metrics.bankToday)}</span>
@@ -322,7 +429,7 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-500 whitespace-nowrap">This Week</span>
-              {hideCashBank ? (
+              {hideBank ? (
                 <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
                 <span className={`font-bold tabular-nums ${metrics.bankWeek >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>{formatRs(metrics.bankWeek)}</span>
@@ -330,7 +437,7 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className="flex justify-between items-center text-xs border-t border-slate-100 pt-1">
               <span className="text-slate-600 font-semibold whitespace-nowrap">This Month</span>
-              {hideCashBank ? (
+              {hideBank ? (
                 <span className="text-[10px] font-bold tracking-widest text-slate-400 font-mono">••••••••</span>
               ) : (
                 <span className={`font-bold tabular-nums ${metrics.bankMonth >= 0 ? 'text-blue-700' : 'text-rose-600'}`}>{formatRs(metrics.bankMonth)}</span>

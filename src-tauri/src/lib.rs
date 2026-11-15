@@ -31,8 +31,7 @@ use adjustments::*;
 use attendance::*;
 use google_oauth::*;
 use investors::*;
-use tauri::Manager;
-
+use tauri::{Manager, Emitter};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -57,6 +56,7 @@ pub fn run() {
             process_return,
             process_cash_transaction,
             process_journal_voucher,
+            process_contra_transfer,
             get_workers,
             get_attendance,
             mark_attendance,
@@ -117,6 +117,9 @@ pub fn run() {
             get_invoices,
             get_invoice_lines,
             get_all_ledger_entries,
+            get_profit_metrics,
+            open_file,
+            get_financial_breakdown,
 
             // Admin & utilities
             // Backup
@@ -155,8 +158,15 @@ pub fn run() {
             get_settings,
             save_setting,
             restart_app,
-            test_google_webhook
+            test_google_webhook,
+            force_exit_app
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.emit("request_app_exit", ());
+            }
+        })
         .setup(|mut app| {
             let _ = trial::enforce_trial(&mut app);
             let handle = app.handle().clone();

@@ -21,12 +21,13 @@ export const PurchaseInvoicePanel: React.FC = () => {
 
   useEffect(() => {
     if (!selectedBankId && accounts.length > 0) {
-      const defaultBank = accounts.find(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name);
+      const defaultBank = accounts.find(a => !!a.bank_name && a.bank_name.trim() !== '');
       if (defaultBank) {
         setSelectedBankId(defaultBank.id);
       }
     }
   }, [accounts, selectedBankId]);
+
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [supplierRef, setSupplierRef] = useState<string>('');
 
@@ -86,6 +87,15 @@ export const PurchaseInvoicePanel: React.FC = () => {
   const totalNet = totalGross - totalDiscount;
   const balance = totalNet - (amountPaidCash + amountPaidBank);
 
+  // Auto-fill cash when General Supplier is selected (entertained like walk-in customer)
+  useEffect(() => {
+    const selectedAcc = accounts.find(a => a.id === accountId);
+    if (selectedAcc && (selectedAcc.name.toLowerCase().includes('general supplier') || selectedAcc.id === 19)) {
+      setAmountPaidCash(totalNet);
+      setAmountPaidBank(0);
+    }
+  }, [accountId, totalNet, accounts]);
+
   
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -94,6 +104,13 @@ export const PurchaseInvoicePanel: React.FC = () => {
     
     if (!accountId) { toast.error("Please select a supplier"); return; }
     if (lines.length === 0) { toast.error("Please add at least one line."); return; }
+
+    const selectedAcc = accounts.find(a => a.id === accountId);
+    const isGeneralSupplier = selectedAcc && (selectedAcc.name.toLowerCase().includes('general supplier') || selectedAcc.id === 19);
+    if (balance > 0.01 && isGeneralSupplier) {
+      toast.error('جنرل سپلائر (General Supplier) پر ادھار نہیں کیا جا سکتا۔ براہ کرم نقد یا بینک کے ذریعے مکمل ادائیگی درج کریں یا سپلائر کا مخصوص کھاتہ منتخب کریں!', { duration: 6000 });
+      return;
+    }
     for (const line of lines) {
       if (!line.product_id) { toast.error("Please select a valid product for all lines."); return; }
       if (line.qty <= 0) { toast.error("Quantity must be greater than 0 for all lines."); return; }
@@ -154,8 +171,9 @@ export const PurchaseInvoicePanel: React.FC = () => {
             totalNet: totalNet,
             amountReceived: totalPaid,
             balance: billBalance,
-            previousBalance: prevBal,
-            netAccountBalance: netAccountBal,
+            previousBalance: isGeneralSupplier ? undefined : prevBal,
+            netAccountBalance: isGeneralSupplier ? undefined : netAccountBal,
+            isWalkIn: isGeneralSupplier,
             paymentMethod,
             bankName,
             accountTitle,

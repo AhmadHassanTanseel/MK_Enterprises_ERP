@@ -26,11 +26,32 @@ export const PurchaseHistoryPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   
 
-    const handleView = async (row: any) => {
+  const handleView = async (row: any) => {
     try {
       const lines = await invoke('get_invoice_lines', { invoiceId: row.id });
-      const acc = accounts.find(a => a.name === row.account_name);
-      generateInvoicePDF(row.invoice_type || 'PURCHASE', row.invoice_no, row.date, acc, lines as any, products, row.t_amount, row.discount, row.net_amount, row.net_amount);
+      const acc = accounts.find(a => a.id === row.account_id || a.name === row.account_name);
+      const paid = row.amount_received !== undefined ? row.amount_received : row.net_amount;
+      const invoiceBal = row.net_amount - paid;
+      const currentAccBal = acc?.current_balance ?? 0;
+      const prevBal = currentAccBal + invoiceBal;
+      generateInvoicePDF(
+        row.invoice_type || 'PURCHASE',
+        row.invoice_no,
+        row.date,
+        acc,
+        lines as any,
+        products,
+        row.t_amount,
+        row.discount,
+        row.net_amount,
+        paid,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        prevBal,
+        currentAccBal
+      );
     } catch (e) {
       toast.error('Failed to load invoice details: ' + e);
     }
@@ -39,23 +60,36 @@ export const PurchaseHistoryPanel: React.FC = () => {
   const handlePrint = async (row: any) => {
     try {
       const lines = await invoke('get_invoice_lines', { invoiceId: row.id });
+      const acc = accounts.find(a => a.id === row.account_id || a.name === row.account_name);
+      const isGeneralSupp = row.account_name?.toLowerCase().includes('general supplier') || (acc && acc.name.toLowerCase().includes('general supplier'));
+      const paid = row.amount_received !== undefined ? row.amount_received : row.net_amount;
+      const invoiceBal = row.net_amount - paid;
+      const currentAccBal = acc?.current_balance ?? 0;
+      const prevBal = currentAccBal + invoiceBal;
+
       printThermalReceipt({
         title: 'PURCHASE INVOICE',
         refNo: row.invoice_no,
         date: row.date,
         accountLabel: 'Supplier',
         accountName: row.account_name,
+        address: acc?.address || '',
+        phone: acc?.contact || row.mobile || '',
+        isWalkIn: isGeneralSupp,
+        isSupplier: true,
         lines: (lines as any).map((l: any) => ({
           product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
-                    qty: l.qty || 0,
+          qty: l.qty || 0,
           rate: l.rate || 0,
           total: l.amount || (((l.qty||0) * (l.rate||0)) - (l.discount_pct||0))
         })),
         totalGross: row.t_amount,
         totalDiscount: row.discount,
         totalNet: row.net_amount,
-        amountReceived: row.net_amount,
-        balance: row.net_amount - row.net_amount
+        amountReceived: paid,
+        balance: invoiceBal,
+        previousBalance: prevBal,
+        netAccountBalance: currentAccBal,
       });
     } catch (e) {
       toast.error('Failed to load invoice details: ' + e);

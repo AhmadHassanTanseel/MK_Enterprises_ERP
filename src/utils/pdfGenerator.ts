@@ -4,7 +4,7 @@ import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
-import { open } from '@tauri-apps/plugin-shell';
+import { invoke } from '@tauri-apps/api/core';
 import React from 'react';
 import { InvoiceLine, Product, Account } from '../app/context/AppContext';
 import { getA4InvoiceHtml } from './pdfTemplate';
@@ -28,7 +28,7 @@ async function savePdf(doc: jsPDF, defaultFileName: string, documentName: string
       React.createElement('span', { className: 'text-xs text-slate-500 break-all' }, filePath),
       React.createElement('div', { className: 'flex gap-2 mt-2' },
         React.createElement('button', {
-          onClick: () => { open(filePath); toast.dismiss(t.id); },
+          onClick: async () => { try { await invoke('open_file', { path: filePath }); } catch (e) { toast.error('Could not open file: ' + e); } toast.dismiss(t.id); },
           className: 'px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700'
         }, 'Open File'),
         React.createElement('button', {
@@ -312,8 +312,10 @@ export async function generateFinancialStatementPDF(
     startY: 60,
     head: [['Description', 'Amount (Rs)']],
     body: [
-      ['Total Revenue', summary.total_revenue.toLocaleString()],
-      ['Total Expenses', summary.total_expenses.toLocaleString()],
+      ['Total Revenue (Sales)', (summary.total_revenue || 0).toLocaleString()],
+      ['Less: Cost of Goods Sold (Purchase Cost)', (summary.cogs || 0).toLocaleString()],
+      ['Gross Profit', (summary.gross_profit || (summary.total_revenue - (summary.cogs || 0))).toLocaleString()],
+      ['Operating Expenses', (summary.operating_expenses || summary.total_expenses).toLocaleString()],
     ],
     foot: [
       ['Net Profit', summary.net_profit.toLocaleString()]

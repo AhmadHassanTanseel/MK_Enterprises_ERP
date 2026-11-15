@@ -37,6 +37,10 @@ export interface FixedLiability {
   name: string;
   amount: number;
   frequency: string;
+  paid_in_period?: number;
+  remaining_due?: number;
+  is_paid?: boolean;
+  last_payment_date?: string | null;
 }
 
 export interface LedgerEntry { id: number; date: string; account_id: number; dr_amount: number; cr_amount: number; description: string; ref_id?: number; ref_type?: string; }

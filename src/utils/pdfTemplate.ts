@@ -13,7 +13,7 @@ export const getA4InvoiceHtml = (data: any) => {
       
       <!-- Official Header (100% English) -->
       <div style="text-align: center; margin-bottom: 20px;">
-        <img src="${ZAWAR_LOGO_BASE64}" style="width: 75px; height: 75px; margin: 0 auto 8px auto; display: block; border-radius: 50%;" />
+        <img src="${ZAWAR_LOGO_BASE64}" style="max-width: 180px; max-height: 65px; width: auto; height: auto; margin: 0 auto 8px auto; display: block; object-fit: contain;" />
         <h1 style="margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 1px; color: #0f172a; text-transform: uppercase;">ZAWAR TRADERS</h1>
         <p style="margin: 3px 0 0; font-size: 13px; font-weight: 600; color: #475569;">Wholesale Dealer & General Order Supplier</p>
         <p style="margin: 3px 0 0; font-size: 12px; color: #64748b;">Main Jhang Chiniot Road, Near Cheesy Crunch, Bhowana</p>
@@ -46,12 +46,14 @@ export const getA4InvoiceHtml = (data: any) => {
         <div>
           <p style="margin: 0 0 5px;"><strong>Payment Method:</strong> ${data.paymentMethod || 'Cash'}</p>
         </div>
+        ${data.bankName && data.bankName !== '_________________' ? `
         <div style="border: 1px solid #e2e8f0; padding: 10px 14px; border-radius: 6px; background: #f8fafc; min-width: 260px;">
           <p style="margin: 0 0 4px; font-weight: bold; color: #334155;">Bank Details for Payment:</p>
-          <p style="margin: 0 0 3px;"><strong>Account Title:</strong> ${data.accountTitle && data.accountTitle !== '_________________' ? data.accountTitle : 'Zawar Traders'}</p>
-          <p style="margin: 0 0 3px;"><strong>Bank Name:</strong> ${data.bankName && data.bankName !== '_________________' ? data.bankName : 'Meezan Bank'}</p>
-          <p style="margin: 0;"><strong>A/C No:</strong> ${data.accountNumber && data.accountNumber !== '_________________' ? data.accountNumber : '0101-0103456789'}</p>
+          <p style="margin: 0 0 3px;"><strong>Account Title:</strong> ${data.accountTitle || 'Zawar Traders'}</p>
+          <p style="margin: 0 0 3px;"><strong>Bank Name:</strong> ${data.bankName}</p>
+          ${data.accountNumber ? `<p style="margin: 0;"><strong>A/C No:</strong> ${data.accountNumber}</p>` : ''}
         </div>
+        ` : ''}
       </div>
 
       <!-- Line Items Table -->
@@ -108,6 +110,16 @@ export const getA4InvoiceHtml = (data: any) => {
             <span>Amount Paid:</span>
             <span>Rs. ${paidToday.toLocaleString()}</span>
           </div>
+          ${(data.cashTendered ?? 0) > 0 ? `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Cash Tendered:</span>
+            <span>Rs. ${(data.cashTendered || 0).toLocaleString()}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; color: #16a34a;">
+            <span>Change Return:</span>
+            <span>Rs. ${(data.changeReturn || 0).toLocaleString()}</span>
+          </div>
+          ` : ''}
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Invoice Balance:</span>
             <span>Rs. ${(data.balance)?.toLocaleString() || "0"}</span>

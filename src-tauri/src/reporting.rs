@@ -1,3 +1,4 @@
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool, Row};
 use tauri::State;
@@ -164,11 +165,13 @@ pub struct SalesHistoryRow {
     pub id: i64,
     pub invoice_no: String,
     pub date: String,
+    pub account_id: i64,
     pub account_name: String,
     pub mobile: Option<String>,
     pub net_amount: f64,
     pub t_amount: f64, // Total Amount (Gross)
     pub discount: f64,
+    pub amount_received: f64,
     pub status: String, // DRAFT, POSTED, PAID, OVERDUE
     pub invoice_type: String,
 }
@@ -181,11 +184,13 @@ pub async fn get_purchase_history(db: State<'_, SqlitePool>) -> Result<Vec<Sales
             i.id, 
             i.invoice_number as invoice_no, 
             datetime(i.invoice_date, 'localtime') as date, 
+            i.account_id,
             a.name as account_name, 
             a.contact as mobile, 
             i.net_amount, 
             i.gross_amount as t_amount, 
             i.discount_amount as discount, 
+            COALESCE(i.amount_received, 0.0) as amount_received,
             i.status,
             i.invoice_type
         FROM invoices i
@@ -207,6 +212,7 @@ pub async fn get_sales_history(db: State<'_, SqlitePool>) -> Result<Vec<SalesHis
             i.id, 
             i.invoice_number as invoice_no, 
             datetime(i.invoice_date, 'localtime') as date, 
+            i.account_id,
             CASE 
                 WHEN i.invoice_number LIKE 'DISP-%' AND da.name IS NOT NULL AND da.id != 2 AND ds.name IS NOT NULL 
                     THEN da.name || ' [Driver: ' || ds.name || ']'
@@ -224,6 +230,7 @@ pub async fn get_sales_history(db: State<'_, SqlitePool>) -> Result<Vec<SalesHis
             i.net_amount, 
             i.gross_amount as t_amount, 
             i.discount_amount as discount, 
+            COALESCE(i.amount_received, 0.0) as amount_received,
             i.status,
             i.invoice_type
         FROM invoices i
@@ -650,114 +657,119 @@ async fn run_trial_balance_report(pool: &SqlitePool, filters: &ReportFilters) ->
 
 
 async fn run_profit_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
-    let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "invoice_date");
+    let inv_date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "i.invoice_date");
 
+    // 1. Sales and Cost of Goods Sold (COGS) based on actual items sold
     let sql = format!(
         r#"
         SELECT
-            invoice_type,
-            COUNT(*) as txn_count,
-            COALESCE(SUM(net_amount), 0) as total_amount
-        FROM invoices
-        WHERE invoice_type IN ('SALE', 'SALE_RETURN', 'PURCHASE', 'PURCHASE_RETURN'){date_clause}
-        GROUP BY invoice_type
+            i.invoice_type,
+            COUNT(DISTINCT i.id) as txn_count,
+            COALESCE(SUM(ii.total_price), 0.0) as total_revenue,
+            COALESCE(SUM(ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0)), 0.0) as total_cogs
+        FROM invoices i
+        JOIN invoice_items ii ON ii.invoice_id = i.id
+        LEFT JOIN products p ON ii.product_id = p.id
+        WHERE i.invoice_type IN ('SALE', 'SALE_RETURN'){inv_date_clause}
+        GROUP BY i.invoice_type
         "#
     );
 
-    let rows: Vec<(String, i64, f64)> =
+    let rows: Vec<(String, i64, f64, f64)> =
         sqlx::query_as(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
 
-    let mut sales = 0.0;
-    let mut sale_returns = 0.0;
-    let mut purchases = 0.0;
-    let mut purchase_returns = 0.0;
+    let mut sales_rev = 0.0;
+    let mut sales_cogs = 0.0;
+    let mut returns_rev = 0.0;
+    let mut returns_cogs = 0.0;
 
-    for (invoice_type, _count, amount) in &rows {
+    for (invoice_type, _count, rev, cogs) in &rows {
         match invoice_type.as_str() {
             "SALE" => {
-                sales = *amount;
+                sales_rev = *rev;
+                sales_cogs = *cogs;
             }
             "SALE_RETURN" => {
-                sale_returns = *amount;
-            }
-            "PURCHASE" => {
-                purchases = *amount;
-            }
-            "PURCHASE_RETURN" => {
-                purchase_returns = *amount;
+                returns_rev = *rev;
+                returns_cogs = *cogs;
             }
             _ => {}
         }
     }
 
-    let net_sales = sales - sale_returns;
-    let net_purchases = purchases - purchase_returns;
-    let gross_profit = net_sales - net_purchases;
+    let net_sales = sales_rev - returns_rev;
+    let net_cogs = sales_cogs - returns_cogs;
+    let gross_profit = net_sales - net_cogs;
 
-    // --- NEW: FETCH REGULAR EXPENSES ---
+    // 2. Also fetch stock purchases for informational memo
+    let purch_sql = format!(
+        r#"
+        SELECT
+            invoice_type,
+            COALESCE(SUM(net_amount), 0.0) as total_amount
+        FROM invoices
+        WHERE invoice_type IN ('PURCHASE', 'PURCHASE_RETURN'){inv_date_clause}
+        GROUP BY invoice_type
+        "#
+    );
+    let purch_rows: Vec<(String, f64)> = sqlx::query_as(&purch_sql).fetch_all(pool).await.unwrap_or_default();
+    let mut purchases = 0.0;
+    let mut purchase_returns = 0.0;
+    for (ptype, amt) in &purch_rows {
+        if ptype == "PURCHASE" { purchases = *amt; }
+        else if ptype == "PURCHASE_RETURN" { purchase_returns = *amt; }
+    }
+    let net_purchases = purchases - purchase_returns;
+
+    // 3. Operating expenses (strictly excluding inventory purchases)
     let je_date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "je.entry_date");
     let exp_sql = format!(
         r#"
-        SELECT COALESCE(SUM(je.debit - je.credit), 0) as exp_total
+        SELECT a.name, COALESCE(SUM(je.debit - je.credit), 0.0) as exp_total
         FROM journal_entries je
         JOIN accounts a ON je.account_id = a.id
         JOIN account_types at ON a.account_type_id = at.id
-        WHERE at.nature = 'EXPENSE'{je_date_clause}
+        WHERE at.nature = 'EXPENSE'
+          AND a.id != 4
+          AND at.id != 6
+          {je_date_clause}
+        GROUP BY a.id, a.name
+        HAVING exp_total != 0.0
+        ORDER BY exp_total DESC
         "#
     );
-    let exp_row: Option<(f64,)> = sqlx::query_as(&exp_sql).fetch_optional(pool).await.map_err(|e| e.to_string())?;
-    let regular_expenses = exp_row.map(|r| r.0).unwrap_or(0.0);
+    let exp_rows: Vec<(String, f64)> = sqlx::query_as(&exp_sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let regular_expenses: f64 = exp_rows.iter().map(|r| r.1).sum();
 
-    // --- NEW: CALCULATE FIXED LIABILITIES ---
-    // 1. Calculate number of days in the range
-    let fd_str = filters.from_date.clone().unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
-    let td_str = filters.to_date.clone().unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
-    
-    let fd = chrono::NaiveDate::parse_from_str(&fd_str, "%Y-%m-%d").unwrap_or_else(|_| chrono::Local::now().naive_local().date());
-    let td = chrono::NaiveDate::parse_from_str(&td_str, "%Y-%m-%d").unwrap_or_else(|_| chrono::Local::now().naive_local().date());
-    
-    let mut days = (td - fd).num_days() + 1; // +1 to be inclusive
-    if days < 1 { days = 1; }
-
-    // 2. Fetch all fixed liabilities
-    let fl_rows: Vec<(String, f64, String)> = sqlx::query_as("SELECT name, amount, frequency FROM fixed_liabilities")
-        .fetch_all(pool).await.map_err(|e| e.to_string())?;
-
-    let mut fixed_liabilities_total = 0.0;
-    for (_name, amount, frequency) in &fl_rows {
-        if frequency == "DAILY" {
-            fixed_liabilities_total += amount * (days as f64);
-        } else if frequency == "MONTHLY" {
-            // Pro-rate monthly (assuming 30 days per month)
-            fixed_liabilities_total += (amount / 30.0) * (days as f64);
-        }
-    }
-
-    let net_profit = gross_profit - regular_expenses - fixed_liabilities_total;
+    let total_expenses = regular_expenses;
+    let net_profit = gross_profit - total_expenses;
 
     let mut report_rows = vec![
-        vec!["Sales".into(), "".into(), format!("{:.2}", sales)],
-        vec!["Sale Returns".into(), "".into(), format!("{:.2}", sale_returns)],
-        vec!["Purchases".into(), "".into(), format!("{:.2}", purchases)],
-        vec!["Purchase Returns".into(), "".into(), format!("{:.2}", purchase_returns)],
+        vec!["Gross Sales".into(), "".into(), format!("{:.2}", sales_rev)],
+        vec!["Less: Sale Returns".into(), "".into(), format!("{:.2}", returns_rev)],
+        vec!["Net Sales Revenue".into(), "".into(), format!("{:.2}", net_sales)],
         vec!["---".into(), "".into(), "---".into()],
-        vec!["Gross Profit".into(), "".into(), format!("{:.2}", gross_profit)],
+        vec!["Cost of Goods Sold (Purchase Cost of Items Sold)".into(), "".into(), format!("{:.2}", net_cogs)],
         vec!["---".into(), "".into(), "---".into()],
-        vec!["Regular Expenses".into(), "".into(), format!("{:.2}", regular_expenses)],
+        vec!["GROSS PROFIT (Sales - Purchase Cost)".into(), "".into(), format!("{:.2}", gross_profit)],
+        vec!["---".into(), "".into(), "---".into()],
     ];
 
-    for (name, amount, frequency) in &fl_rows {
-        let calc_amt = if frequency == "DAILY" { amount * (days as f64) } else { (amount / 30.0) * (days as f64) };
-        report_rows.push(vec![
-            format!("Fixed Liab: {} ({})", name, frequency), 
-            "".into(), 
-            format!("{:.2}", calc_amt)
-        ]);
+    if exp_rows.is_empty() {
+        report_rows.push(vec!["Operating Expenses".into(), "".into(), "0.00".into()]);
+    } else {
+        for (name, amt) in &exp_rows {
+            report_rows.push(vec![format!("Expense: {}", name), "".into(), format!("{:.2}", amt)]);
+        }
+        report_rows.push(vec!["Total Operating Expenses".into(), "".into(), format!("{:.2}", regular_expenses)]);
     }
+
+
 
     report_rows.push(vec!["---".into(), "".into(), "---".into()]);
     report_rows.push(vec!["NET PROFIT".into(), "".into(), format!("{:.2}", net_profit)]);
-
+    report_rows.push(vec!["---".into(), "".into(), "---".into()]);
+    report_rows.push(vec!["Memo: Net Stock Purchases (For Inventory)".into(), "".into(), format!("{:.2}", net_purchases)]);
 
     Ok(ReportResult {
         title: "Profit Report".into(),
@@ -768,6 +780,122 @@ async fn run_profit_report(pool: &SqlitePool, filters: &ReportFilters) -> Result
             ReportTotal { label: "Net Profit".into(), value: net_profit },
         ],
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeriodProfit {
+    pub sales: f64,
+    pub cogs: f64,
+    pub gross_profit: f64,
+    pub expenses: f64,
+    pub fixed_liabilities: f64,
+    pub net_profit: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProfitMetrics {
+    pub today: PeriodProfit,
+    pub week: PeriodProfit,
+    pub month: PeriodProfit,
+}
+
+async fn calculate_period_profit(
+    pool: &SqlitePool, 
+    start_date: &str, 
+    end_date: &str,
+    _fl_rows: &[(String, f64, String)]
+) -> Result<PeriodProfit, String> {
+    let sql = r#"
+        SELECT
+            i.invoice_type,
+            COALESCE(SUM(ii.total_price), 0.0) as revenue,
+            COALESCE(SUM(ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0)), 0.0) as cogs
+        FROM invoices i
+        JOIN invoice_items ii ON ii.invoice_id = i.id
+        LEFT JOIN products p ON ii.product_id = p.id
+        WHERE i.invoice_type IN ('SALE', 'SALE_RETURN')
+          AND date(i.invoice_date) BETWEEN date(?) AND date(?)
+        GROUP BY i.invoice_type
+    "#;
+    let rows: Vec<(String, f64, f64)> = sqlx::query_as(sql)
+        .bind(start_date)
+        .bind(end_date)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut sales_rev = 0.0;
+    let mut sales_cogs = 0.0;
+    let mut returns_rev = 0.0;
+    let mut returns_cogs = 0.0;
+
+    for (itype, rev, cogs) in rows {
+        if itype == "SALE" {
+            sales_rev = rev;
+            sales_cogs = cogs;
+        } else if itype == "SALE_RETURN" {
+            returns_rev = rev;
+            returns_cogs = cogs;
+        }
+    }
+
+    let sales = sales_rev - returns_rev;
+    let cogs = sales_cogs - returns_cogs;
+    let gross_profit = sales - cogs;
+
+    let exp_sql = r#"
+        SELECT COALESCE(SUM(je.debit - je.credit), 0.0)
+        FROM journal_entries je
+        JOIN accounts a ON je.account_id = a.id
+        JOIN account_types at ON a.account_type_id = at.id
+        WHERE at.nature = 'EXPENSE'
+          AND a.id != 4
+          AND at.id != 6
+          AND date(je.entry_date) BETWEEN date(?) AND date(?)
+    "#;
+    let exp_row: (f64,) = sqlx::query_as(exp_sql)
+        .bind(start_date)
+        .bind(end_date)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let expenses = exp_row.0;
+
+    let fixed_liabilities = 0.0;
+    let net_profit = gross_profit - expenses;
+
+    Ok(PeriodProfit {
+        sales,
+        cogs,
+        gross_profit,
+        expenses,
+        fixed_liabilities,
+        net_profit,
+    })
+}
+
+#[tauri::command]
+pub async fn get_profit_metrics(db: State<'_, SqlitePool>) -> Result<ProfitMetrics, String> {
+    let now = chrono::Local::now().naive_local().date();
+    let today_str = now.format("%Y-%m-%d").to_string();
+
+    let days_from_sun = now.weekday().num_days_from_sunday();
+    let start_of_week = now - chrono::Duration::days(days_from_sun as i64);
+    let start_of_week_str = start_of_week.format("%Y-%m-%d").to_string();
+
+    let start_of_month = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap_or(now);
+    let start_of_month_str = start_of_month.format("%Y-%m-%d").to_string();
+
+    let fl_rows: Vec<(String, f64, String)> = sqlx::query_as("SELECT name, amount, frequency FROM fixed_liabilities")
+        .fetch_all(&*db)
+        .await
+        .unwrap_or_default();
+
+    let today = calculate_period_profit(&*db, &today_str, &today_str, &fl_rows).await?;
+    let week = calculate_period_profit(&*db, &start_of_week_str, &today_str, &fl_rows).await?;
+    let month = calculate_period_profit(&*db, &start_of_month_str, &today_str, &fl_rows).await?;
+
+    Ok(ProfitMetrics { today, week, month })
 }
 async fn run_asset_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
     let mut sql = String::from(r#"
@@ -1137,6 +1265,9 @@ pub async fn run_adjustments_report(from_date: &str, to_date: &str, db: State<'_
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FinancialSummary {
     pub total_revenue: f64,
+    pub cogs: f64,
+    pub gross_profit: f64,
+    pub operating_expenses: f64,
     pub total_expenses: f64,
     pub net_profit: f64,
     pub total_assets: f64,
@@ -1150,113 +1281,207 @@ pub async fn get_financial_summary(
     end_date: Option<String>,
     db: State<'_, SqlitePool>
 ) -> Result<FinancialSummary, String> {
-    let mut conn = db.acquire().await.map_err(|e| e.to_string())?;
-
-    let has_date_filter = start_date.is_some() && end_date.is_some();
+    let pool = &*db;
     let sd = start_date.unwrap_or_else(|| "1970-01-01".to_string());
     let ed = end_date.unwrap_or_else(|| "2999-12-31".to_string());
 
-    // For Revenue (Income) and Expenses, we use the date range.
-    // For Assets, Liabilities, and Equity, we sum everything up to the end_date.
-    let rows = sqlx::query(
+    // 1. Sales Revenue and COGS (Cost of Goods Sold) for the date range
+    let cogs_row: (f64, f64) = sqlx::query_as(
         r#"
-        SELECT at.nature, 
-               SUM(CASE WHEN at.nature IN ('INCOME', 'REVENUE', 'EXPENSE') THEN 
-                       CASE WHEN date(je.entry_date) BETWEEN date(?) AND date(?) THEN je.debit ELSE 0 END
-                   ELSE 
-                       CASE WHEN date(je.entry_date) <= date(?) THEN je.debit ELSE 0 END
-                   END) as total_debit,
-               SUM(CASE WHEN at.nature IN ('INCOME', 'REVENUE', 'EXPENSE') THEN 
-                       CASE WHEN date(je.entry_date) BETWEEN date(?) AND date(?) THEN je.credit ELSE 0 END
-                   ELSE 
-                       CASE WHEN date(je.entry_date) <= date(?) THEN je.credit ELSE 0 END
-                   END) as total_credit
+        SELECT
+            COALESCE(SUM(CASE WHEN i.invoice_type = 'SALE' THEN ii.total_price 
+                              WHEN i.invoice_type = 'SALE_RETURN' THEN -ii.total_price ELSE 0.0 END), 0.0),
+            COALESCE(SUM(CASE WHEN i.invoice_type = 'SALE' THEN (ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0))
+                              WHEN i.invoice_type = 'SALE_RETURN' THEN -(ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0)) ELSE 0.0 END), 0.0)
+        FROM invoices i
+        JOIN invoice_items ii ON ii.invoice_id = i.id
+        LEFT JOIN products p ON ii.product_id = p.id
+        WHERE i.invoice_type IN ('SALE', 'SALE_RETURN')
+          AND date(i.invoice_date) BETWEEN date(?) AND date(?)
+        "#
+    )
+    .bind(&sd).bind(&ed)
+    .fetch_one(pool)
+    .await
+    .unwrap_or((0.0, 0.0));
+
+    let sales_revenue = cogs_row.0;
+    let cogs = cogs_row.1;
+    let gross_profit = sales_revenue - cogs;
+
+    // 2. Real Operating Expenses from Journal Entries
+    let op_exp: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(je.debit - je.credit), 0.0)
         FROM journal_entries je
         JOIN accounts a ON a.id = je.account_id
         JOIN account_types at ON at.id = a.account_type_id
-        GROUP BY at.nature
+        WHERE at.nature = 'EXPENSE'
+          AND a.account_type_id != 16
+          AND a.id NOT IN (4, 8, 18, 24)
+          AND at.id != 6
+          AND date(je.entry_date) BETWEEN date(?) AND date(?)
         "#
     )
-    .bind(&sd).bind(&ed).bind(&ed)
-    .bind(&sd).bind(&ed).bind(&ed)
-    .fetch_all(&mut *conn)
+    .bind(&sd).bind(&ed)
+    .fetch_one(pool)
     .await
-    .map_err(|e| e.to_string())?;
+    .unwrap_or(0.0);
 
-    let mut rev = 0.0;
-    let mut exp = 0.0;
-    let mut ast = 0.0;
-    let mut lia = 0.0;
-    let mut equ = 0.0;
+    let operating_expenses = op_exp;
+    let total_expenses = cogs + operating_expenses;
+    let net_profit = gross_profit - operating_expenses;
 
-    for row in rows {
-        let nature: String = sqlx::Row::try_get(&row, "nature").unwrap_or_default();
-        let debit: f64 = sqlx::Row::try_get(&row, "total_debit").unwrap_or(0.0);
-        let credit: f64 = sqlx::Row::try_get(&row, "total_credit").unwrap_or(0.0);
+    // 3. ASSETS (Calculated up to ed)
+    // a. Cash in Drawer (Account ID 1)
+    let cash_bal: f64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(debit - credit), 0.0) FROM journal_entries WHERE account_id = 1 AND date(entry_date) <= date(?)"
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
 
-        match nature.as_str() {
-            "INCOME" | "REVENUE" => rev += credit - debit,
-            "EXPENSE" => exp += debit - credit,
-            "ASSET" => ast += debit - credit,
-            "LIABILITY" => lia += credit - debit,
-            "EQUITY" => equ += credit - debit,
-            _ => {}
-        }
-    }
+    // b. Bank Accounts
+    let bank_bal: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(je.debit - je.credit), 0.0)
+        FROM accounts a
+        LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+        WHERE a.bank_name IS NOT NULL AND a.bank_name != ''
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
 
-    // --- Fixed Liabilities: Calculated for filtered date range or all-time ---
-    let mut days = 1;
-    if has_date_filter {
-        if let (Ok(s), Ok(e)) = (
-            chrono::NaiveDate::parse_from_str(&sd, "%Y-%m-%d"),
-            chrono::NaiveDate::parse_from_str(&ed, "%Y-%m-%d"),
-        ) {
-            days = (e - s).num_days() + 1;
-            if days < 1 { days = 1; }
-        }
-    } else {
-        let first_date_opt: Option<(Option<String>,)> = sqlx::query_as("SELECT MIN(entry_date) FROM journal_entries")
-            .fetch_optional(&mut *conn).await.map_err(|e| e.to_string())?;
-        
-        if let Some((Some(first_date_str),)) = first_date_opt {
-            let fd_clean = first_date_str.split(' ').next().unwrap_or(&first_date_str);
-            if let Ok(fd) = chrono::NaiveDate::parse_from_str(fd_clean, "%Y-%m-%d") {
-                let td = chrono::Local::now().naive_local().date();
-                days = (td - fd).num_days() + 1;
-                if days < 1 { days = 1; }
-            }
-        }
-    }
+    // c. Accounts Receivable (Customers, Salesmen & Loans with debit > credit > 0)
+    let recv_bal: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(bal), 0.0) FROM (
+            SELECT COALESCE(SUM(je.debit - je.credit), 0.0) as bal
+            FROM accounts a
+            LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+            WHERE a.account_type_id IN (2, 14, 17)
+            GROUP BY a.id
+            HAVING bal > 0.001
+        )
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
 
-    let fl_rows: Vec<(String, f64, String)> = sqlx::query_as("SELECT name, amount, frequency FROM fixed_liabilities")
-        .fetch_all(&mut *conn).await.map_err(|e| e.to_string())?;
+    // d. Live Stock Valuation (Quantity * Cost up to ed)
+    let stock_val: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(im.quantity * p.purchase_price), 0.0)
+        FROM inventory_movements im
+        JOIN products p ON im.product_id = p.id
+        WHERE date(im.created_at) <= date(?)
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
 
-    let mut fixed_liabilities_total = 0.0;
-    for (_name, amount, frequency) in fl_rows {
-        if frequency == "DAILY" {
-            fixed_liabilities_total += amount * (days as f64);
-        } else if frequency == "MONTHLY" {
-            fixed_liabilities_total += (amount / 30.0) * (days as f64);
-        }
-    }
+    // e. Fixed Assets (Account type 9 with debit > credit > 0)
+    let fixed_assets: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(bal), 0.0) FROM (
+            SELECT COALESCE(SUM(je.debit - je.credit), 0.0) as bal
+            FROM accounts a
+            LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+            WHERE a.account_type_id = 9
+            GROUP BY a.id
+            HAVING bal > 0.001
+        )
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
 
-    // Add fixed liabilities to total expenses and total liabilities to keep balance sheet balanced
-    exp += fixed_liabilities_total;
-    lia += fixed_liabilities_total;
+    let total_assets = cash_bal + bank_bal + recv_bal + stock_val + fixed_assets;
 
-    let net_profit = rev - exp;
-    let total_equity = equ + net_profit;
+    // 4. LIABILITIES (Real Payables up to ed)
+    // a. Supplier Payables (Suppliers with credit > debit > 0)
+    let supp_pay: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(bal), 0.0) FROM (
+            SELECT COALESCE(SUM(je.credit - je.debit), 0.0) as bal
+            FROM accounts a
+            LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+            WHERE a.account_type_id = 4
+            GROUP BY a.id
+            HAVING bal > 0.001
+        )
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+    // b. Customer & Salesman Overpayments / Advances to pay back (credit > debit > 0)
+    let cust_pay: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(bal), 0.0) FROM (
+            SELECT COALESCE(SUM(je.credit - je.debit), 0.0) as bal
+            FROM accounts a
+            LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+            WHERE a.account_type_id IN (2, 14, 17)
+            GROUP BY a.id
+            HAVING bal > 0.001
+        )
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+    // c. Staff Unpaid Salaries (credit > debit > 0)
+    let staff_unpaid: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(bal), 0.0) FROM (
+            SELECT COALESCE(SUM(je.credit - je.debit), 0.0) as bal
+            FROM accounts a
+            LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+            WHERE a.account_type_id = 15
+            GROUP BY a.id
+            HAVING bal > 0.001
+        )
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+    // d. Other Liabilities (nature = LIABILITY excluding suppliers, staff, equity)
+    let other_liab: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(bal), 0.0) FROM (
+            SELECT COALESCE(SUM(je.credit - je.debit), 0.0) as bal
+            FROM accounts a
+            JOIN account_types at ON a.account_type_id = at.id
+            LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+            WHERE at.nature = 'LIABILITY' AND a.account_type_id NOT IN (4, 15, 16)
+            GROUP BY a.id
+            HAVING bal > 0.001
+        )
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+    let total_liabilities = supp_pay + cust_pay + staff_unpaid + other_liab;
+
+    // 5. EQUITY (Capital + Net Profit / Retained Earnings)
+    let investor_capital: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(je.credit - je.debit), 0.0)
+        FROM accounts a
+        LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+        WHERE a.account_type_id = 16
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+    let total_equity = investor_capital + net_profit;
 
     Ok(FinancialSummary {
-        total_revenue: rev,
-        total_expenses: exp,
+        total_revenue: sales_revenue,
+        cogs,
+        gross_profit,
+        operating_expenses,
+        total_expenses,
         net_profit,
-        total_assets: ast,
-        total_liabilities: lia,
+        total_assets,
+        total_liabilities,
         total_equity,
     })
 }
-
 
 async fn run_bankbook_report(pool: &SqlitePool, filters: &ReportFilters) -> Result<ReportResult, String> {
     let date_clause = date_filter_clause(&filters.from_date, &filters.to_date, "je.entry_date");
@@ -1351,4 +1576,633 @@ pub async fn get_product_purchase_history(product_id: i64, db: tauri::State<'_, 
     .fetch_all(&*db)
     .await
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_file(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path])
+            .spawn()
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+    }
+    Ok(())
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FinancialBreakdownItem {
+    pub name: String,
+    pub category: String,
+    pub details: Option<String>,
+    pub amount: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FinancialBreakdownResult {
+    pub metric: String,
+    pub title: String,
+    pub formula: String,
+    pub items: Vec<FinancialBreakdownItem>,
+    pub total: f64,
+}
+
+#[tauri::command]
+pub async fn get_financial_breakdown(
+    metric: String,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    db: State<'_, SqlitePool>,
+) -> Result<FinancialBreakdownResult, String> {
+    let pool = &*db;
+    let sd = start_date.unwrap_or_else(|| "1970-01-01".to_string());
+    let ed = end_date.unwrap_or_else(|| "2999-12-31".to_string());
+
+    match metric.to_uppercase().as_str() {
+        "LIABILITIES" => {
+            let mut items = Vec::new();
+
+            // 1. Supplier Payables (Accounts Payable with positive credit balance)
+            let supp_rows: Vec<(String, Option<String>, f64)> = sqlx::query_as(
+                r#"
+                SELECT a.name, a.contact,
+                       COALESCE(SUM(je.credit - je.debit), 0.0) as bal
+                FROM accounts a
+                LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+                WHERE a.account_type_id = 4
+                GROUP BY a.id, a.name
+                HAVING bal > 0.001
+                ORDER BY bal DESC
+                "#
+            )
+            .bind(&ed)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            for (name, contact, bal) in supp_rows {
+                items.push(FinancialBreakdownItem {
+                    name,
+                    category: "Accounts Payable (سپلائر کھاتہ)".into(),
+                    details: contact.map(|c| format!("Contact: {}", c)),
+                    amount: bal,
+                });
+            }
+
+            // 2. Customer & Salesman Overpayments / Credit Balances (To Pay / Advance liabilities)
+            let cust_rows: Vec<(String, Option<String>, i64, f64)> = sqlx::query_as(
+                r#"
+                SELECT a.name, a.contact, a.account_type_id,
+                       COALESCE(SUM(je.credit - je.debit), 0.0) as bal
+                FROM accounts a
+                LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+                WHERE a.account_type_id IN (2, 14, 17)
+                GROUP BY a.id, a.name
+                HAVING bal > 0.001
+                ORDER BY bal DESC
+                "#
+            )
+            .bind(&ed)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            for (name, contact, acc_type, bal) in cust_rows {
+                let cat_label = if acc_type == 14 {
+                    "Salesman Credit / Payable (سیلز مین واجب الاداء بقایا)"
+                } else if acc_type == 17 {
+                    "Loan Payable / Overpayment (قرضہ واپسی واجب الاداء)"
+                } else {
+                    "Customer Advance / Overpayment (گاہک ایڈوانس / واجب الاداء بقایا)"
+                };
+                items.push(FinancialBreakdownItem {
+                    name,
+                    category: cat_label.into(),
+                    details: contact.map(|c| format!("Contact: {}", c)),
+                    amount: bal,
+                });
+            }
+
+            // 3. Staff Unpaid Salaries
+            let staff_rows: Vec<(String, Option<String>, f64)> = sqlx::query_as(
+                r#"
+                SELECT a.name, a.contact,
+                       COALESCE(SUM(je.credit - je.debit), 0.0) as bal
+                FROM accounts a
+                LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+                WHERE a.account_type_id = 15
+                GROUP BY a.id, a.name
+                HAVING bal > 0.001
+                ORDER BY bal DESC
+                "#
+            )
+            .bind(&ed)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            for (name, contact, bal) in staff_rows {
+                items.push(FinancialBreakdownItem {
+                    name,
+                    category: "Staff Unpaid Salary (ملازمین واجب الاداء تنخواہ)".into(),
+                    details: contact.map(|c| format!("Contact: {}", c)),
+                    amount: bal,
+                });
+            }
+
+            // 4. Other Liabilities
+            let other_rows: Vec<(String, Option<String>, f64)> = sqlx::query_as(
+                r#"
+                SELECT a.name, at.name,
+                       COALESCE(SUM(je.credit - je.debit), 0.0) as bal
+                FROM accounts a
+                JOIN account_types at ON a.account_type_id = at.id
+                LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+                WHERE at.nature = 'LIABILITY' AND a.account_type_id NOT IN (4, 15, 16)
+                GROUP BY a.id, a.name
+                HAVING bal > 0.001
+                ORDER BY bal DESC
+                "#
+            )
+            .bind(&ed)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            for (name, at_name, bal) in other_rows {
+                items.push(FinancialBreakdownItem {
+                    name,
+                    category: format!("Other Liability ({})", at_name.unwrap_or_default()),
+                    details: None,
+                    amount: bal,
+                });
+            }
+
+            let total: f64 = items.iter().map(|i| i.amount).sum();
+            Ok(FinancialBreakdownResult {
+                metric: "LIABILITIES".into(),
+                title: "Total Liabilities Breakdown (واجبات کی مکمل تفصیل)".into(),
+                formula: "Total Liabilities = Supplier Payables (سپلائرز کے واجبات) + Customer/Salesman Advances & Overpayments (گاہکوں اور سیلزمینوں کے واجب الاداء بقایا جات) + Accrued Liabilities".into(),
+                items,
+                total,
+            })
+        }
+        "ASSETS" => {
+            let mut items = Vec::new();
+
+            // 1. Cash in Drawer (Account ID 1)
+            let cash_bal: f64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(debit - credit), 0.0) FROM journal_entries WHERE account_id = 1 AND date(entry_date) <= date(?)"
+            )
+            .bind(&ed)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0.0);
+
+            items.push(FinancialBreakdownItem {
+                name: "Cash in Drawer (دکان میں موجود کیش)".into(),
+                category: "Cash & Liquid (کیش ان ہینڈ)".into(),
+                details: Some("Account ID 1 (Cash In Hand)".into()),
+                amount: cash_bal,
+            });
+
+            // 2. Bank Accounts
+            let bank_rows: Vec<(String, Option<String>, Option<String>, f64)> = sqlx::query_as(
+                r#"
+                SELECT a.name, a.bank_name, a.account_number,
+                       COALESCE(SUM(je.debit - je.credit), 0.0) as bal
+                FROM accounts a
+                LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+                WHERE a.bank_name IS NOT NULL AND a.bank_name != ''
+                GROUP BY a.id, a.name
+                HAVING ABS(bal) > 0.001
+                "#
+            )
+            .bind(&ed)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            for (name, b_name, acc_num, bal) in bank_rows {
+                let display_name = b_name.filter(|s| !s.trim().is_empty()).unwrap_or(name);
+                items.push(FinancialBreakdownItem {
+                    name: display_name,
+                    category: "Bank Account (بینک اکاؤنٹ)".into(),
+                    details: acc_num.map(|n| format!("A/C: {}", n)),
+                    amount: bal,
+                });
+            }
+
+            // 3. Accounts Receivable (Customers & Salesmen with debit > credit > 0)
+            let ar_rows: Vec<(String, Option<String>, i64, f64)> = sqlx::query_as(
+                r#"
+                SELECT a.name, a.contact, a.account_type_id,
+                       COALESCE(SUM(je.debit - je.credit), 0.0) as bal
+                FROM accounts a
+                LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+                WHERE a.account_type_id IN (2, 14, 17)
+                GROUP BY a.id, a.name
+                HAVING bal > 0.001
+                ORDER BY bal DESC
+                "#
+            )
+            .bind(&ed)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            for (name, contact, acc_type, bal) in ar_rows {
+                let cat_label = if acc_type == 14 {
+                    "Salesman Receivable (سیلز مین کھاتہ)"
+                } else if acc_type == 17 {
+                    "Loan Receivable (قرضہ دیا - وصول طلب)"
+                } else {
+                    "Customer Receivable (گاہک کھاتہ)"
+                };
+                items.push(FinancialBreakdownItem {
+                    name,
+                    category: cat_label.into(),
+                    details: contact.map(|c| format!("Contact: {}", c)),
+                    amount: bal,
+                });
+            }
+
+            // 4. Live Stock Valuation (Quantity * Cost)
+            let stock_val: f64 = sqlx::query_scalar(
+                r#"
+                SELECT COALESCE(SUM(im.quantity * p.purchase_price), 0.0)
+                FROM inventory_movements im
+                JOIN products p ON im.product_id = p.id
+                WHERE date(im.created_at) <= date(?)
+                "#
+            )
+            .bind(&ed)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0.0);
+
+            items.push(FinancialBreakdownItem {
+                name: "Stock Inventory Valuation (گودام میں موجود اسٹاک مالیت)".into(),
+                category: "Inventory (اسٹاک)".into(),
+                details: Some("Calculated as Live Quantity × Cost / Purchase Price".into()),
+                amount: stock_val,
+            });
+
+            // 5. Fixed Assets
+            let asset_rows: Vec<(String, Option<String>, f64)> = sqlx::query_as(
+                r#"
+                SELECT a.name, a.designation,
+                       COALESCE(SUM(je.debit - je.credit), 0.0) as bal
+                FROM accounts a
+                LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+                WHERE a.account_type_id = 9
+                GROUP BY a.id, a.name
+                HAVING bal > 0.001
+                "#
+            )
+            .bind(&ed)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            for (name, desig, bal) in asset_rows {
+                items.push(FinancialBreakdownItem {
+                    name,
+                    category: "Fixed Asset (مستقل اثاثہ جات)".into(),
+                    details: desig,
+                    amount: bal,
+                });
+            }
+
+            let total: f64 = items.iter().map(|i| i.amount).sum();
+            Ok(FinancialBreakdownResult {
+                metric: "ASSETS".into(),
+                title: "Total Assets Breakdown (کل اثاثہ جات کی تفصیل)".into(),
+                formula: "Total Assets = Cash in Hand + Bank Accounts + Receivables (Customers/Salesmen/Loans) + Stock Valuation + Fixed Assets".into(),
+                items,
+                total,
+            })
+        }
+        "EXPENSES" => {
+            let exp_rows: Vec<(String, f64)> = sqlx::query_as(
+                r#"
+                SELECT a.name, COALESCE(SUM(je.debit - je.credit), 0.0) as bal
+                FROM accounts a
+                JOIN account_types at ON a.account_type_id = at.id
+                JOIN journal_entries je ON je.account_id = a.id
+                WHERE at.nature = 'EXPENSE'
+                  AND a.account_type_id != 16
+                  AND a.id NOT IN (4, 8, 18, 24)
+                  AND at.id != 6
+                  AND date(je.entry_date) BETWEEN date(?) AND date(?)
+                GROUP BY a.id, a.name
+                HAVING bal != 0.0
+                ORDER BY bal DESC
+                "#
+            )
+            .bind(&sd).bind(&ed)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            let mut items = Vec::new();
+            for (name, bal) in exp_rows {
+                items.push(FinancialBreakdownItem {
+                    name,
+                    category: "Operating Expense (آپریٹنگ خرچہ)".into(),
+                    details: None,
+                    amount: bal,
+                });
+            }
+
+            let total: f64 = items.iter().map(|i| i.amount).sum();
+            Ok(FinancialBreakdownResult {
+                metric: "EXPENSES".into(),
+                title: "Operating Expenses Breakdown (کاروباری اخراجات کی تفصیل)".into(),
+                formula: "Operating Expenses = Sum of all operational expense entries (Fuel, Salaries, Rent, Utilities, Refreshments)".into(),
+                items,
+                total,
+            })
+        }
+        "COGS" => {
+            let cogs_rows: Vec<(String, i64, f64, f64)> = sqlx::query_as(
+                r#"
+                SELECT p.name,
+                       SUM(CASE WHEN i.invoice_type = 'SALE' THEN ii.quantity WHEN i.invoice_type = 'SALE_RETURN' THEN -ii.quantity ELSE 0 END) as qty_sold,
+                       COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0) as unit_cost,
+                       SUM(CASE WHEN i.invoice_type = 'SALE' THEN (ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0))
+                                WHEN i.invoice_type = 'SALE_RETURN' THEN -(ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0)) ELSE 0.0 END) as line_cogs
+                FROM invoices i
+                JOIN invoice_items ii ON ii.invoice_id = i.id
+                LEFT JOIN products p ON ii.product_id = p.id
+                WHERE i.invoice_type IN ('SALE', 'SALE_RETURN')
+                  AND date(i.invoice_date) BETWEEN date(?) AND date(?)
+                GROUP BY p.id, p.name, unit_cost
+                HAVING line_cogs != 0.0
+                ORDER BY line_cogs DESC
+                "#
+            )
+            .bind(&sd).bind(&ed)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            let mut items = Vec::new();
+            for (p_name, qty, cost, line_cogs) in cogs_rows {
+                items.push(FinancialBreakdownItem {
+                    name: p_name,
+                    category: "Sold Inventory Cost (فروخت شدہ مال کی لاگت)".into(),
+                    details: Some(format!("{} units @ Rs. {:.2} cost price", qty, cost)),
+                    amount: line_cogs,
+                });
+            }
+
+            let total: f64 = items.iter().map(|i| i.amount).sum();
+            Ok(FinancialBreakdownResult {
+                metric: "COGS".into(),
+                title: "Cost of Goods Sold (COGS) Breakdown (فروخت شدہ مال کی لاگت)".into(),
+                formula: "COGS = Sum(Sold Quantity × Purchase Cost Price)".into(),
+                items,
+                total,
+            })
+        }
+        "REVENUE" => {
+            let row: (f64, f64, f64) = sqlx::query_as(
+                r#"
+                SELECT 
+                    COALESCE(SUM(CASE WHEN invoice_type = 'SALE' THEN gross_amount ELSE 0.0 END), 0.0) as gross_sales,
+                    COALESCE(SUM(CASE WHEN invoice_type = 'SALE_RETURN' THEN net_amount ELSE 0.0 END), 0.0) as returns,
+                    COALESCE(SUM(CASE WHEN invoice_type = 'SALE' THEN discount_amount ELSE 0.0 END), 0.0) as discount
+                FROM invoices
+                WHERE invoice_type IN ('SALE', 'SALE_RETURN')
+                  AND date(invoice_date) BETWEEN date(?) AND date(?)
+                "#
+            )
+            .bind(&sd).bind(&ed)
+            .fetch_one(pool)
+            .await
+            .unwrap_or((0.0, 0.0, 0.0));
+
+            let items = vec![
+                FinancialBreakdownItem {
+                    name: "Gross Sales Invoices (کل سیلز بلز)".into(),
+                    category: "Sales (سیلز)".into(),
+                    details: Some("Total invoice gross value before discount".into()),
+                    amount: row.0,
+                },
+                FinancialBreakdownItem {
+                    name: "Less: Sales Returns (منہائی: واپسی مال)".into(),
+                    category: "Deductions (منہائی)".into(),
+                    details: Some("Items returned by customers".into()),
+                    amount: -row.1,
+                },
+                FinancialBreakdownItem {
+                    name: "Less: Total Discounts Given (منہائی: ڈسکاؤنٹ)".into(),
+                    category: "Deductions (منہائی)".into(),
+                    details: Some("Invoice line item discounts".into()),
+                    amount: -row.2,
+                },
+            ];
+
+            let total = row.0 - row.1 - row.2;
+            Ok(FinancialBreakdownResult {
+                metric: "REVENUE".into(),
+                title: "Net Sales Revenue Breakdown (خالص سیلز آمدنی)".into(),
+                formula: "Net Revenue = Gross Sales Invoiced - Sales Returns - Discounts Given".into(),
+                items,
+                total,
+            })
+        }
+        "GROSS_PROFIT" => {
+            let rev: f64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(CASE WHEN invoice_type = 'SALE' THEN net_amount WHEN invoice_type = 'SALE_RETURN' THEN -net_amount ELSE 0.0 END), 0.0) FROM invoices WHERE invoice_type IN ('SALE', 'SALE_RETURN') AND date(invoice_date) BETWEEN date(?) AND date(?)"
+            )
+            .bind(&sd).bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+            let cogs: f64 = sqlx::query_scalar(
+                r#"
+                SELECT COALESCE(SUM(CASE WHEN i.invoice_type = 'SALE' THEN (ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0))
+                                         WHEN i.invoice_type = 'SALE_RETURN' THEN -(ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0)) ELSE 0.0 END), 0.0)
+                FROM invoices i
+                JOIN invoice_items ii ON ii.invoice_id = i.id
+                LEFT JOIN products p ON ii.product_id = p.id
+                WHERE i.invoice_type IN ('SALE', 'SALE_RETURN') AND date(i.invoice_date) BETWEEN date(?) AND date(?)
+                "#
+            )
+            .bind(&sd).bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+            let items = vec![
+                FinancialBreakdownItem {
+                    name: "Net Sales Revenue (خالص فروخت)".into(),
+                    category: "Revenue (آمدنی)".into(),
+                    details: None,
+                    amount: rev,
+                },
+                FinancialBreakdownItem {
+                    name: "Less: Cost of Goods Sold / COGS (منہائی: مال کی لاگت)".into(),
+                    category: "Cost of Goods (لاگت)".into(),
+                    details: None,
+                    amount: -cogs,
+                },
+            ];
+
+            Ok(FinancialBreakdownResult {
+                metric: "GROSS_PROFIT".into(),
+                title: "Gross Profit Margin Breakdown (خام منافع کی تفصیل)".into(),
+                formula: "Gross Profit = Net Sales Revenue - Cost of Goods Sold (COGS)".into(),
+                items,
+                total: rev - cogs,
+            })
+        }
+        "NET_PROFIT" => {
+            let rev: f64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(CASE WHEN invoice_type = 'SALE' THEN net_amount WHEN invoice_type = 'SALE_RETURN' THEN -net_amount ELSE 0.0 END), 0.0) FROM invoices WHERE invoice_type IN ('SALE', 'SALE_RETURN') AND date(invoice_date) BETWEEN date(?) AND date(?)"
+            )
+            .bind(&sd).bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+            let cogs: f64 = sqlx::query_scalar(
+                r#"
+                SELECT COALESCE(SUM(CASE WHEN i.invoice_type = 'SALE' THEN (ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0))
+                                         WHEN i.invoice_type = 'SALE_RETURN' THEN -(ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0)) ELSE 0.0 END), 0.0)
+                FROM invoices i
+                JOIN invoice_items ii ON ii.invoice_id = i.id
+                LEFT JOIN products p ON ii.product_id = p.id
+                WHERE i.invoice_type IN ('SALE', 'SALE_RETURN') AND date(i.invoice_date) BETWEEN date(?) AND date(?
+                "#
+            )
+            .bind(&sd).bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+            let gross = rev - cogs;
+
+            let op_exp: f64 = sqlx::query_scalar(
+                r#"
+                SELECT COALESCE(SUM(je.debit - je.credit), 0.0)
+                FROM journal_entries je
+                JOIN accounts a ON a.id = je.account_id
+                JOIN account_types at ON at.id = a.account_type_id
+                WHERE at.nature = 'EXPENSE' AND a.id != 4 AND at.id != 6 AND date(je.entry_date) BETWEEN date(?) AND date(?)
+                "#
+            )
+            .bind(&sd).bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+            let items = vec![
+                FinancialBreakdownItem {
+                    name: "Gross Profit / Margin (خام منافع)".into(),
+                    category: "Profit (منافع)".into(),
+                    details: Some("Revenue minus purchase cost of goods sold".into()),
+                    amount: gross,
+                },
+                FinancialBreakdownItem {
+                    name: "Less: Operating Expenses (منہائی: دفتری و دکان کے اخراجات)".into(),
+                    category: "Expenses (اخراجات)".into(),
+                    details: Some("Salaries, fuel, utilities, tea, rent, etc.".into()),
+                    amount: -op_exp,
+                },
+            ];
+
+            Ok(FinancialBreakdownResult {
+                metric: "NET_PROFIT".into(),
+                title: "Net Profit Breakdown (خالص منافع کا حساب)".into(),
+                formula: "Net Profit = Gross Margin - Operating Expenses".into(),
+                items,
+                total: gross - op_exp,
+            })
+        }
+        "EQUITY" => {
+            let inv_rows: Vec<(String, f64)> = sqlx::query_as(
+                r#"
+                SELECT a.name, COALESCE(SUM(je.credit - je.debit), 0.0) as bal
+                FROM accounts a
+                LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+                WHERE a.account_type_id = 16 AND a.id NOT IN (18, 24)
+                GROUP BY a.id, a.name
+                HAVING bal != 0.0
+                "#
+            )
+            .bind(&ed).fetch_all(pool).await.unwrap_or_default();
+
+            let mut items = Vec::new();
+            for (name, bal) in inv_rows {
+                items.push(FinancialBreakdownItem {
+                    name,
+                    category: "Owner / Investor Capital (اصل سرمایہ)".into(),
+                    details: Some("Capital Contributed to Business".into()),
+                    amount: bal,
+                });
+            }
+
+            // Explicit Deduction: Owner Drawings (ذاتی اخراجات)
+            let drawings_amount: f64 = sqlx::query_scalar(
+                r#"
+                SELECT COALESCE(SUM(je.debit - je.credit), 0.0)
+                FROM journal_entries je
+                WHERE (je.account_id = 24 OR je.ref_no LIKE 'DRW-%' OR je.narration LIKE '%Owner Drawing%' OR je.narration LIKE '%ذاتی خرچ%')
+                  AND date(je.entry_date) <= date(?)
+                "#
+            )
+            .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+            if drawings_amount > 0.001 {
+                items.push(FinancialBreakdownItem {
+                    name: "Owner Drawings (مالک کے ذاتی و گھریلو اخراجات)".into(),
+                    category: "Less: Owner Drawings (منہائی: ذاتی اخراجات)".into(),
+                    details: Some("Direct reduction from Owner Equity".into()),
+                    amount: -drawings_amount,
+                });
+            }
+
+            // Calculate Period Net Profit to show as Retained Earnings
+            let rev: f64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(CASE WHEN invoice_type = 'SALE' THEN net_amount WHEN invoice_type = 'SALE_RETURN' THEN -net_amount ELSE 0.0 END), 0.0) FROM invoices WHERE invoice_type IN ('SALE', 'SALE_RETURN') AND date(invoice_date) BETWEEN date(?) AND date(?)"
+            )
+            .bind(&sd).bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+            let cogs: f64 = sqlx::query_scalar(
+                r#"
+                SELECT COALESCE(SUM(CASE WHEN i.invoice_type = 'SALE' THEN (ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0))
+                                         WHEN i.invoice_type = 'SALE_RETURN' THEN -(ii.quantity * COALESCE(NULLIF(ii.cost_price, 0.0), p.purchase_price, 0.0)) ELSE 0.0 END), 0.0)
+                FROM invoices i
+                JOIN invoice_items ii ON ii.invoice_id = i.id
+                LEFT JOIN products p ON ii.product_id = p.id
+                WHERE i.invoice_type IN ('SALE', 'SALE_RETURN') AND date(i.invoice_date) BETWEEN date(?) AND date(?)
+                "#
+            )
+            .bind(&sd).bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+            let op_exp: f64 = sqlx::query_scalar(
+                r#"
+                SELECT COALESCE(SUM(je.debit - je.credit), 0.0)
+                FROM journal_entries je
+                JOIN accounts a ON a.id = je.account_id
+                JOIN account_types at ON at.id = a.account_type_id
+                WHERE at.nature = 'EXPENSE' AND a.account_type_id != 16 AND a.id NOT IN (4, 8, 18, 24) AND at.id != 6 AND date(je.entry_date) BETWEEN date(?) AND date(?)
+                "#
+            )
+            .bind(&sd).bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+            let net_prof = (rev - cogs) - op_exp;
+
+            items.push(FinancialBreakdownItem {
+                name: "Retained Earnings / Current Period Net Profit (خالص منافع / نقصان)".into(),
+                category: "Accumulated P&L (منافع / نقصان)".into(),
+                details: Some("Calculated as Gross Profit minus Operating Expenses".into()),
+                amount: net_prof,
+            });
+
+            let total: f64 = items.iter().map(|i| i.amount).sum();
+            Ok(FinancialBreakdownResult {
+                metric: "EQUITY".into(),
+                title: "Total Equity & Capital Breakdown (سرمایہ کی تفصیل)".into(),
+                formula: "Total Equity = Total Capital (سرمایہ) - Owner Drawings (ذاتی اخراجات) + Net Profit (خالص منافع)".into(),
+                items,
+                total,
+            })
+        }
+        _ => Err(format!("Unknown financial metric: {}", metric)),
+    }
 }

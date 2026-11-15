@@ -742,7 +742,7 @@ pub async fn create_salesman(
 
     let id = sqlx::query("INSERT INTO salesmen (name, contact, salary, details) VALUES (?, ?, ?, ?)")
         .bind(&name)
-        .bind(contact)
+        .bind(&contact)
         .bind(salary)
         .bind(details)
         .execute(&mut *tx)
@@ -759,6 +759,17 @@ pub async fn create_salesman(
             .map_err(|e| e.to_string())?;
     }
 
+    // Automatically create a ledger account for the salesman
+    let _ = sqlx::query(
+        "INSERT INTO accounts (account_type_id, name, contact, salesman_id, is_customer, is_supplier) 
+         VALUES (14, ?, ?, ?, 1, 0)"
+    )
+    .bind(&name)
+    .bind(&contact)
+    .bind(id)
+    .execute(&mut *tx)
+    .await;
+
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(id)
 }
@@ -770,14 +781,55 @@ pub struct FixedLiability {
     pub name: String,
     pub amount: f64,
     pub frequency: String,
+    #[sqlx(default)]
+    pub paid_in_period: f64,
+    #[sqlx(default)]
+    pub remaining_due: f64,
+    #[sqlx(default)]
+    pub is_paid: bool,
+    #[sqlx(default)]
+    pub last_payment_date: Option<String>,
 }
 
 #[tauri::command]
 pub async fn get_fixed_liabilities(db: State<'_, SqlitePool>) -> Result<Vec<FixedLiability>, String> {
-    sqlx::query_as::<_, FixedLiability>("SELECT * FROM fixed_liabilities ORDER BY id DESC")
+    let rows: Vec<(i64, String, f64, String)> = sqlx::query_as("SELECT id, name, amount, frequency FROM fixed_liabilities ORDER BY id DESC")
         .fetch_all(&*db)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    let mut result = Vec::new();
+    for (id, name, amount, frequency) in rows {
+        let (paid, last_date): (f64, Option<String>) = sqlx::query_as(
+            r#"
+            SELECT COALESCE(SUM(je.debit), 0.0), MAX(date(je.entry_date))
+            FROM journal_entries je
+            WHERE je.account_id = 7
+              AND (je.narration LIKE '%' || ? || '%' OR je.ref_no LIKE 'FL-%')
+              AND strftime('%Y-%m', je.entry_date) = strftime('%Y-%m', 'now', 'localtime')
+            "#
+        )
+        .bind(&name)
+        .fetch_one(&*db)
+        .await
+        .unwrap_or((0.0, None));
+
+        let remaining = (amount - paid).max(0.0);
+        let is_paid = remaining <= 0.001 && paid > 0.0;
+
+        result.push(FixedLiability {
+            id,
+            name,
+            amount,
+            frequency,
+            paid_in_period: paid,
+            remaining_due: remaining,
+            is_paid,
+            last_payment_date: last_date,
+        });
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1003,3 +1055,9 @@ pub async fn set_account_opening_balance(
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok("Opening balance updated successfully".into())
 }
+
+#[tauri::command]
+pub fn force_exit_app(app: AppHandle) {
+    app.exit(0);
+}
+

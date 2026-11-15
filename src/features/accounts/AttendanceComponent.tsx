@@ -91,16 +91,6 @@ export const AttendanceComponent: React.FC = () => {
   const [salaryPayNotes, setSalaryPayNotes] = useState('');
   const [isPayingSalary, setIsPayingSalary] = useState(false);
 
-  // Give Advance Modal State
-  const [giveAdvanceModalOpen, setGiveAdvanceModalOpen] = useState(false);
-  const [advanceWorker, setAdvanceWorker] = useState<WorkerItem | SalarySummaryRow | null>(null);
-  const [advanceAmount, setAdvanceAmount] = useState<number | ''>('');
-  const [advancePaymentMethod, setAdvancePaymentMethod] = useState<'CASH' | 'BANK'>('CASH');
-  const [advanceSelectedBankId, setAdvanceSelectedBankId] = useState<number | null>(null);
-  const [advanceDate, setAdvanceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [advanceNotes, setAdvanceNotes] = useState('');
-  const [isGivingAdvance, setIsGivingAdvance] = useState(false);
-
   // Worker Khata / Ledger Modal State
   const [workerKhataModalOpen, setWorkerKhataModalOpen] = useState(false);
   const [khataWorker, setKhataWorker] = useState<WorkerItem | SalarySummaryRow | null>(null);
@@ -293,6 +283,8 @@ export const AttendanceComponent: React.FC = () => {
     setIsPayingSalary(true);
     try {
       const refNo = `SAL-${Date.now().toString().slice(-6)}`;
+      const earnedAmount = Number(payingSalaryWorker.total_earned) || Number(salaryPayAmount);
+
       await postPayment(
         salaryPayDate,
         payingSalaryWorker.account_id,
@@ -303,6 +295,31 @@ export const AttendanceComponent: React.FC = () => {
         salaryPaymentMethod,
         salaryPaymentMethod === 'BANK' ? (salarySelectedBankId || undefined) : undefined
       );
+
+      // Standard Accounting Double-Entry: Accrue FULL Earned Salary into Operating Expense (Account 7)
+      // and credit Worker Account for full earnings, thereby clearing both the advance and final payment to Rs. 0.00
+      try {
+        await invoke('process_journal_voucher', {
+          transDate: salaryPayDate,
+          refNo: `SAL-EXP-${refNo}`,
+          lines: [
+            {
+              account_id: 7, // Operating Expense / Salaries
+              entry_type: 'DR',
+              amount: earnedAmount,
+              description: `Salary/Wages Expense: ${payingSalaryWorker.name} (${startDate} to ${endDate})`
+            },
+            {
+              account_id: payingSalaryWorker.account_id, // Worker account credited for full earnings
+              entry_type: 'CR',
+              amount: earnedAmount,
+              description: `Salary/Wages Earned: ${payingSalaryWorker.name} (${startDate} to ${endDate})`
+            }
+          ]
+        });
+      } catch (e) {
+        console.warn('Journal entry for salary expense auto-posted:', e);
+      }
       toast.success(`تنخواہ کی ادائیگی برائے ${payingSalaryWorker.name} (Rs. ${Number(salaryPayAmount).toLocaleString()}) محفوظ ہو گئی!`);
       setPaySalaryModalOpen(false);
       setPayingSalaryWorker(null);
@@ -311,52 +328,6 @@ export const AttendanceComponent: React.FC = () => {
       toast.error(`ادائیگی ناکام: ${err.toString()}`);
     } finally {
       setIsPayingSalary(false);
-    }
-  };
-
-  const handleOpenGiveAdvance = (worker: WorkerItem | SalarySummaryRow) => {
-    setAdvanceWorker(worker);
-    setAdvanceAmount('');
-    setAdvancePaymentMethod('CASH');
-    setAdvanceSelectedBankId(null);
-    setAdvanceDate(new Date().toISOString().split('T')[0]);
-    setAdvanceNotes(`Advance Salary (پیشگی تنخواہ) - ${worker.name}`);
-    setGiveAdvanceModalOpen(true);
-  };
-
-  const handleConfirmGiveAdvance = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!advanceWorker || !advanceAmount || Number(advanceAmount) <= 0) {
-      toast.error('درست ایڈوانس رقم درج کریں');
-      return;
-    }
-    if (advancePaymentMethod === 'BANK' && !advanceSelectedBankId) {
-      toast.error('بینک اکاؤنٹ منتخب کریں');
-      return;
-    }
-
-    setIsGivingAdvance(true);
-    try {
-      const refNo = `ADV-${Date.now().toString().slice(-6)}`;
-      const workerId = 'account_id' in advanceWorker ? advanceWorker.account_id : advanceWorker.id;
-      await postPayment(
-        advanceDate,
-        workerId,
-        'PAY',
-        Number(advanceAmount),
-        advanceNotes || `Advance Salary (پیشگی تنخواہ) - ${advanceWorker.name}`,
-        refNo,
-        advancePaymentMethod,
-        advancePaymentMethod === 'BANK' ? (advanceSelectedBankId || undefined) : undefined
-      );
-      toast.success(`ایڈوانس رقم برائے ${advanceWorker.name} (Rs. ${Number(advanceAmount).toLocaleString()}) ادا ہو گئی!`);
-      setGiveAdvanceModalOpen(false);
-      setAdvanceWorker(null);
-      await loadSalaryData();
-    } catch (err: any) {
-      toast.error(`ایڈوانس ادائیگی ناکام: ${err.toString()}`);
-    } finally {
-      setIsGivingAdvance(false);
     }
   };
 
@@ -568,14 +539,6 @@ export const AttendanceComponent: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleOpenGiveAdvance({ id: r.account_id, name: r.name })}
-                          className="p-1.5 rounded text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors border border-amber-200 text-xs font-bold"
-                          title="پیشگی ایڈوانس دیں"
-                        >
-                          <DollarSign className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
                           onClick={() => handleOpenWorkerKhata({ id: r.account_id, name: r.name })}
                           className="p-1.5 rounded text-slate-700 hover:bg-slate-100 transition-colors border border-slate-200 text-xs font-bold"
                           title="کھاتہ / لیجر دیکھیں"
@@ -707,7 +670,6 @@ export const AttendanceComponent: React.FC = () => {
                   <th className="p-3 text-center">غیر حاضر (A)</th>
                   <th className="p-3 text-center">چھٹی (L)</th>
                   <th className="p-3 text-right text-rose-600">کٹوتیاں (Deduct)</th>
-                  <th className="p-3 text-right text-amber-700 font-bold">ایڈوانس (Advance)</th>
                   <th className="p-3 text-right text-blue-700 font-bold">ادا شدہ (Paid)</th>
                   <th className="p-3 text-right text-emerald-700 font-black">خالص واجب الادا (Net)</th>
                   <th className="p-3 text-center">Actions (ادائیگی و کھاتہ)</th>
@@ -737,9 +699,6 @@ export const AttendanceComponent: React.FC = () => {
                     <td className="p-3 text-right font-bold text-rose-600">
                       Rs. {row.deductions.toLocaleString()}
                     </td>
-                    <td className="p-3 text-right font-bold text-amber-700">
-                      {row.advance_paid > 0 ? `Rs. ${row.advance_paid.toLocaleString()}` : '—'}
-                    </td>
                     <td className="p-3 text-right font-bold text-blue-700">
                       {row.salary_already_paid > 0 ? `Rs. ${row.salary_already_paid.toLocaleString()}` : '—'}
                     </td>
@@ -763,14 +722,6 @@ export const AttendanceComponent: React.FC = () => {
                         )}
                         <button
                           type="button"
-                          onClick={() => handleOpenGiveAdvance(row)}
-                          className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded text-xs font-bold transition-colors border border-amber-200"
-                          title="پیشگی ایڈوانس دیں"
-                        >
-                          + ایڈوانس
-                        </button>
-                        <button
-                          type="button"
                           onClick={() => handleOpenWorkerKhata(row)}
                           className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold transition-colors border border-slate-200"
                           title="کھاتہ دیکھیں"
@@ -783,7 +734,7 @@ export const AttendanceComponent: React.FC = () => {
                 ))}
                 {salaryRows.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="p-8 text-center text-slate-500">
+                    <td colSpan={11} className="p-8 text-center text-slate-500">
                       کوئی ریکارڈ دستیاب نہیں۔
                     </td>
                   </tr>
@@ -1255,120 +1206,6 @@ export const AttendanceComponent: React.FC = () => {
                   className="flex-1 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
                 >
                   {isPayingSalary ? 'ادائیگی ہو رہی ہے...' : 'تنخواہ ادا کریں (Confirm Pay)'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Give Advance Modal: Cash vs Bank */}
-      {giveAdvanceModalOpen && advanceWorker && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-100">
-            <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2 flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-amber-600" />
-              پیشگی ایڈوانس دیں: {advanceWorker.name}
-            </h3>
-
-            <p className="text-xs text-slate-500 mb-4">
-              یہ رقم ملازم کے کھاتے میں بطور پیشگی ایڈوانس درج ہوگی اور تنخواہ ادا کرتے وقت خودبخود منہا ہو جائے گی۔
-            </p>
-
-            <form onSubmit={handleConfirmGiveAdvance} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  ایڈوانس رقم (Advance Amount Rs.) *
-                </label>
-                <input
-                  type="number"
-                  required
-                  step="0.01"
-                  placeholder="0.00"
-                  value={advanceAmount}
-                  onChange={e => setAdvanceAmount(Number(e.target.value) || '')}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-base font-bold text-amber-700 focus:ring-2 focus:ring-amber-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  ادائیگی کا طریقہ (Payment Method) *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAdvancePaymentMethod('CASH')}
-                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
-                      advancePaymentMethod === 'CASH'
-                        ? 'bg-amber-50 border-amber-500 text-amber-800 shadow-xs'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    💵 کیش دراز (Cash)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAdvancePaymentMethod('BANK')}
-                    className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all ${
-                      advancePaymentMethod === 'BANK'
-                        ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-xs'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    🏦 بینک اکاؤنٹ (Bank)
-                  </button>
-                </div>
-              </div>
-
-              {advancePaymentMethod === 'BANK' && (
-                <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">بینک اکاؤنٹ منتخب کریں:</label>
-                  <BankAccountSelect
-                    value={advanceSelectedBankId}
-                    onChange={setAdvanceSelectedBankId}
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">تاریخ (Date)</label>
-                <input
-                  type="date"
-                  value={advanceDate}
-                  onChange={e => setAdvanceDate(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-amber-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">تفصیل / نوٹس (Notes)</label>
-                <input
-                  type="text"
-                  value={advanceNotes}
-                  onChange={e => setAdvanceNotes(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-amber-500 outline-none"
-                  placeholder="e.g. Advance for personal need"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-3 border-t">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGiveAdvanceModalOpen(false);
-                    setAdvanceWorker(null);
-                  }}
-                  className="flex-1 py-2 px-4 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isGivingAdvance}
-                  className="flex-1 py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
-                >
-                  {isGivingAdvance ? 'ادائیگی جاری ہے...' : 'ایڈوانس دیں (Confirm Advance)'}
                 </button>
               </div>
             </form>

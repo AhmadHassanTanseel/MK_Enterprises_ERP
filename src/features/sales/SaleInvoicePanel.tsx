@@ -40,11 +40,33 @@ export const SaleInvoicePanel: React.FC = () => {
     { id: '1', product_id: null, qty: 1, rate: 0, discount: 0 }
   ]);
 
-  // Split cash/bank
+  // Totals calculated upfront so changeReturn / handlers have access without TDZ
+  const totalGross = lines.reduce((sum, l) => sum + (l.qty * l.rate), 0);
+  const totalDiscount = lines.reduce((sum, l) => sum + ((l.discount || 0) * l.qty), 0);
+  const totalNet = totalGross - totalDiscount;
+
+  // Split cash/bank & Cash Tendered
+  const [cashTendered, setCashTendered] = useState<number | ''>('');
   const [amountReceivedCash, setAmountReceivedCash] = useState<number>(0);
   const [amountReceivedBank, setAmountReceivedBank] = useState<number>(0);
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   const [showQuickCreateCustomer, setShowQuickCreateCustomer] = useState<boolean>(false);
+
+  const changeReturn = (cashTendered !== '' && Number(cashTendered) > Math.max(0, totalNet - (amountReceivedBank || 0)))
+    ? Number(cashTendered) - Math.max(0, totalNet - (amountReceivedBank || 0))
+    : 0;
+
+  const handleCashTenderedChange = (val: string) => {
+    if (val === '') {
+      setCashTendered('');
+      setAmountReceivedCash(0);
+    } else {
+      const num = Number(val);
+      setCashTendered(num);
+      const neededCash = Math.max(0, totalNet - (amountReceivedBank || 0));
+      setAmountReceivedCash(Math.min(num, neededCash));
+    }
+  };
 
   useEffect(() => {
     if (!selectedBankId && accounts.length > 0) {
@@ -54,23 +76,28 @@ export const SaleInvoicePanel: React.FC = () => {
       }
     }
   }, [accounts, selectedBankId]);
-  
-  
 
   const [loading, setLoading] = useState(false);
-
-  const totalGross = lines.reduce((sum, l) => sum + (l.qty * l.rate), 0);
-  const totalDiscount = lines.reduce((sum, l) => sum + ((l.discount || 0) * l.qty), 0);
-  const totalNet = totalGross - totalDiscount;
-  
-  
   const balance = totalNet - (amountReceivedCash + amountReceivedBank);
 
   const containerRef = useRef<HTMLDivElement>(null);
   useGridNavigation(containerRef, () => addLine(), () => handleSave(false, false));
 
   const addLine = () => {
-    setLines([...lines, { id: Date.now().toString(), product_id: null, qty: 1, rate: 0, discount: 0 }]);
+    const newId = Date.now().toString();
+    setLines(prev => [...prev, { id: newId, product_id: null, qty: 1, rate: 0, discount: 0 }]);
+    setTimeout(() => {
+      if (containerRef.current) {
+        const rows = containerRef.current.querySelectorAll('tbody tr');
+        if (rows.length > 0) {
+          const lastRow = rows[rows.length - 1];
+          const focusTarget = lastRow.querySelector('input, [tabindex], button, select') as HTMLElement;
+          if (focusTarget) {
+            focusTarget.focus();
+          }
+        }
+      }
+    }, 50);
   };
 
   const removeLine = (id: string) => {
@@ -202,8 +229,11 @@ export const SaleInvoicePanel: React.FC = () => {
             totalNet: totalNet,
             amountReceived: totalPaid,
             balance: invoiceNetBalance,
-            previousBalance: prevBalance,
-            netAccountBalance: netAccountBalance,
+            cashTendered: cashTendered !== '' ? Number(cashTendered) : undefined,
+            changeReturn: changeReturn > 0 ? changeReturn : undefined,
+            isWalkIn: isWalkIn,
+            previousBalance: isWalkIn ? undefined : prevBalance,
+            netAccountBalance: isWalkIn ? undefined : netAccountBalance,
             paymentMethod,
             bankName,
             accountTitle,
@@ -219,6 +249,7 @@ export const SaleInvoicePanel: React.FC = () => {
       setLines([{ id: Date.now().toString(), product_id: null, qty: 1, rate: 0, discount: 0 }]);
       setAmountReceivedCash(0);
       setAmountReceivedBank(0);
+      setCashTendered('');
       
       
       
@@ -348,9 +379,29 @@ export const SaleInvoicePanel: React.FC = () => {
 
             {/* 2. Payments & Bank Selector */}
             <div className="flex flex-col justify-between gap-2 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+              <div className="bg-emerald-50/50 p-2 rounded-lg border border-emerald-200">
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-[11px] font-bold text-emerald-900">
+                    💵 گاہک نے نقد دیا (Cash Tendered):
+                  </label>
+                  {changeReturn > 0 && (
+                    <span className="text-[11px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                      بقایا واپسی (Change): Rs. {changeReturn.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                <input 
+                  type="number" 
+                  placeholder="e.g. 3000"
+                  className="w-full text-right border border-emerald-400 bg-white text-emerald-900 font-black p-1.5 rounded-md text-sm outline-none focus:ring-2 focus:ring-emerald-500" 
+                  value={cashTendered}
+                  onChange={e => handleCashTenderedChange(e.target.value)}
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 block mb-0.5">Cash Received:</label>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-0.5">Cash Applied (نقد):</label>
                   <input 
                     type="number" 
                     className="w-full text-right border border-emerald-300 bg-emerald-50 text-emerald-800 font-bold p-1.5 rounded-md text-xs outline-none focus:ring-1 focus:ring-emerald-500" 
@@ -359,7 +410,7 @@ export const SaleInvoicePanel: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700 block mb-0.5">Bank Received:</label>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-0.5">Bank Received (بینک):</label>
                   <input 
                     type="number" 
                     className="w-full text-right border border-blue-300 bg-blue-50 text-blue-800 font-bold p-1.5 rounded-md text-xs outline-none focus:ring-1 focus:ring-blue-500" 

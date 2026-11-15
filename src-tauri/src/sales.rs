@@ -159,7 +159,7 @@ pub async fn process_sale_internal(
         let disc_per_unit = line.discount_percent.unwrap_or(0.0);
         let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(purchase_price, 0.0) FROM products WHERE id = ?))")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
@@ -167,6 +167,7 @@ pub async fn process_sale_internal(
             .bind(disc_per_unit)
             .bind(total_price)
             .bind(&line.flavor)
+            .bind(line.product_id)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -290,7 +291,7 @@ pub async fn process_sale_return(
         let disc_per_unit = line.discount_percent.unwrap_or(0.0);
         let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(purchase_price, 0.0) FROM products WHERE id = ?))")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
@@ -298,6 +299,7 @@ pub async fn process_sale_return(
             .bind(disc_per_unit)
             .bind(total_price)
             .bind(&line.flavor)
+            .bind(line.product_id)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -405,6 +407,8 @@ pub async fn settle_dispatch(
     lines: Vec<SettleLine>,
     amount_received_cash: Option<f64>,
     amount_received_bank: Option<f64>,
+    bank_account_id: Option<i64>,
+    target_account_id: Option<i64>,
     db: State<'_, SqlitePool>,
 ) -> Result<i64, String> {
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
@@ -462,26 +466,62 @@ pub async fn settle_dispatch(
         let net = total_gross - total_discount;
         let ref_no = format!("DISP-{}", dispatch_id);
         
-        let cash_val = amount_received_cash.unwrap_or_else(|| { if amount_received_bank.is_some() { 0.0 } else { net } });
+        let cash_val = amount_received_cash.unwrap_or(0.0);
         let bank_val = amount_received_bank.unwrap_or(0.0);
         let actual_received = cash_val + bank_val;
         let bakaya = net - actual_received;
 
-        // Also we should determine if it's for customer_id or salesman_id.
+        // Determine target account (Salesman Khata takes priority in van distribution)
         let row2 = sqlx::query("SELECT salesman_id, customer_id FROM dispatches WHERE id = ?").bind(dispatch_id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
         let s_id: i64 = sqlx::Row::try_get(&row2, "salesman_id").unwrap_or_default();
         let c_id: Option<i64> = sqlx::Row::try_get(&row2, "customer_id").ok();
-        let target_account = if let Some(cid) = c_id {
-            if cid > 0 {
-                let acc_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM accounts WHERE id = ?")
-                    .bind(cid)
-                    .fetch_optional(&mut *tx)
-                    .await
-                    .unwrap_or_default();
-                acc_exists.unwrap_or(2)
+
+        let target_account = if let Some(explicit_id) = target_account_id {
+            if explicit_id > 0 {
+                explicit_id
             } else {
                 2
             }
+        } else if s_id > 0 {
+            // Find account for this salesman (Salesman Khata)
+            let sm_acc: Option<i64> = sqlx::query_scalar(
+                "SELECT id FROM accounts WHERE salesman_id = ? OR (account_type_id = 14 AND name = (SELECT name FROM salesmen WHERE id = ?))"
+            )
+            .bind(s_id)
+            .bind(s_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .unwrap_or_default();
+
+            if let Some(acc_id) = sm_acc {
+                acc_id
+            } else {
+                // If salesman account doesn't exist yet, create one on the fly
+                let sm_name: String = sqlx::query_scalar("SELECT name FROM salesmen WHERE id = ?")
+                    .bind(s_id)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .unwrap_or_else(|_| "Salesman".into());
+                let sm_contact: Option<String> = sqlx::query_scalar("SELECT contact FROM salesmen WHERE id = ?")
+                    .bind(s_id)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .unwrap_or_default();
+                let created_acc_id = sqlx::query(
+                    "INSERT INTO accounts (account_type_id, name, contact, salesman_id, is_customer, is_supplier) 
+                     VALUES (14, ?, ?, ?, 1, 0)"
+                )
+                .bind(&sm_name)
+                .bind(&sm_contact)
+                .bind(s_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?
+                .last_insert_rowid();
+                created_acc_id
+            }
+        } else if let Some(cid) = c_id {
+            if cid > 0 { cid } else { 2 }
         } else {
             2
         };
@@ -508,9 +548,9 @@ pub async fn settle_dispatch(
         for (pid, qty, price, disc, flavor) in sale_lines {
             let total_price = (qty as f64) * price * (1.0 - (disc / 100.0));
             sqlx::query(
-                "INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(purchase_price, 0.0) FROM products WHERE id = ?))"
             )
-            .bind(invoice_id).bind(pid).bind(qty).bind(price).bind(disc).bind(total_price).bind(flavor)
+            .bind(invoice_id).bind(pid).bind(qty).bind(price).bind(disc).bind(total_price).bind(flavor).bind(pid)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
         }
         
@@ -535,9 +575,9 @@ pub async fn settle_dispatch(
 
         // Handle Bank Received
         if bank_val > 0.0 {
-            
+            let target_bank_acc = bank_account_id.unwrap_or(accounts.bank);
             sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Received at Settlement')")
-                .bind(accounts.bank).bind(bank_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+                .bind(target_bank_acc).bind(bank_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
             
             sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'BANK_RECEIPT', ?, 'Bank Received at Settlement')")
                 .bind(target_account).bind(bank_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;

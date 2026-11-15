@@ -2,7 +2,7 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
-import { open } from '@tauri-apps/plugin-shell';
+import { invoke } from '@tauri-apps/api/core';
 import React from 'react';
 import { LedgerEntry, Account } from '../app/context/AppContext';
 
@@ -26,7 +26,7 @@ async function saveExcel(wb: XLSX.WorkBook, defaultFileName: string, documentNam
       React.createElement('span', { className: 'text-xs text-slate-500 break-all' }, filePath),
       React.createElement('div', { className: 'flex gap-2 mt-2' },
         React.createElement('button', {
-          onClick: () => { open(filePath); toast.dismiss(t.id); },
+          onClick: async () => { try { await invoke('open_file', { path: filePath }); } catch (e) { toast.error('Could not open file: ' + e); } toast.dismiss(t.id); },
           className: 'px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700'
         }, 'Open File'),
         React.createElement('button', {

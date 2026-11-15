@@ -303,11 +303,12 @@ pub async fn get_salary_summary(
         .unwrap_or(None);
         let advance_paid = advance_row.map(|r| r.0).unwrap_or(0.0);
 
-        // Fetch salary payments already made for this worker in this period
+        // Fetch salary payments already made for this worker in this period (EXCLUDING advances)
         let paid_row: Option<(f64,)> = sqlx::query_as(
             "SELECT COALESCE(SUM(debit), 0.0) FROM journal_entries 
              WHERE account_id = ? AND date(entry_date) >= date(?) AND date(entry_date) <= date(?)
-             AND (narration LIKE '%Salary%' OR narration LIKE '%تنخواہ%' OR narration LIKE '%Wages%' OR ref_no LIKE 'SAL-%')"
+             AND (narration LIKE '%Salary%' OR narration LIKE '%تنخواہ%' OR narration LIKE '%Wages%' OR ref_no LIKE 'SAL-%')
+             AND NOT (narration LIKE '%Advance%' OR narration LIKE '%پیشگی%' OR narration LIKE '%ایڈوانس%' OR ref_no LIKE 'ADV-%')"
         )
         .bind(worker_id)
         .bind(&start_date)

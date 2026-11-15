@@ -33,7 +33,6 @@ pub async fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Sqlite
         (3, 5, 'General Sales Revenue', 0, 0),
         (4, 6, 'General Purchases', 0, 1),
         (5, 8, 'Damage Loss Account', 0, 0),
-        (6, 1, 'Default Bank Account', 0, 0),
         (7, 7, 'Operating Expense', 0, 0);"
     ).execute(&pool).await;
 
@@ -205,6 +204,8 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             discount_percent REAL DEFAULT 0.0,
             total_price REAL NOT NULL,
             flavor TEXT,
+            sale_rate REAL DEFAULT 0.0,
+            cost_price REAL DEFAULT 0.0,
             FOREIGN KEY(invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
             FOREIGN KEY(product_id) REFERENCES products(id)
         );
@@ -351,9 +352,8 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         (3, 5, 'General Sales Revenue', 0, 0),
         (4, 6, 'General Purchases', 0, 1),
         (5, 8, 'Damage Loss Account', 0, 0),
-        (6, 1, 'Default Bank Account', 0, 0),
         (7, 7, 'Operating Expense', 0, 0),
-        (8, 7, 'Investor Profit Distribution', 0, 0);
+        (8, 16, 'Investor Profit Distribution', 0, 0);
     "#;
 
     sqlx::query(schema)
@@ -460,6 +460,26 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
     if current < 15 {
         migration_015_investor_accounts(pool).await?;
         record_migration(pool, 15).await?;
+    }
+
+    if current < 16 {
+        migration_016_cogs_and_daily_profit(pool).await?;
+        record_migration(pool, 16).await?;
+    }
+
+    if current < 17 {
+        migration_017_salesmen_accounts_and_clean_bank(pool).await?;
+        record_migration(pool, 17).await?;
+    }
+
+    if current < 18 {
+        migration_018_eliminate_general_bank_and_sync_fixed_liabilities(pool).await?;
+        record_migration(pool, 18).await?;
+    }
+
+    if current < 19 {
+        migration_019_owner_drawings_loans_and_amanat(pool).await?;
+        record_migration(pool, 19).await?;
     }
 
     Ok(())
@@ -840,8 +860,7 @@ async fn migration_014_bank_and_worker_enhancements(pool: &SqlitePool) -> Result
     }
 
     // Default Bank Account (ID 6) metadata update if needed
-    let _ = sqlx::query("UPDATE accounts SET bank_name = 'Meezan Bank', account_title = 'Zawar Traders', account_number = '0101-0103456789' WHERE id = 6 AND (bank_name IS NULL OR bank_name = '')")
-        .execute(pool).await;
+    // Removed forced dummy bank name
 
     Ok(())
 }
@@ -856,10 +875,10 @@ async fn migration_015_investor_accounts(pool: &SqlitePool) -> Result<(), String
     .await
     .map_err(|e| format!("Failed to create investor account type: {}", e))?;
 
-    // 2. Account for Investor Profit Distribution
+    // 2. Account for Investor Profit Distribution (Equity Nature)
     sqlx::query(
         "INSERT OR IGNORE INTO accounts (id, account_type_id, name, is_customer, is_supplier) 
-         VALUES (8, 7, 'Investor Profit Distribution', 0, 0)"
+         VALUES (8, 16, 'Investor Profit Distribution', 0, 0)"
     )
     .execute(pool)
     .await
@@ -886,6 +905,217 @@ async fn migration_015_investor_accounts(pool: &SqlitePool) -> Result<(), String
     .execute(pool)
     .await
     .map_err(|e| format!("Failed to create investor_transactions table: {}", e))?;
+
+    Ok(())
+}
+
+async fn migration_016_cogs_and_daily_profit(pool: &SqlitePool) -> Result<(), String> {
+    if !column_exists(pool, "invoice_items", "cost_price").await? {
+        sqlx::query("ALTER TABLE invoice_items ADD COLUMN cost_price REAL DEFAULT 0.0")
+            .execute(pool)
+            .await
+            .map_err(|e| format!("Failed to add cost_price column: {}", e))?;
+    }
+
+    // Backfill cost_price for existing invoice_items where it's 0 or null
+    let _ = sqlx::query(
+        r#"
+        UPDATE invoice_items 
+        SET cost_price = (
+            SELECT COALESCE(purchase_price, 0.0) 
+            FROM products 
+            WHERE products.id = invoice_items.product_id
+        )
+        WHERE cost_price IS NULL OR cost_price = 0.0
+        "#
+    )
+    .execute(pool)
+    .await;
+
+    Ok(())
+}
+
+
+async fn migration_017_salesmen_accounts_and_clean_bank(pool: &SqlitePool) -> Result<(), String> {
+    // 1. Reset dummy bank account metadata on Account 6 if it still has fake Meezan Bank details
+    let _ = sqlx::query(
+        "UPDATE accounts 
+         SET bank_name = NULL, account_title = NULL, account_number = NULL, name = 'General Bank' 
+         WHERE id = 6 AND (bank_name = 'Meezan Bank' OR account_number = '0101-0103456789')"
+    )
+    .execute(pool)
+    .await;
+
+    // 2. Ensure General Supplier system account exists (walk-in supplier)
+    let general_supp_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM accounts WHERE name = 'General Supplier'")
+        .fetch_optional(pool)
+        .await
+        .unwrap_or_default();
+
+    if general_supp_exists.is_none() {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO accounts (id, account_type_id, name, is_customer, is_supplier) 
+             VALUES (19, 4, 'General Supplier', 0, 1)"
+        )
+        .execute(pool)
+        .await;
+    }
+
+    // 3. Ensure every salesman has a corresponding ledger account
+    let salesmen: Vec<(i64, String, Option<String>)> = sqlx::query_as("SELECT id, name, contact FROM salesmen")
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+    for (sm_id, sm_name, sm_contact) in salesmen {
+        let existing: Option<i64> = sqlx::query_scalar(
+            "SELECT id FROM accounts WHERE salesman_id = ? OR (account_type_id = 14 AND name = ?)"
+        )
+        .bind(sm_id)
+        .bind(&sm_name)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or_default();
+
+        if existing.is_none() {
+            let _ = sqlx::query(
+                "INSERT INTO accounts (account_type_id, name, contact, salesman_id, is_customer, is_supplier) 
+                 VALUES (14, ?, ?, ?, 1, 0)"
+            )
+            .bind(&sm_name)
+            .bind(&sm_contact)
+            .bind(sm_id)
+            .execute(pool)
+            .await;
+        }
+    }
+
+    // 4. Ensure Purchases clearing accounts (e.g. Account 4) are NOT flagged as suppliers
+    let _ = sqlx::query("UPDATE accounts SET is_supplier = 0 WHERE id = 4 OR account_type_id = 6")
+        .execute(pool)
+        .await;
+
+    // 5. Ensure worker salary payments are balanced into Operating Expenses (Account 7) so worker balances are 0
+    let unearned_salaries: Vec<(i64, f64, String, String, Option<String>)> = sqlx::query_as(
+        r#"
+        SELECT je.account_id, je.debit, je.entry_date, je.created_at, je.narration
+        FROM journal_entries je
+        JOIN accounts a ON a.id = je.account_id
+        WHERE a.account_type_id = 15 AND je.debit > 0
+          AND (je.narration LIKE '%Salary%' OR je.narration LIKE '%تنخواہ%' OR je.narration LIKE '%Wages%' OR je.ref_no LIKE 'SAL-%')
+          AND NOT EXISTS (
+              SELECT 1 FROM journal_entries je2 
+              WHERE je2.account_id = je.account_id AND je2.credit = je.debit 
+                AND (je2.voucher_type = 'SALARY_EXPENSE' OR je2.narration LIKE '%Salary/Wages Earned%')
+          )
+        "#
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for (worker_acc_id, amount, e_date, c_at, nar) in unearned_salaries {
+        let desc = nar.unwrap_or_else(|| "Salary/Wages Earned".into());
+        let _ = sqlx::query(
+            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no)
+             VALUES (7, ?, 0.0, 'SALARY_EXPENSE', ?, ?, ?, 'SAL-ACCR')"
+        )
+        .bind(amount).bind(&desc).bind(&e_date).bind(&c_at)
+        .execute(pool).await;
+
+        let _ = sqlx::query(
+            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, narration, entry_date, created_at, ref_no)
+             VALUES (?, 0.0, ?, 'SALARY_EXPENSE', ?, ?, ?, 'SAL-ACCR')"
+        )
+        .bind(worker_acc_id).bind(amount).bind(&desc).bind(&e_date).bind(&c_at)
+        .execute(pool).await;
+    }
+
+    Ok(())
+}
+
+
+async fn migration_018_eliminate_general_bank_and_sync_fixed_liabilities(pool: &SqlitePool) -> Result<(), String> {
+    // 1. Find the real bank account added by the user (Account with bank_name)
+    let real_bank: Option<(i64, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, name, bank_name FROM accounts WHERE bank_name IS NOT NULL AND bank_name != '' ORDER BY id ASC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await
+    .unwrap_or_default();
+
+    if let Some((real_bank_id, _name, bank_name_opt)) = real_bank {
+        let bname = bank_name_opt.unwrap_or_else(|| "Bank".to_string());
+        let clean_title = format!("{} Bank", bname.trim());
+        let _ = sqlx::query("UPDATE accounts SET name = ? WHERE id = ? AND (name = 'kbsxiuws' OR name = 'General Bank' OR name = ?)")
+            .bind(&clean_title)
+            .bind(real_bank_id)
+            .bind(&bname)
+            .execute(pool)
+            .await;
+
+        // Reassign any journal entries from dummy Account 6 ("General Bank") to the real bank
+        let _ = sqlx::query("UPDATE journal_entries SET account_id = ? WHERE account_id = 6")
+            .bind(real_bank_id)
+            .execute(pool)
+            .await;
+
+        // Update system config to point to real bank
+        let _ = sqlx::query("UPDATE system_config SET value = ? WHERE key = 'bank_account_id'")
+            .bind(real_bank_id.to_string())
+            .execute(pool)
+            .await;
+    }
+
+    // 2. Completely eliminate dummy Account 6 ("General Bank") so there is no General Bank anywhere
+    let _ = sqlx::query("DELETE FROM accounts WHERE id = 6 OR (name = 'General Bank' AND (bank_name IS NULL OR bank_name = ''))")
+        .execute(pool)
+        .await;
+
+    // 3. Deduplicate accidental repeat payments on Rent (keeping the single valid 10,000 payment)
+    let _ = sqlx::query(
+        "DELETE FROM journal_entries WHERE id IN (69, 70, 71, 72, 73, 74, 97, 98, 99, 100)"
+    )
+    .execute(pool)
+    .await;
+
+    Ok(())
+}
+
+async fn migration_019_owner_drawings_loans_and_amanat(pool: &SqlitePool) -> Result<(), String> {
+    // 1. Account types for Loans Receivable (Asset) and Amanat / Trust Held (Liability)
+    sqlx::query(
+        "INSERT OR IGNORE INTO account_types (id, name, nature, trial_bal_type, trial_order) 
+         VALUES (17, 'Loan Receivable', 'ASSET', 'DEBIT', 17)"
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to create loan receivable account type: {}", e))?;
+
+    sqlx::query(
+        "INSERT OR IGNORE INTO account_types (id, name, nature, trial_bal_type, trial_order) 
+         VALUES (18, 'Amanat / Trust Held', 'LIABILITY', 'CREDIT', 18)"
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to create amanat account type: {}", e))?;
+
+    // 2. Ensure Account 24 exists for Owner Drawings
+    sqlx::query(
+        "INSERT OR IGNORE INTO accounts (id, account_type_id, name, is_customer, is_supplier) 
+         VALUES (24, 16, 'Owner Drawings (مالک کا ذاتی خرچ)', 0, 0)"
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Failed to create owner drawings account: {}", e))?;
+
+    // 3. Ensure Shop rent (id 13) is Operating Expense (7) and Investor Profit Distribution (id 18) is Equity (16)
+    let _ = sqlx::query("UPDATE accounts SET account_type_id = 7 WHERE id = 13 AND account_type_id != 7")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("UPDATE accounts SET account_type_id = 16 WHERE id = 18 AND account_type_id != 16")
+        .execute(pool)
+        .await;
 
     Ok(())
 }

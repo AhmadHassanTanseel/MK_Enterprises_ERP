@@ -126,7 +126,7 @@ pub async fn process_purchase(
                 .map_err(|e| e.to_string())?;
         }
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate, flavor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
@@ -135,6 +135,7 @@ pub async fn process_purchase(
             .bind(total_price)
             .bind(line.sale_rate.unwrap_or(0.0))
             .bind(&line.flavor)
+            .bind(line.unit_price)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -288,7 +289,7 @@ pub async fn process_return(
                 .map_err(|e| e.to_string())?;
         }
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate, flavor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, sale_rate, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
@@ -297,6 +298,7 @@ pub async fn process_return(
             .bind(total_price)
             .bind(line.sale_rate.unwrap_or(0.0))
             .bind(&line.flavor)
+            .bind(line.unit_price)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;

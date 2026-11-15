@@ -301,7 +301,7 @@ pub async fn pay_investor_profit(
         a.try_get("id").unwrap_or(8)
     } else {
         let r = sqlx::query(
-            "INSERT INTO accounts (account_type_id, name, is_customer, is_supplier) VALUES (7, 'Investor Profit Distribution', 0, 0)"
+            "INSERT INTO accounts (account_type_id, name, is_customer, is_supplier) VALUES (16, 'Investor Profit Distribution', 0, 0)"
         )
         .execute(&mut *tx)
         .await

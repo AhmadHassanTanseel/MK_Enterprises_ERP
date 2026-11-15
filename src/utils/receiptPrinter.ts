@@ -1,5 +1,5 @@
 import toast from 'react-hot-toast';
-import { ZAWAR_LOGO_BASE64 } from '../assets/logoBase64';
+import { ZAWAR_RECEIPT_LOGO_BASE64 } from '../assets/logoBase64';
 
 export interface ReceiptLine {
   product: string;
@@ -36,7 +36,10 @@ export interface ReceiptData {
   balance: number;
   previousBalance?: number;
   netAccountBalance?: number;
+  cashTendered?: number;
+  changeReturn?: number;
   isSupplier?: boolean;
+  isWalkIn?: boolean;
 }
 
 export function printThermalReceipt(data: ReceiptData) {
@@ -56,17 +59,33 @@ export function printThermalReceipt(data: ReceiptData) {
     return;
   }
   
-  const totalItems = data.lines.length;
   const totalQty = data.lines.reduce((sum, l) => sum + (l.qty || 0), 0);
   const now = new Date();
   const timeString = data.time || now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const prevBal = data.previousBalance !== undefined ? data.previousBalance : null;
+  const isWalkIn = 
+    Boolean(data.isWalkIn) || 
+    data.accountName?.toLowerCase().includes('walk-in') || 
+    data.accountName?.toLowerCase().includes('walk in') ||
+    data.accountName?.toLowerCase().includes('general supplier');
+
   const thisBillNet = (data.net ?? data.totalNet) || 0;
   const paidToday = (data.paid ?? data.amountReceived ?? data.amountPaid) || 0;
-  const calculatedNetBal = data.netAccountBalance !== undefined 
-    ? data.netAccountBalance 
-    : (prevBal !== null ? (prevBal + (thisBillNet - paidToday)) : null);
+  const billBal = thisBillNet - paidToday;
+
+  const prevBal = !isWalkIn 
+    ? (data.previousBalance !== undefined 
+        ? data.previousBalance 
+        : (data.netAccountBalance !== undefined 
+            ? (data.isSupplier ? data.netAccountBalance + billBal : data.netAccountBalance - billBal) 
+            : 0))
+    : null;
+
+  const calculatedNetBal = !isWalkIn 
+    ? (data.netAccountBalance !== undefined 
+        ? data.netAccountBalance 
+        : ((prevBal ?? 0) + (data.isSupplier ? -billBal : billBal)))
+    : null;
 
   const html = `
     <!DOCTYPE html>
@@ -79,184 +98,263 @@ export function printThermalReceipt(data: ReceiptData) {
           margin: 0; 
           size: auto;
         }
+        @media print {
+          body {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color: #000000 !important;
+          }
+          * {
+            color: #000000 !important;
+          }
+        }
+        * {
+          box-sizing: border-box !important;
+        }
         html, body {
           margin: 0;
           padding: 0;
           height: auto !important;
+          background: #fff;
+          width: 100%;
         }
         body { 
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          width: 72mm;
+          font-family: Arial, Helvetica, -apple-system, sans-serif;
+          width: 100%;
+          max-width: 50mm;
           margin: 0 auto;
-          padding: 3mm 4mm;
-          color: #000;
-          font-size: 13px;
-          -webkit-font-smoothing: antialiased;
+          padding: 1.5mm 1.5mm 2mm 1.5mm;
+          color: #000000 !important;
+          font-size: 10px;
+          line-height: 1.25;
           font-weight: 500;
-          line-height: 1.35;
+          box-sizing: border-box;
         }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
         .text-left { text-align: left; }
         .font-bold { font-weight: bold; }
-        .mb-1 { margin-bottom: 4px; }
-        .mb-2 { margin-bottom: 8px; }
-        .mt-1 { margin-top: 4px; }
-        .mt-2 { margin-top: 8px; }
-        .border-top { border-top: 1px dashed #000; padding-top: 5px; }
-        .border-bottom { border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px; }
-        .border-solid { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 0; }
-        
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 3px 0; vertical-align: top; font-size: 12px; }
-        th { font-weight: bold; border-bottom: 1px solid #000; }
-        
-        .item-name { width: 100%; display: block; font-size: 13px; font-weight: bold; margin-bottom: 1px; }
-        
-        .grid-2 { display: grid; grid-template-columns: auto auto; justify-content: space-between; row-gap: 2px; font-size: 12px; }
-        .totals-grid { display: grid; grid-template-columns: 1fr 1fr; row-gap: 3px; font-size: 13px; }
+        .border-top { border-top: 1px solid #000; padding-top: 3px; }
+        .border-bottom { border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 3px; }
+        .border-solid { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 2px 0; }
         
         .logo-img {
-          width: 60px;
-          height: 60px;
+          width: 100%;
+          max-width: 44mm;
+          height: auto;
           margin: 0 auto 4px auto;
           display: block;
-          border-radius: 50%;
+          image-rendering: -webkit-optimize-contrast;
+          image-rendering: crisp-edges;
         }
         .store-title {
-          font-size: 20px;
+          font-size: 18px;
           font-weight: 900;
           letter-spacing: 0.5px;
-          margin: 0;
+          margin: 1px 0;
           text-transform: uppercase;
-        }
-        .store-subtitle {
-          font-size: 11px;
-          font-weight: 600;
-          color: #333;
-          margin-top: 1px;
+          color: #000000 !important;
         }
         .store-meta {
-          font-size: 11px;
-          color: #222;
-          margin-top: 2px;
+          font-size: 10.5px;
           line-height: 1.25;
+          margin: 1px 0;
+          color: #000000 !important;
+        }
+
+        table.items-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 3px 0;
+          table-layout: fixed;
+        }
+        table.items-table th {
+          border-top: 1px solid #000;
+          border-bottom: 1px solid #000;
+          padding: 2.5px 1px;
+          font-size: 10px;
+          font-weight: bold;
+          color: #000000 !important;
+        }
+        table.items-table td {
+          padding: 2px 1px;
+          font-size: 10px;
+          vertical-align: middle;
+          color: #000000 !important;
+        }
+        table.items-table th:last-child,
+        table.items-table td:last-child {
+          padding-right: 1px;
+        }
+        
+        .totals-container {
+          margin-top: 3px;
+          padding: 2px 1px;
+          font-size: 11px;
+        }
+        .totals-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 1.5px 0;
+          color: #000000 !important;
+        }
+        .totals-row span:last-child {
+          padding-right: 1px;
+        }
+        .grid-2 {
+          display: flex;
+          justify-content: space-between;
+          font-size: 10px;
+          padding: 1px 1px 1px 0;
+          color: #000000 !important;
         }
       </style>
     </head>
     <body>
-      <!-- Header with Logo, Address & Contact (100% English) -->
-      <div class="text-center mb-2">
-        <img src="${ZAWAR_LOGO_BASE64}" class="logo-img" alt="Logo" />
-        <div class="store-title">ZAWAR TRADERS</div>
-        <div class="store-subtitle">Wholesale Dealer & General Order Supplier</div>
-        <div class="store-meta">Main Jhang Chiniot Road, Near Cheesy Crunch, Bhowana</div>
-        <div class="store-meta font-bold">Cell / WhatsApp: 0345-7611825</div>
+      <!-- Header with Logo, Address & Contacts (100% Crisp) -->
+      <div class="text-center" style="margin-bottom: 4px;">
+        <img src="${ZAWAR_RECEIPT_LOGO_BASE64}" class="logo-img" alt="Zawar Traders" />
+        <div class="store-meta">Jhang Chiniot Road</div>
+        <div class="store-meta font-bold">Cell: 0333-7701890</div>
+        <div class="store-meta font-bold">WhatsApp: 0345-7611825</div>
       </div>
       
       <!-- Transaction Meta -->
-      <div class="text-center font-bold mb-2 border-solid" style="font-size: 13px; letter-spacing: 1px;">
+      <div class="text-center font-bold border-solid" style="font-size: 13px; letter-spacing: 0.5px; margin: 4px 0;">
         ${data.title}
       </div>
       
-      <div class="grid-2 mb-1">
-        <span>Invoice #: <strong>${data.refNo || 'Auto'}</strong></span>
+      <div class="grid-2">
+        <span>Invoice No.: <strong>${data.refNo || 'Auto'}</strong></span>
         <span>Date: ${data.date}</span>
       </div>
-      <div class="grid-2 mb-2">
+      <div class="grid-2" style="margin-bottom: 2px;">
         <span>Time: ${timeString}</span>
-        ${data.paymentMethod ? `<span>Pay Method: ${data.paymentMethod}</span>` : ''}
+        ${data.paymentMethod ? `<span>Pay: ${data.paymentMethod}</span>` : ''}
       </div>
       
-      <div class="mb-2" style="font-size: 12px;">
+      <div style="font-size: 11px; margin-bottom: 4px; padding-bottom: 2px;">
         <div><span class="font-bold">${data.accountLabel}:</span> ${data.accountName}</div>
-        ${data.address ? `<div><span class="font-bold">Address:</span> ${data.address}</div>` : ''}
-        ${data.phone ? `<div><span class="font-bold">Phone:</span> ${data.phone}</div>` : ''}
+        ${!isWalkIn && data.address ? `<div><span class="font-bold">Address:</span> ${data.address}</div>` : ''}
+        ${!isWalkIn && data.phone ? `<div><span class="font-bold">Phone:</span> ${data.phone}</div>` : ''}
         ${data.deliveryDate ? `<div><span class="font-bold">Delivery Date:</span> ${data.deliveryDate}</div>` : ''}
       </div>
 
-      <!-- Line Items -->
-      <div class="border-bottom">
-        <table>
-          <thead>
+      <!-- Line Items (Reference 1 Aligned Single-Line Table) -->
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th style="width: 7%; text-align: left;">#</th>
+            <th style="width: 39%; text-align: left;">Name</th>
+            <th style="width: 13%; text-align: center;">Qty</th>
+            <th style="width: 18%; text-align: right;">Price</th>
+            <th style="width: 23%; text-align: right; padding-right: 1px;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.lines.map((l, idx) => `
             <tr>
-              <th class="text-left" style="width: 50%;">Item</th>
-              <th class="text-center" style="width: 22%;">Qty x Rate</th>
-              <th class="text-right" style="width: 28%;">Amount</th>
+              <td style="text-align: left;">${idx + 1}</td>
+              <td style="text-align: left; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${l.product}">${l.product}</td>
+              <td style="text-align: center;">${l.qty}</td>
+              <td style="text-align: right;">${l.rate?.toLocaleString() || "0"}</td>
+              <td style="text-align: right; font-weight: bold; padding-right: 1px;">${l.total?.toLocaleString() || "0"}</td>
             </tr>
-          </thead>
-          <tbody>
-            ${data.lines.map(l => `
-              <tr>
-                <td colspan="3" class="item-name">${l.product}</td>
-              </tr>
-              <tr>
-                <td></td>
-                <td class="text-center">${l.qty} x ${l.rate?.toLocaleString() || "0"}</td>
-                <td class="text-right">${l.total?.toLocaleString() || "0"}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
+          `).join('')}
+        </tbody>
+      </table>
       
-      <!-- Current Bill Totals -->
-      <div class="totals-grid mt-2 border-bottom">
-        <div>Total Items:</div>
-        <div class="text-right">${totalItems}</div>
-        
-        <div>Total Quantity:</div>
-        <div class="text-right">${totalQty}</div>
-        
-        <div>Gross Amount:</div>
-        <div class="text-right">Rs. ${(data.gross ?? data.totalGross)?.toLocaleString() || "0"}</div>
-        
-        ${((data.discount ?? data.totalDiscount) || 0) > 0 ? `
-          <div>Discount:</div>
-          <div class="text-right">- Rs. ${(data.discount ?? data.totalDiscount)?.toLocaleString()}</div>
+      <!-- Current Bill Totals (Compact Reference 1 Style) -->
+      <div class="totals-container border-top border-bottom">
+        <div class="totals-row font-bold" style="font-size: 13px; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 2px;">
+          <span>Total Items: ${data.lines.length} | Qty: ${totalQty}</span>
+          <span>Rs. ${thisBillNet.toLocaleString()}</span>
+        </div>
+
+        ${((data.gross ?? data.totalGross) || 0) !== thisBillNet ? `
+          <div class="totals-row">
+            <span>Sub Total:</span>
+            <span>Rs. ${(data.gross ?? data.totalGross)?.toLocaleString() || "0"}</span>
+          </div>
         ` : ''}
-        
-        <div class="font-bold mt-1" style="font-size: 14px;">THIS INVOICE TOTAL:</div>
-        <div class="text-right font-bold mt-1" style="font-size: 14px;">Rs. ${thisBillNet.toLocaleString()}</div>
-        
-        <div class="mt-1">Amount Paid:</div>
-        <div class="text-right mt-1">Rs. ${paidToday.toLocaleString()}</div>
-        
-        <div>Invoice Balance:</div>
-        <div class="text-right">Rs. ${(data.balance)?.toLocaleString() || "0"}</div>
+
+        ${((data.discount ?? data.totalDiscount) || 0) > 0 ? `
+          <div class="totals-row">
+            <span>Discount:</span>
+            <span>- Rs. ${(data.discount ?? data.totalDiscount)?.toLocaleString()}</span>
+          </div>
+        ` : ''}
+
+        <div class="totals-row font-bold">
+          <span>Net Amount:</span>
+          <span>Rs. ${thisBillNet.toLocaleString()}</span>
+        </div>
+
+        <div class="totals-row">
+          <span>Received:</span>
+          <span>Rs. ${paidToday.toLocaleString()}</span>
+        </div>
+
+        ${(data.cashTendered ?? 0) > 0 ? `
+          <div class="totals-row">
+            <span>Cash Tendered:</span>
+            <span>Rs. ${(data.cashTendered || 0).toLocaleString()}</span>
+          </div>
+          <div class="totals-row font-bold">
+            <span>Change Return:</span>
+            <span>Rs. ${(data.changeReturn || 0).toLocaleString()}</span>
+          </div>
+        ` : ''}
+
+        ${!isWalkIn && (data.balance || 0) !== 0 ? `
+          <div class="totals-row font-bold">
+            <span>Balance:</span>
+            <span>Rs. ${(data.balance)?.toLocaleString() || "0"}</span>
+          </div>
+        ` : ''}
       </div>
 
-      <!-- KHATA / ACCOUNT LEDGER SUMMARY (100% English) -->
-      ${prevBal !== null ? `
-      <div class="border-bottom mt-2 pb-2">
-        <div class="text-center font-bold mb-1" style="font-size: 12px; background: #e5e7eb; padding: 3px; letter-spacing: 0.5px; border-radius: 2px;">
-          ${data.isSupplier ? 'SUPPLIER LEDGER SUMMARY' : 'CUSTOMER ACCOUNT SUMMARY'}
+      <!-- KHATA / ACCOUNT LEDGER SUMMARY (Registered / Credit Accounts Only) -->
+      ${!isWalkIn ? `
+      <div class="border-bottom" style="margin-top: 4px; padding-bottom: 4px;">
+        <div class="text-center font-bold" style="font-size: 11px; background: #000; color: #fff !important; padding: 2px; margin-bottom: 3px; letter-spacing: 0.5px;">
+          ${data.isSupplier ? 'SUPPLIER ACCOUNT SUMMARY (کھاتہ کی تفصیل)' : 'CUSTOMER ACCOUNT SUMMARY (کھاتہ کی تفصیل)'}
         </div>
-        <div class="totals-grid" style="font-size: 12px;">
-          <div>Previous Balance:</div>
-          <div class="text-right">Rs. ${prevBal.toLocaleString()}</div>
-
-          <div>Current Invoice:</div>
-          <div class="text-right">Rs. ${thisBillNet.toLocaleString()}</div>
-
-          <div>Paid Today:</div>
-          <div class="text-right">Rs. ${paidToday.toLocaleString()}</div>
-
-          <div class="font-bold mt-1" style="font-size: 13px;">NET ACCOUNT BALANCE:</div>
-          <div class="text-right font-bold mt-1" style="font-size: 13px;">Rs. ${(calculatedNetBal ?? 0).toLocaleString()}</div>
+        <div class="totals-row" style="font-size: 11px;">
+          <span>Previous Balance (پچھلا بقایا):</span>
+          <span>Rs. ${(prevBal ?? 0).toLocaleString()}</span>
+        </div>
+        <div class="totals-row" style="font-size: 11px;">
+          <span>Current Bill (موجودہ بل):</span>
+          <span>Rs. ${thisBillNet.toLocaleString()}</span>
+        </div>
+        <div class="totals-row" style="font-size: 11px;">
+          <span>${data.isSupplier ? 'Paid (ادائیگی)' : 'Paid (وصول رقم)'}:</span>
+          <span>Rs. ${paidToday.toLocaleString()}</span>
+        </div>
+        <div class="totals-row font-bold" style="font-size: 12px; border-top: 1px solid #000; padding-top: 2px; margin-top: 2px;">
+          <span>${data.isSupplier ? 'NET PAYABLES (کل واجب الاداء):' : 'NET RECEIVABLES (کل واجب الوصول):'}</span>
+          <span>Rs. ${(calculatedNetBal ?? 0).toLocaleString()}</span>
         </div>
       </div>
       ` : ''}
       
-      <div class="mt-2 mb-2" style="font-size: 12px; font-weight: 600;">
-        <span class="font-bold">Signature:</span> _________________ <span style="margin-left:10px;">${data.staffName ? '(' + data.staffName + ')' : ''}</span>
+      ${!isWalkIn ? `
+      <div style="margin-top: 4px; margin-bottom: 4px; font-size: 11px; font-weight: bold;">
+        <span>Signature:</span> _________________ ${data.staffName ? '(' + data.staffName + ')' : ''}
+      </div>
+      ` : ''}
+
+      <!-- Urdu Notice (from Reference 3) -->
+      <div style="direction: rtl; text-align: center; margin-top: 5px; padding-top: 4px; border-top: 1px dashed #000; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 11px; font-weight: bold; line-height: 1.35; color: #000 !important;">
+        <div>نوٹ: اپنا مال چیک کر کے لیں۔ کسی قسم کی واپسی یا کلیم نہیں ہوگا</div>
+        <div>ایکسپائری چیک کر کے لیں۔ بعد میں کمپنی ذمہ دار نہیں ہوگی</div>
       </div>
 
-      <div class="text-center mt-2 border-top" style="padding-top: 6px; font-size: 11px; color: #444;">
-        <div style="font-weight: 600; margin-bottom: 2px;">Note: Opened or damaged goods cannot be claimed or returned without receipt.</div>
-        Thank you for your business!
+      <div class="text-center" style="margin-top: 4px; font-size: 11px; font-weight: bold; color: #000 !important;">
+        Thanks for shopping with us!
         <br/>
-        <span style="font-size: 10px; color: #777;">Software by Ahmad Hassan Tanseel</span>
+        <span style="font-size: 10px; font-weight: normal; color: #000 !important;">Software by Ahmad Hassan Tanseel</span>
       </div>
     </body>
     </html>
