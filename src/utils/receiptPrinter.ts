@@ -62,6 +62,7 @@ export function printThermalReceipt(data: ReceiptData) {
   const totalQty = data.lines.reduce((sum, l) => sum + (l.qty || 0), 0);
   const now = new Date();
   const timeString = data.time || now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formattedDate = (data.date || '').split(' ')[0] || data.date;
 
   const isWalkIn = 
     Boolean(data.isWalkIn) || 
@@ -120,12 +121,12 @@ export function printThermalReceipt(data: ReceiptData) {
         }
         body { 
           font-family: Arial, Helvetica, -apple-system, sans-serif;
-          width: 100%;
-          max-width: 50mm;
-          margin: 0 auto;
-          padding: 1.5mm 1.5mm 2mm 1.5mm;
+          width: 44mm;
+          max-width: 44mm;
+          margin: 0;
+          padding: 1mm 5mm 2mm 1.5mm;
           color: #000000 !important;
-          font-size: 10px;
+          font-size: 8.5px;
           line-height: 1.25;
           font-weight: 500;
           box-sizing: border-box;
@@ -140,7 +141,7 @@ export function printThermalReceipt(data: ReceiptData) {
         
         .logo-img {
           width: 100%;
-          max-width: 44mm;
+          max-width: 40mm;
           height: auto;
           margin: 0 auto 4px auto;
           display: block;
@@ -148,7 +149,7 @@ export function printThermalReceipt(data: ReceiptData) {
           image-rendering: crisp-edges;
         }
         .store-title {
-          font-size: 18px;
+          font-size: 16px;
           font-weight: 900;
           letter-spacing: 0.5px;
           margin: 1px 0;
@@ -156,7 +157,7 @@ export function printThermalReceipt(data: ReceiptData) {
           color: #000000 !important;
         }
         .store-meta {
-          font-size: 10.5px;
+          font-size: 9.5px;
           line-height: 1.25;
           margin: 1px 0;
           color: #000000 !important;
@@ -172,25 +173,25 @@ export function printThermalReceipt(data: ReceiptData) {
           border-top: 1px solid #000;
           border-bottom: 1px solid #000;
           padding: 2.5px 1px;
-          font-size: 10px;
+          font-size: 9px;
           font-weight: bold;
           color: #000000 !important;
         }
         table.items-table td {
           padding: 2px 1px;
-          font-size: 10px;
+          font-size: 9px;
           vertical-align: middle;
           color: #000000 !important;
         }
         table.items-table th:last-child,
         table.items-table td:last-child {
-          padding-right: 1px;
+          padding-right: 5px;
         }
         
         .totals-container {
           margin-top: 3px;
           padding: 2px 1px;
-          font-size: 11px;
+          font-size: 10px;
         }
         .totals-row {
           display: flex;
@@ -199,7 +200,7 @@ export function printThermalReceipt(data: ReceiptData) {
           color: #000000 !important;
         }
         .totals-row span:last-child {
-          padding-right: 1px;
+          padding-right: 5px;
         }
         .grid-2 {
           display: flex;
@@ -226,7 +227,7 @@ export function printThermalReceipt(data: ReceiptData) {
       
       <div class="grid-2">
         <span>Invoice No.: <strong>${data.refNo || 'Auto'}</strong></span>
-        <span>Date: ${data.date}</span>
+        <span>Date: ${formattedDate}</span>
       </div>
       <div class="grid-2" style="margin-bottom: 2px;">
         <span>Time: ${timeString}</span>
@@ -244,11 +245,11 @@ export function printThermalReceipt(data: ReceiptData) {
       <table class="items-table">
         <thead>
           <tr>
-            <th style="width: 7%; text-align: left;">#</th>
-            <th style="width: 39%; text-align: left;">Name</th>
-            <th style="width: 13%; text-align: center;">Qty</th>
+            <th style="width: 8%; text-align: left;">#</th>
+            <th style="width: 40%; text-align: left;">Name</th>
+            <th style="width: 12%; text-align: center;">Qty</th>
             <th style="width: 18%; text-align: right;">Price</th>
-            <th style="width: 23%; text-align: right; padding-right: 1px;">Amount</th>
+            <th style="width: 22%; text-align: right; padding-right: 5px;">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -258,7 +259,7 @@ export function printThermalReceipt(data: ReceiptData) {
               <td style="text-align: left; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${l.product}">${l.product}</td>
               <td style="text-align: center;">${l.qty}</td>
               <td style="text-align: right;">${l.rate?.toLocaleString() || "0"}</td>
-              <td style="text-align: right; font-weight: bold; padding-right: 1px;">${l.total?.toLocaleString() || "0"}</td>
+              <td style="text-align: right; font-weight: bold; padding-right: 5px;">${l.total?.toLocaleString() || "0"}</td>
             </tr>
           `).join('')}
         </tbody>

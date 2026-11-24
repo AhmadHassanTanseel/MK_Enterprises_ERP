@@ -19,13 +19,21 @@ export function useGridNavigation(
       const inputType = isInput ? (target as HTMLInputElement).type : '';
       const isTextInput = isInput && (inputType === 'text' || inputType === 'search');
       
-      // SPACEBAR to add a new line
+      // SPACEBAR to add a new line (only when not actively typing inside an input/select/textarea)
       if (e.code === 'Space') {
-        if (isTextInput || isSelect) {
-          return; // Allow native space for typing and opening selects
+        if (isInput || isSelect || target.tagName === 'TEXTAREA') {
+          return; // Allow native space for typing and interacting with inputs
         }
         e.preventDefault();
         onAddLine();
+        setTimeout(() => {
+          const rows = container.querySelectorAll('tbody tr');
+          if (rows.length > 0) {
+            const lastRow = rows[rows.length - 1];
+            const focusTarget = lastRow.querySelector('input:not([disabled]), [tabindex="0"], select:not([disabled]), button:not([disabled])') as HTMLElement;
+            if (focusTarget) focusTarget.focus();
+          }
+        }, 80);
         return;
       }
 

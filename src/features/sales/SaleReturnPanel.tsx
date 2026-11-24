@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 
 export const SaleReturnPanel: React.FC = () => {
-  const { settings, products, accounts, postInvoice, invoices } = useAppContext();
+  const { settings, products, accounts, postInvoice } = useAppContext();
   const [originalBillNo, setOriginalBillNo] = useState("");
   
   const [accountId, setAccountId] = useState<number | null>(null);
@@ -21,41 +21,39 @@ export const SaleReturnPanel: React.FC = () => {
   const customerAccounts = accounts.filter(a => a.account_type_id === 2 || a.account_type_id === 1);
 
   const handleLoadBill = async () => {
-      if (!originalBillNo) return;
-      const bill = invoices.find(i => i.type === 'SALE' && i.ref_no.toLowerCase() === originalBillNo.toLowerCase());
-      if (bill) {
+    if (!originalBillNo) return;
+    try {
+      const data: any = await invoke('get_invoice_by_ref', { refNo: originalBillNo.trim(), invoiceType: 'SALE' });
+      if (data && data.invoice) {
+        const bill = data.invoice;
         setAccountId(bill.account_id);
-        
-        try {
-          const rawLines = await invoke('get_invoice_lines', { invoiceId: bill.id });
-          
-          if (Array.isArray(rawLines) && rawLines.length > 0) {
-            setLines(rawLines.map((l: any) => ({ 
-              id: Math.random().toString(), 
-              product_id: l.product_id, 
-              qty: l.qty, 
-              rate: l.rate, 
-              discount_pct: l.discount_pct || 0,
-              discount: l.discount_pct || 0,
-              amount: l.amount 
-            })));
-          } else {
-            toast.error("This invoice has no items recorded");
-          }
-        } catch (e) {
-          toast.error("Failed to load invoice items");
+        const rawLines = data.lines;
+        if (Array.isArray(rawLines) && rawLines.length > 0) {
+          setLines(rawLines.map((l: any) => ({ 
+            id: Math.random().toString(), 
+            product_id: l.product_id, 
+            qty: l.qty, 
+            rate: l.rate, 
+            discount_pct: l.discount_pct || 0,
+            discount: l.discount_pct || 0,
+            amount: l.amount 
+          })));
+        } else {
+          toast.error("This invoice has no items recorded");
         }
-        
         setInvoiceDate(bill.date.split(' ')[0]);
         toast.success(`Loaded bill ${bill.ref_no}`);
       } else {
         toast.error('No invoice found with that number');
       }
-    };
+    } catch (e: any) {
+      toast.error('Failed to load invoice: ' + e.toString());
+    }
+  };
   const containerRef = useRef<HTMLDivElement>(null);
   useGridNavigation(containerRef, () => addLine(), () => handleSave(false, false));
 
-  const addLine = () => setLines([...lines, { id: Math.random().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
+  const addLine = () => setLines([...lines, { id: Date.now().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
   const removeLine = (id: string) => lines.length > 1 && setLines(lines.filter(l => l.id !== id));
 
   const updateLine = (id: string, field: keyof InvoiceLine, value: any) => {
@@ -118,7 +116,7 @@ export const SaleReturnPanel: React.FC = () => {
     try {
       await postInvoice({
         type: 'SALE_RETURN',
-        ref_no: `SR-${Math.floor(Math.random() * 10000)}`,
+        ref_no: '',
         account_id: accountId,
         date: invoiceDate,
         lines: lines as any,

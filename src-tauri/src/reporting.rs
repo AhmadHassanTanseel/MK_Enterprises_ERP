@@ -1036,6 +1036,210 @@ pub async fn get_invoice_lines(invoice_id: i64, db: State<'_, SqlitePool>) -> Re
     .map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InvoiceWithLines {
+    pub invoice: InvoiceRaw,
+    pub lines: Vec<InvoiceLineRaw>,
+}
+
+#[tauri::command]
+pub async fn get_invoice_by_ref(
+    ref_no: String,
+    invoice_type: String,
+    db: State<'_, SqlitePool>,
+) -> Result<Option<InvoiceWithLines>, String> {
+    let inv = sqlx::query_as::<_, InvoiceRaw>(
+        r#"
+        SELECT 
+            id, 
+            invoice_number as ref_no, 
+            invoice_type as type, 
+            account_id, 
+            datetime(invoice_date, 'localtime') as date, 
+            gross_amount, 
+            discount_amount, 
+            net_amount, 
+            amount_received as amount_paid, 
+            status
+        FROM invoices 
+        WHERE LOWER(invoice_number) = LOWER(?) AND invoice_type = ?
+        LIMIT 1
+        "#,
+    )
+    .bind(&ref_no)
+    .bind(&invoice_type)
+    .fetch_optional(&*db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some(invoice) = inv {
+        let lines = sqlx::query_as::<_, InvoiceLineRaw>(
+            r#"
+            SELECT 
+                product_id,
+                quantity as qty,
+                unit_price as rate,
+                discount_percent as discount_pct,
+                total_price as amount,
+                flavor
+            FROM invoice_items
+            WHERE invoice_id = ?
+            "#,
+        )
+        .bind(invoice.id)
+        .fetch_all(&*db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        Ok(Some(InvoiceWithLines { invoice, lines }))
+    } else {
+        Ok(None)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DashboardMetrics {
+    pub sales_today: f64,
+    pub sales_week: f64,
+    pub sales_month: f64,
+    pub purch_today: f64,
+    pub purch_week: f64,
+    pub purch_month: f64,
+    pub cash_today: f64,
+    pub cash_week: f64,
+    pub cash_month: f64,
+    pub cash_all_time: f64,
+    pub bank_today: f64,
+    pub bank_week: f64,
+    pub bank_month: f64,
+    pub bank_all_time: f64,
+    pub total_receivables: f64,
+    pub new_customers_month: i64,
+    pub active_customer_count: i64,
+}
+
+#[tauri::command]
+pub async fn get_dashboard_metrics(db: State<'_, SqlitePool>) -> Result<DashboardMetrics, String> {
+    // 1. Sales metrics
+    let (sales_today, sales_week, sales_month): (f64, f64, f64) = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN date(invoice_date) = date('now', 'localtime') THEN (CASE WHEN invoice_type='SALE' THEN net_amount ELSE -net_amount END) ELSE 0 END), 0.0),
+            COALESCE(SUM(CASE WHEN date(invoice_date) >= date('now', 'localtime', 'weekday 0', '-7 days') THEN (CASE WHEN invoice_type='SALE' THEN net_amount ELSE -net_amount END) ELSE 0 END), 0.0),
+            COALESCE(SUM(CASE WHEN date(invoice_date) >= date('now', 'localtime', 'start of month') THEN (CASE WHEN invoice_type='SALE' THEN net_amount ELSE -net_amount END) ELSE 0 END), 0.0)
+        FROM invoices WHERE invoice_type IN ('SALE', 'SALE_RETURN')
+        "#
+    )
+    .fetch_one(&*db)
+    .await
+    .unwrap_or((0.0, 0.0, 0.0));
+
+    // 2. Purchases metrics
+    let (purch_today, purch_week, purch_month): (f64, f64, f64) = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN date(invoice_date) = date('now', 'localtime') THEN (CASE WHEN invoice_type='PURCHASE' THEN net_amount ELSE -net_amount END) ELSE 0 END), 0.0),
+            COALESCE(SUM(CASE WHEN date(invoice_date) >= date('now', 'localtime', 'weekday 0', '-7 days') THEN (CASE WHEN invoice_type='PURCHASE' THEN net_amount ELSE -net_amount END) ELSE 0 END), 0.0),
+            COALESCE(SUM(CASE WHEN date(invoice_date) >= date('now', 'localtime', 'start of month') THEN (CASE WHEN invoice_type='PURCHASE' THEN net_amount ELSE -net_amount END) ELSE 0 END), 0.0)
+        FROM invoices WHERE invoice_type IN ('PURCHASE', 'PURCHASE_RETURN')
+        "#
+    )
+    .fetch_one(&*db)
+    .await
+    .unwrap_or((0.0, 0.0, 0.0));
+
+    // 3. Cash flow metrics (Account 1: Cash in Drawer)
+    let (cash_today, cash_week, cash_month, cash_all_time): (f64, f64, f64, f64) = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN date(entry_date) = date('now', 'localtime') THEN (debit - credit) ELSE 0 END), 0.0),
+            COALESCE(SUM(CASE WHEN date(entry_date) >= date('now', 'localtime', 'weekday 0', '-7 days') THEN (debit - credit) ELSE 0 END), 0.0),
+            COALESCE(SUM(CASE WHEN date(entry_date) >= date('now', 'localtime', 'start of month') THEN (debit - credit) ELSE 0 END), 0.0),
+            COALESCE(SUM(debit - credit), 0.0)
+        FROM journal_entries
+        WHERE account_id = 1
+        "#
+    )
+    .fetch_one(&*db)
+    .await
+    .unwrap_or((0.0, 0.0, 0.0, 0.0));
+
+    // 4. Bank flow metrics (all bank accounts)
+    let (bank_today, bank_week, bank_month, bank_all_time): (f64, f64, f64, f64) = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN date(je.entry_date) = date('now', 'localtime') THEN (je.debit - je.credit) ELSE 0 END), 0.0),
+            COALESCE(SUM(CASE WHEN date(je.entry_date) >= date('now', 'localtime', 'weekday 0', '-7 days') THEN (je.debit - je.credit) ELSE 0 END), 0.0),
+            COALESCE(SUM(CASE WHEN date(je.entry_date) >= date('now', 'localtime', 'start of month') THEN (je.debit - je.credit) ELSE 0 END), 0.0),
+            COALESCE(SUM(je.debit - je.credit), 0.0)
+        FROM journal_entries je
+        JOIN accounts a ON a.id = je.account_id
+        WHERE (a.account_type_id = 1 AND a.id != 1) OR (a.bank_name IS NOT NULL AND a.bank_name != '')
+        "#
+    )
+    .fetch_one(&*db)
+    .await
+    .unwrap_or((0.0, 0.0, 0.0, 0.0));
+
+    // 5. Total Receivables
+    let total_receivables: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(je.debit - je.credit), 0.0)
+        FROM journal_entries je
+        JOIN accounts a ON a.id = je.account_id
+        WHERE (a.is_customer = 1 OR a.account_type_id = 2) AND a.status = 'ACTIVE'
+        "#
+    )
+    .fetch_one(&*db)
+    .await
+    .unwrap_or(0.0);
+
+    // 6. New Customers This Month
+    let new_customers_month: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM accounts
+        WHERE (is_customer = 1 OR account_type_id = 2) AND date(created_at) >= date('now', 'localtime', 'start of month')
+        "#
+    )
+    .fetch_one(&*db)
+    .await
+    .unwrap_or(0);
+
+    // 7. Active Customers (last 30 days)
+    let active_customer_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(DISTINCT i.account_id)
+        FROM invoices i
+        JOIN accounts a ON a.id = i.account_id
+        WHERE i.invoice_type = 'SALE' AND (a.is_customer = 1 OR a.account_type_id = 2) AND date(i.invoice_date) >= date('now', 'localtime', '-30 days')
+        "#
+    )
+    .fetch_one(&*db)
+    .await
+    .unwrap_or(0);
+
+    Ok(DashboardMetrics {
+        sales_today,
+        sales_week,
+        sales_month,
+        purch_today,
+        purch_week,
+        purch_month,
+        cash_today,
+        cash_week,
+        cash_month,
+        cash_all_time,
+        bank_today,
+        bank_week,
+        bank_month,
+        bank_all_time,
+        total_receivables,
+        new_customers_month,
+        active_customer_count,
+    })
+}
+
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct InvoiceRaw {
     pub id: i64,
@@ -1455,20 +1659,99 @@ pub async fn get_financial_summary(
     )
     .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
 
-    let total_liabilities = supp_pay + cust_pay + staff_unpaid + other_liab;
+    // e. Accrued Recurring Overheads (from fixed_liabilities where remaining due > 0)
+    let fixed_liabs_due: f64 = {
+        let fl_rows: Vec<(String, f64, String)> = sqlx::query_as("SELECT name, amount, frequency FROM fixed_liabilities")
+            .fetch_all(pool).await.unwrap_or_default();
+        let mut sum_due = 0.0;
+        for (fl_name, fl_amount, fl_freq) in fl_rows {
+            let is_daily = fl_freq.to_uppercase() == "DAILY";
+            let paid: f64 = if is_daily {
+                sqlx::query_scalar(
+                    r#"
+                    SELECT COALESCE(SUM(je.debit), 0.0)
+                    FROM journal_entries je
+                    JOIN accounts a ON a.id = je.account_id
+                    WHERE (je.account_id = 7 OR a.account_type_id = 7)
+                      AND je.narration LIKE '%' || ? || '%'
+                      AND date(je.entry_date) = date('now', 'localtime')
+                    "#
+                )
+                .bind(&fl_name)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0.0)
+            } else {
+                sqlx::query_scalar(
+                    r#"
+                    SELECT COALESCE(SUM(je.debit), 0.0)
+                    FROM journal_entries je
+                    JOIN accounts a ON a.id = je.account_id
+                    WHERE (je.account_id = 7 OR a.account_type_id = 7)
+                      AND je.narration LIKE '%' || ? || '%'
+                      AND strftime('%Y-%m', je.entry_date) = strftime('%Y-%m', 'now', 'localtime')
+                    "#
+                )
+                .bind(&fl_name)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0.0)
+            };
+            let remaining = (fl_amount - paid).max(0.0);
+            sum_due += remaining;
+        }
+        sum_due
+    };
 
-    // 5. EQUITY (Capital + Net Profit / Retained Earnings)
-    let investor_capital: f64 = sqlx::query_scalar(
+    let total_liabilities = supp_pay + cust_pay + staff_unpaid + other_liab + fixed_liabs_due;
+
+    // 5. EQUITY (Capital + Retained Earnings up to ed - Owner Drawings)
+    // All-time Cumulative Retained Earnings up to ed
+    let all_time_income: f64 = sqlx::query_scalar(
         r#"
         SELECT COALESCE(SUM(je.credit - je.debit), 0.0)
-        FROM accounts a
-        LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
-        WHERE a.account_type_id = 16
+        FROM journal_entries je
+        JOIN accounts a ON a.id = je.account_id
+        JOIN account_types at ON at.id = a.account_type_id
+        WHERE at.nature = 'INCOME' AND date(je.entry_date) <= date(?)
         "#
     )
     .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
 
-    let total_equity = investor_capital + net_profit;
+    let all_time_expense: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(je.debit - je.credit), 0.0)
+        FROM journal_entries je
+        JOIN accounts a ON a.id = je.account_id
+        JOIN account_types at ON at.id = a.account_type_id
+        WHERE at.nature = 'EXPENSE' AND a.account_type_id != 16 AND a.id NOT IN (18, 24) AND date(je.entry_date) <= date(?)
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+    let cumulative_retained_earnings = all_time_income - all_time_expense;
+
+    let capital: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(je.credit - je.debit), 0.0)
+        FROM accounts a
+        LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+        WHERE a.account_type_id = 16 AND a.id NOT IN (18, 24)
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+    let drawings: f64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(je.debit - je.credit), 0.0)
+        FROM accounts a
+        LEFT JOIN journal_entries je ON je.account_id = a.id AND date(je.entry_date) <= date(?)
+        WHERE a.id = 24 OR a.name LIKE '%Owner Drawings%' OR a.name LIKE '%ذاتی خرچ%'
+        "#
+    )
+    .bind(&ed).fetch_one(pool).await.unwrap_or(0.0);
+
+    let total_equity = capital + cumulative_retained_earnings - drawings;
 
     Ok(FinancialSummary {
         total_revenue: sales_revenue,
@@ -1741,6 +2024,47 @@ pub async fn get_financial_breakdown(
                     details: None,
                     amount: bal,
                 });
+            }
+
+            // 5. Accrued Recurring Expenses / Overheads
+            let fl_rows: Vec<(String, f64, String)> = sqlx::query_as("SELECT name, amount, frequency FROM fixed_liabilities")
+                .fetch_all(pool).await.unwrap_or_default();
+            for (fl_name, fl_amount, fl_freq) in fl_rows {
+                let is_daily = fl_freq.to_uppercase() == "DAILY";
+                let paid: f64 = if is_daily {
+                    sqlx::query_scalar(
+                        r#"
+                        SELECT COALESCE(SUM(je.debit), 0.0)
+                        FROM journal_entries je
+                        JOIN accounts a ON a.id = je.account_id
+                        WHERE (je.account_id = 7 OR a.account_type_id = 7)
+                          AND je.narration LIKE '%' || ? || '%'
+                          AND date(je.entry_date) = date('now', 'localtime')
+                        "#
+                    )
+                    .bind(&fl_name).fetch_one(pool).await.unwrap_or(0.0)
+                } else {
+                    sqlx::query_scalar(
+                        r#"
+                        SELECT COALESCE(SUM(je.debit), 0.0)
+                        FROM journal_entries je
+                        JOIN accounts a ON a.id = je.account_id
+                        WHERE (je.account_id = 7 OR a.account_type_id = 7)
+                          AND je.narration LIKE '%' || ? || '%'
+                          AND strftime('%Y-%m', je.entry_date) = strftime('%Y-%m', 'now', 'localtime')
+                        "#
+                    )
+                    .bind(&fl_name).fetch_one(pool).await.unwrap_or(0.0)
+                };
+                let rem = (fl_amount - paid).max(0.0);
+                if rem > 0.001 {
+                    items.push(FinancialBreakdownItem {
+                        name: fl_name,
+                        category: "Accrued Recurring Overhead (مقررہ واجب الاداء بل / کرایہ)".into(),
+                        details: Some(format!("Frequency: {}, Total: Rs. {:.0}, Paid: Rs. {:.0}", fl_freq, fl_amount, paid)),
+                        amount: rem,
+                    });
+                }
             }
 
             let total: f64 = items.iter().map(|i| i.amount).sum();

@@ -1,4 +1,4 @@
-# PROJECT_STATE.md — MK Enterprises ERP
+# PROJECT_STATE.md — Zawar Traders ERP
 
 ## Project Overview
 Desktop ERP application replacing a legacy Microsoft Access system. Built with Tauri v2 (React + Rust + SQLite).

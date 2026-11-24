@@ -138,10 +138,10 @@ export const PurchaseInvoicePanel: React.FC = () => {
       if (printAfter) {
         const supp = accounts.find(a => a.id === accountId);
         const suppName = supp ? supp.name : 'Supplier';
-        const prevBal = supp ? (supp.current_balance ?? 0) : 0;
+        const prevBal = supp ? Math.abs(supp.current_balance ?? 0) : 0;
         const totalPaid = (amountPaidCash || 0) + (amountPaidBank || 0);
         const billBalance = totalNet - totalPaid;
-        const netAccountBal = prevBal - billBalance;
+        const netAccountBal = prevBal + billBalance;
 
         const chosenBank = accounts.find(a => a.id === selectedBankId);
         const bankName = chosenBank?.bank_name || settings.find(s => s.key === 'bank_name')?.value || '';
@@ -160,6 +160,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
             accountName: suppName,
             address: supp?.address || '',
             phone: supp?.contact || '',
+            isSupplier: true,
             lines: lines.map((l: any) => ({
               product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
               qty: l.qty || 0,
@@ -177,8 +178,7 @@ export const PurchaseInvoicePanel: React.FC = () => {
             paymentMethod,
             bankName,
             accountTitle,
-            accountNumber,
-            isSupplier: true
+            accountNumber
           });
         }
       }

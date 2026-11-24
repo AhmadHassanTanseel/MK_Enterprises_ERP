@@ -52,12 +52,26 @@ fn from_base64(s: &str) -> Result<Vec<u8>, String> {
     Ok(result)
 }
 
+pub fn get_active_db_path(app_dir: &std::path::Path) -> std::path::PathBuf {
+    let new_path = app_dir.join("zawar_traders_v2.db");
+    if new_path.exists() {
+        new_path
+    } else {
+        let old_path = app_dir.join("mk_enterprises_v2.db");
+        if old_path.exists() {
+            old_path
+        } else {
+            new_path
+        }
+    }
+}
+
 pub async fn perform_backup(app_handle: AppHandle, db: &sqlx::SqlitePool) -> Result<String, String> {
     // Force WAL checkpoint before backup so the .db file contains all data
     let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE);").execute(db).await;
 
     let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
-    let db_path = app_dir.join("mk_enterprises_v2.db");
+    let db_path = get_active_db_path(&app_dir);
     let backup_dir = app_dir.join("backups");
     
     if !backup_dir.exists() {
@@ -143,7 +157,7 @@ pub async fn backup_to_local(
     }
 
     let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
-    let db_path = app_dir.join("mk_enterprises_v2.db");
+    let db_path = get_active_db_path(&app_dir);
 
     let timestamp = chrono::Local::now().format("%Y-%m-%d_%H%M%S");
     let dest_filename = format!("Zawar_Traders_Backup_{}.db", timestamp);
@@ -206,7 +220,7 @@ pub async fn prepare_cloud_backup(
     let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE);").execute(&*db).await;
 
     let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
-    let db_path = app_dir.join("mk_enterprises_v2.db");
+    let db_path = get_active_db_path(&app_dir);
 
     let bytes = fs::read(&db_path).map_err(|e| format!("Failed to read database: {}", e))?;
     let size_bytes = bytes.len();
@@ -315,7 +329,7 @@ pub async fn restore_database(
     let _ = perform_backup(app_handle.clone(), &*db).await;
 
     let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
-    let db_path = app_dir.join("mk_enterprises_v2.db");
+    let db_path = get_active_db_path(&app_dir);
 
     // Close the DB pool before overwriting
     db.close().await;

@@ -10,7 +10,8 @@ pub struct HardwareInfo {
     pub is_activated: bool,
 }
 
-const LICENSE_SALT: &str = "MK_ENTERPRISES_SECURE_SALT_2026_TANSEEL";
+const LICENSE_SALT: &str = "ZAWAR_TRADERS_SECURE_SALT_2026_TANSEEL";
+const LEGACY_LICENSE_SALT: &str = "MK_ENTERPRISES_SECURE_SALT_2026_TANSEEL";
 
 fn get_hw_id() -> String {
     machine_uid::get().unwrap_or_else(|_| "UNKNOWN_HARDWARE".to_string())
@@ -18,6 +19,12 @@ fn get_hw_id() -> String {
 
 fn generate_expected_key(hwid: &str) -> String {
     let raw = format!("{}-{}", hwid, LICENSE_SALT);
+    let digest = md5::compute(raw);
+    format!("{:x}", digest).to_uppercase()
+}
+
+fn generate_legacy_key(hwid: &str) -> String {
+    let raw = format!("{}-{}", hwid, LEGACY_LICENSE_SALT);
     let digest = md5::compute(raw);
     format!("{:x}", digest).to_uppercase()
 }
@@ -32,11 +39,13 @@ fn get_license_path(app_handle: &tauri::AppHandle) -> PathBuf {
 pub fn get_hardware_id(app_handle: tauri::AppHandle) -> HardwareInfo {
     let hwid = get_hw_id();
     let expected = generate_expected_key(&hwid);
+    let legacy_expected = generate_legacy_key(&hwid);
     let mut is_activated = false;
     
     let path = get_license_path(&app_handle);
     if let Ok(contents) = fs::read_to_string(path) {
-        if contents.trim().to_uppercase() == expected {
+        let trimmed = contents.trim().to_uppercase();
+        if trimmed == expected || trimmed == legacy_expected {
             is_activated = true;
         }
     }
@@ -51,13 +60,15 @@ pub fn get_hardware_id(app_handle: tauri::AppHandle) -> HardwareInfo {
 pub fn verify_license(key: String, app_handle: tauri::AppHandle) -> Result<bool, String> {
     let hwid = get_hw_id();
     let expected = generate_expected_key(&hwid);
+    let legacy_expected = generate_legacy_key(&hwid);
+    let key_upper = key.trim().to_uppercase();
     
-    if key.trim().to_uppercase() == expected {
+    if key_upper == expected || key_upper == legacy_expected {
         let path = get_license_path(&app_handle);
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
-        fs::write(path, expected).map_err(|e| e.to_string())?;
+        fs::write(path, key_upper).map_err(|e| e.to_string())?;
         Ok(true)
     } else {
         Ok(false)

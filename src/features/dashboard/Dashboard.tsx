@@ -24,16 +24,44 @@ interface ProfitMetrics {
   month: PeriodProfit;
 }
 
+interface DashboardMetricsData {
+  sales_today: number;
+  sales_week: number;
+  sales_month: number;
+  purch_today: number;
+  purch_week: number;
+  purch_month: number;
+  cash_today: number;
+  cash_week: number;
+  cash_month: number;
+  cash_all_time: number;
+  bank_today: number;
+  bank_week: number;
+  bank_month: number;
+  bank_all_time: number;
+  total_receivables: number;
+  new_customers_month: number;
+  active_customer_count: number;
+}
+
 export const Dashboard: React.FC = () => {
-  const { invoices, accounts, ledgerEntries } = useAppContext();
+  const { accounts } = useAppContext();
 
   const [profitMetrics, setProfitMetrics] = useState<ProfitMetrics | null>(null);
+  const [dbMetrics, setDbMetrics] = useState<DashboardMetricsData | null>(null);
 
-  useEffect(() => {
+  const fetchMetrics = () => {
+    invoke<DashboardMetricsData>('get_dashboard_metrics')
+      .then(setDbMetrics)
+      .catch(err => console.error('Failed to load dashboard metrics', err));
     invoke<ProfitMetrics>('get_profit_metrics')
       .then(setProfitMetrics)
       .catch(err => console.error('Failed to load profit metrics', err));
-  }, [invoices, ledgerEntries]);
+  };
+
+  useEffect(() => {
+    fetchMetrics();
+  }, []);
 
   const [hideCash, setHideCash] = useState<boolean>(() => {
     return localStorage.getItem('hide_dashboard_cash_flow') === 'true';
@@ -93,107 +121,25 @@ export const Dashboard: React.FC = () => {
     { label: "Staff Attendance", icon: UsersIcon, to: "/other-accounts?tab=workers", color: "bg-sky-100 text-sky-700" },
   ];
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  
-  const startOfWeek = new Date();
-  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-  const startOfWeekStr = startOfWeek.toISOString().split('T')[0];
-
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
-
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(new Date().getDate() - 30);
-  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
-
-  const metrics = useMemo(() => {
-    let salesToday = 0, salesWeek = 0, salesMonth = 0;
-    let purchToday = 0, purchWeek = 0, purchMonth = 0;
-
-    let cashToday = 0, cashWeek = 0, cashMonth = 0;
-    let bankToday = 0, bankWeek = 0, bankMonth = 0;
-    let cashAllTime = 0, bankAllTime = 0;
-
-    const activeCustomers = new Set<number>();
-
-    invoices.forEach(inv => {
-      const invDate = inv.date.split(' ')[0];
-      const isToday = invDate === todayStr;
-      const isWeek = invDate >= startOfWeekStr && invDate <= todayStr;
-      const isMonth = invDate >= startOfMonthStr && invDate <= todayStr;
-      const isLast30 = invDate >= thirtyDaysAgoStr;
-
-      if (inv.type === 'SALE' || inv.type === 'SALE_RETURN') {
-        const amt = inv.type === 'SALE' ? inv.net_amount : -inv.net_amount;
-        if (isToday) salesToday += amt;
-        if (isWeek) salesWeek += amt;
-        if (isMonth) salesMonth += amt;
-        
-        if (inv.type === 'SALE' && isLast30) {
-          activeCustomers.add(inv.account_id);
-        }
-      }
-
-      if (inv.type === 'PURCHASE' || inv.type === 'PURCHASE_RETURN') {
-        const amt = inv.type === 'PURCHASE' ? inv.net_amount : -inv.net_amount;
-        if (isToday) purchToday += amt;
-        if (isWeek) purchWeek += amt;
-        if (isMonth) purchMonth += amt;
-      }
-    });
-
-    let totalReceivables = 0;
-    let newCustomersMonth = 0;
-    
-    // Some accounts might just be marked Customer by account_type_id=2 in legacy
-    const customers = accounts.filter(a => a.is_customer || a.account_type_id === 2);
-    
-    customers.forEach(acc => {
-      totalReceivables += acc.current_balance;
-      const createdAtDate = acc.created_at?.split(' ')[0];
-      if (createdAtDate && createdAtDate >= startOfMonthStr && createdAtDate <= todayStr) {
-        newCustomersMonth++;
-      }
-    });
-    
-    // Ensure active customers are actually marked as customer accounts
-    const activeCustomerCount = Array.from(activeCustomers).filter(id => customers.some(c => c.id === id)).length;
-
-    ledgerEntries.forEach(entry => {
-      const entryDate = entry.date.split(' ')[0];
-      const isToday = entryDate === todayStr;
-      const isWeek = entryDate >= startOfWeekStr && entryDate <= todayStr;
-      const isMonth = entryDate >= startOfMonthStr && entryDate <= todayStr;
-      
-      const net = entry.dr_amount - entry.cr_amount;
-      
-      const bankAccountIds = new Set(
-        accounts.filter(a => (a.account_type_id === 1 && a.id !== 1) || !!a.bank_name).map(a => a.id)
-      );
-
-      if (entry.account_id === 1) {
-        cashAllTime += net;
-        if (isToday) cashToday += net;
-        if (isWeek) cashWeek += net;
-        if (isMonth) cashMonth += net;
-      } else if (bankAccountIds.has(entry.account_id) || entry.account_id === 6) {
-        bankAllTime += net;
-        if (isToday) bankToday += net;
-        if (isWeek) bankWeek += net;
-        if (isMonth) bankMonth += net;
-      }
-    });
-
-    return {
-      salesToday, salesWeek, salesMonth,
-      purchToday, purchWeek, purchMonth,
-      cashToday, cashWeek, cashMonth,
-      bankToday, bankWeek, bankMonth,
-      cashAllTime, bankAllTime,
-      activeCustomerCount, totalReceivables, newCustomersMonth
-    };
-  }, [invoices, accounts, ledgerEntries, todayStr, startOfWeekStr, startOfMonthStr, thirtyDaysAgoStr]);
+  const metrics = {
+    salesToday: dbMetrics?.sales_today || 0,
+    salesWeek: dbMetrics?.sales_week || 0,
+    salesMonth: dbMetrics?.sales_month || 0,
+    purchToday: dbMetrics?.purch_today || 0,
+    purchWeek: dbMetrics?.purch_week || 0,
+    purchMonth: dbMetrics?.purch_month || 0,
+    cashToday: dbMetrics?.cash_today || 0,
+    cashWeek: dbMetrics?.cash_week || 0,
+    cashMonth: dbMetrics?.cash_month || 0,
+    bankToday: dbMetrics?.bank_today || 0,
+    bankWeek: dbMetrics?.bank_week || 0,
+    bankMonth: dbMetrics?.bank_month || 0,
+    cashAllTime: dbMetrics?.cash_all_time || 0,
+    bankAllTime: dbMetrics?.bank_all_time || 0,
+    activeCustomerCount: dbMetrics?.active_customer_count || 0,
+    totalReceivables: dbMetrics?.total_receivables || 0,
+    newCustomersMonth: dbMetrics?.new_customers_month || 0,
+  };
 
   const formatRs = (val: number) => {
     return 'Rs. ' + Math.round(val || 0).toLocaleString();
@@ -201,27 +147,12 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Header bar with Hide/Show Cash & Bank Flow button */}
+      {/* Header bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-        <h2 className="text-base font-bold text-slate-800">Business Overview</h2>
-        <button
-          type="button"
-          onClick={toggleHideAll}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border shadow-sm ${
-            allHidden
-              ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:text-slate-900'
-          }`}
-          title={allHidden ? "Show All Balances" : "Hide All Balances"}
-        >
-          {allHidden ? <Eye className="h-4 w-4 text-blue-600" /> : <EyeOff className="h-4 w-4 text-slate-500" />}
-          <span>{allHidden ? "Show All Balances" : "Hide All Balances"}</span>
-          {allHidden && (
-            <span className="ml-1 px-1.5 py-0.5 text-[10px] font-black bg-amber-200/80 text-amber-900 rounded">
-              Hidden
-            </span>
-          )}
-        </button>
+        <div>
+          <h2 className="text-base font-bold text-slate-800">Business Overview (کاروباری خلاصہ)</h2>
+          <p className="text-[11px] text-slate-500">ہر کارڈ کا بیلنس چھپانے یا دیکھنے کے لیے اس کارڈ کے اوپر موجود آنکھ (Eye) کے نشان پر کلک کریں۔</p>
+        </div>
       </div>
       
       {/* 5 Summary Sections - Auto-Adaptive, Uncompressed */}

@@ -289,26 +289,10 @@ pub async fn get_salary_summary(
             salary_rate / 30.0
         };
 
-        // Fetch advances paid to this worker in or before this period
-        let advance_row: Option<(f64,)> = sqlx::query_as(
-            "SELECT COALESCE(SUM(debit), 0.0) FROM journal_entries 
-             WHERE account_id = ? AND date(entry_date) >= date(?) AND date(entry_date) <= date(?)
-             AND (narration LIKE '%Advance%' OR narration LIKE '%پیشگی%' OR narration LIKE '%ایڈوانس%' OR ref_no LIKE 'ADV-%')"
-        )
-        .bind(worker_id)
-        .bind(&start_date)
-        .bind(&end_date)
-        .fetch_optional(&*pool)
-        .await
-        .unwrap_or(None);
-        let advance_paid = advance_row.map(|r| r.0).unwrap_or(0.0);
-
-        // Fetch salary payments already made for this worker in this period (EXCLUDING advances)
+        // Fetch salary/payments already made for this worker in this period
         let paid_row: Option<(f64,)> = sqlx::query_as(
             "SELECT COALESCE(SUM(debit), 0.0) FROM journal_entries 
-             WHERE account_id = ? AND date(entry_date) >= date(?) AND date(entry_date) <= date(?)
-             AND (narration LIKE '%Salary%' OR narration LIKE '%تنخواہ%' OR narration LIKE '%Wages%' OR ref_no LIKE 'SAL-%')
-             AND NOT (narration LIKE '%Advance%' OR narration LIKE '%پیشگی%' OR narration LIKE '%ایڈوانس%' OR ref_no LIKE 'ADV-%')"
+             WHERE account_id = ? AND date(entry_date) >= date(?) AND date(entry_date) <= date(?)"
         )
         .bind(worker_id)
         .bind(&start_date)
@@ -317,17 +301,18 @@ pub async fn get_salary_summary(
         .await
         .unwrap_or(None);
         let salary_already_paid = paid_row.map(|r| r.0).unwrap_or(0.0);
+        let advance_paid = 0.0;
 
         let (total_earned, deductions, net_payable) = if wage_type == "DAILY" {
             let earned = (present_days as f64 * salary_rate) + (half_days as f64 * (salary_rate / 2.0));
-            let payable = (earned - advance_paid - salary_already_paid).max(0.0);
+            let payable = (earned - salary_already_paid).max(0.0);
             (earned, 0.0, payable)
         } else {
             let absent_ded = absent_days as f64 * per_day_rate;
             let half_ded = half_days as f64 * (per_day_rate / 2.0);
             let total_ded = absent_ded + half_ded;
             let earned = (salary_rate - total_ded).max(0.0);
-            let payable = (earned - advance_paid - salary_already_paid).max(0.0);
+            let payable = (earned - salary_already_paid).max(0.0);
             (earned, total_ded, payable)
         };
 

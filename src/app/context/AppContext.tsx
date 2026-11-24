@@ -367,23 +367,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }));
       setProducts(productsWithStock);
 
-      const dbLedger: LedgerEntry[] = await invoke('get_all_ledger_entries');
-      const formattedLedger = dbLedger.map((l: any) => ({
-        ...l, date: l.date.split(' ')[0]
-      }));
-      setLedgerEntries(formattedLedger);
-
       const dbAccounts: Account[] = await invoke('get_accounts');
-      // Normalize DB account to UI expectations
-      const normalizedAccounts = dbAccounts.map(a => {
-        const balance = formattedLedger
-          .filter(le => le.account_id === a.id)
-          .reduce((sum, le) => sum + le.dr_amount - le.cr_amount, 0);
-        return {
-          ...a,
-          current_balance: balance
-        };
-      });
+      const normalizedAccounts = dbAccounts.map(a => ({
+        ...a,
+        current_balance: (a as any).current_balance ?? 0
+      }));
       setAccounts(normalizedAccounts);
 
       const dbAreas: Area[] = await invoke('get_areas');
@@ -392,20 +380,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const dbAccountTypes: AccountType[] = await invoke('get_account_types');
       setAccountTypes(dbAccountTypes as any);
 
-      // Fetch dynamic data
-      const dbInvoices: any[] = await invoke('get_invoices');
-      setInvoices(dbInvoices.map(inv => ({
-        id: inv.id,
-        type: inv.type,
-        ref_no: inv.ref_no,
-        account_id: inv.account_id,
-        date: inv.date.split(' ')[0], // simple date parsing
-        lines: [], // We won't load lines in bulk for performance
-        gross_amount: inv.gross_amount,
-        discount_amount: inv.discount_amount,
-        net_amount: inv.net_amount,
-        amount_paid_cash: inv.amount_paid, amount_paid_bank: 0
-      })));
+      // Bounded startup initialization: full tables are queried server-side on-demand
+      setInvoices([]);
+      setLedgerEntries([]);
 
       const dbSettings: AppSetting[] = await invoke('get_settings');
       setSettings(dbSettings);

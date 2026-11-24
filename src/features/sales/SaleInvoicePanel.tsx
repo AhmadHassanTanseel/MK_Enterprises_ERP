@@ -52,7 +52,7 @@ export const SaleInvoicePanel: React.FC = () => {
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
   const [showQuickCreateCustomer, setShowQuickCreateCustomer] = useState<boolean>(false);
 
-  const changeReturn = (cashTendered !== '' && Number(cashTendered) > Math.max(0, totalNet - (amountReceivedBank || 0)))
+  const changeReturn = (cashTendered !== '' && !isNaN(Number(cashTendered)) && Number(cashTendered) > Math.max(0, totalNet - (amountReceivedBank || 0)))
     ? Number(cashTendered) - Math.max(0, totalNet - (amountReceivedBank || 0))
     : 0;
 
@@ -62,6 +62,7 @@ export const SaleInvoicePanel: React.FC = () => {
       setAmountReceivedCash(0);
     } else {
       const num = Number(val);
+      if (isNaN(num)) return;
       setCashTendered(num);
       const neededCash = Math.max(0, totalNet - (amountReceivedBank || 0));
       setAmountReceivedCash(Math.min(num, neededCash));
@@ -222,14 +223,14 @@ export const SaleInvoicePanel: React.FC = () => {
               product: products.find(p => p.id === l.product_id)?.name || 'Unknown',
               qty: l.qty || 0,
               rate: l.rate || 0,
-              total: ((l.qty||0) * (l.rate||0)) - (l.discount||0)
+              total: ((l.qty || 0) * (l.rate || 0)) - ((l.discount || 0) * (l.qty || 0))
             })),
             totalGross: totalGross,
             totalDiscount: totalDiscount,
             totalNet: totalNet,
             amountReceived: totalPaid,
             balance: invoiceNetBalance,
-            cashTendered: cashTendered !== '' ? Number(cashTendered) : undefined,
+            cashTendered: cashTendered !== '' && !isNaN(Number(cashTendered)) ? Number(cashTendered) : undefined,
             changeReturn: changeReturn > 0 ? changeReturn : undefined,
             isWalkIn: isWalkIn,
             previousBalance: isWalkIn ? undefined : prevBalance,
@@ -243,7 +244,7 @@ export const SaleInvoicePanel: React.FC = () => {
       }
       
       // Reset form
-      const walkIn = accounts.find(a => a.name.toLowerCase().includes('walk-in'));
+      const walkIn = accounts.find(a => a.name && a.name.toLowerCase().includes('walk-in'));
       setCustomerId(walkIn ? walkIn.id : null);
       setSalesmanId(null);
       setLines([{ id: Date.now().toString(), product_id: null, qty: 1, rate: 0, discount: 0 }]);
@@ -455,7 +456,7 @@ export const SaleInvoicePanel: React.FC = () => {
                   );
                 })()
               )}
-              {balance > 0.01 && (customer_id === 2 || accounts.find(a => a.id === customer_id)?.name.toLowerCase().includes('walk-in')) && (
+              {balance > 0.01 && (customer_id === 2 || Boolean(accounts.find(a => a.id === customer_id)?.name?.toLowerCase()?.includes('walk-in'))) && (
                 <div className="flex flex-col gap-1 p-2 bg-rose-50 border border-rose-200 rounded text-[11px] text-rose-700 font-semibold mt-1">
                   <div className="flex items-center justify-between">
                     <span>⚠️ واک اِن پر ادھار نہیں کیا جا سکتا۔</span>

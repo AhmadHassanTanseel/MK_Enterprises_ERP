@@ -128,6 +128,7 @@ pub async fn process_sale_internal(
     let invoice_id = res.last_insert_rowid();
 
     // Insert lines and stock movements
+    let mut total_cogs = 0.0;
     for line in &lines {
         if line.quantity <= 0 {
             return Err("Quantity must be strictly positive".into());
@@ -159,7 +160,15 @@ pub async fn process_sale_internal(
         let disc_per_unit = line.discount_percent.unwrap_or(0.0);
         let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(purchase_price, 0.0) FROM products WHERE id = ?))")
+        let cost_price: f64 = sqlx::query_scalar("SELECT COALESCE(purchase_price, 0.0) FROM products WHERE id = ?")
+            .bind(line.product_id)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap_or(0.0);
+
+        total_cogs += cost_price * (line.quantity as f64);
+
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
@@ -167,7 +176,7 @@ pub async fn process_sale_internal(
             .bind(disc_per_unit)
             .bind(total_price)
             .bind(&line.flavor)
-            .bind(line.product_id)
+            .bind(cost_price)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -182,42 +191,93 @@ pub async fn process_sale_internal(
             .map_err(|e| e.to_string())?;
     }
 
-    // Accounting: Debit Customer (AR) and Credit Sales Revenue
-    sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'INVOICE', ?, 'Sale Invoice')")
-        .bind(account_id)
+    let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    // 1. Double-Entry: Debit Customer AR for net_amount
+    sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'INVOICE', ?, 'Sale Invoice', ?, ?, ?)")
+        .bind(clean_account_id)
         .bind(net_amount)
         .bind(invoice_id)
+        .bind(&invoice_date)
+        .bind(&created_at)
+        .bind(&inv_no)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
 
-    sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'INVOICE', ?, 'Sale Revenue')")
+    // 2. Double-Entry: Debit Sales Discount Allowed if discount > 0
+    if discount_amount > 0.001 {
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'INVOICE', ?, 'Sales Discounts Allowed', ?, ?, ?)")
+            .bind(accounts.sales_discount)
+            .bind(discount_amount)
+            .bind(invoice_id)
+            .bind(&invoice_date)
+            .bind(&created_at)
+            .bind(&inv_no)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    // 3. Double-Entry: Credit Sales Revenue for gross_amount
+    sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'INVOICE', ?, 'Sale Revenue', ?, ?, ?)")
         .bind(accounts.sales_revenue)
-        .bind(net_amount)
+        .bind(gross_amount)
         .bind(invoice_id)
+        .bind(&invoice_date)
+        .bind(&created_at)
+        .bind(&inv_no)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
+
+    // 4. GAAP/IFRS Perpetual Inventory: Debit COGS and Credit Inventory on Hand
+    if total_cogs > 0.001 {
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'COGS', ?, 'Cost of Goods Sold', ?, ?, ?)")
+            .bind(accounts.purchases)
+            .bind(total_cogs)
+            .bind(invoice_id)
+            .bind(&invoice_date)
+            .bind(&created_at)
+            .bind(&inv_no)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'COGS', ?, 'Inventory Relief', ?, ?, ?)")
+            .bind(accounts.inventory)
+            .bind(total_cogs)
+            .bind(invoice_id)
+            .bind(&invoice_date)
+            .bind(&created_at)
+            .bind(&inv_no)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
 
     // Handle immediate payment (reduce AR)
     if amount_received_cash > 0.0 {
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, 'Cash Received at POS')")
-            .bind(accounts.cash).bind(amount_received_cash).bind(invoice_id)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, 'Cash Received at POS', ?, ?, ?)")
+            .bind(accounts.cash).bind(amount_received_cash).bind(invoice_id).bind(&invoice_date).bind(&created_at).bind(&inv_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
         
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, 'Cash Received at POS')")
-            .bind(account_id).bind(amount_received_cash).bind(invoice_id)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, 'Cash Received at POS', ?, ?, ?)")
+            .bind(clean_account_id).bind(amount_received_cash).bind(invoice_id).bind(&invoice_date).bind(&created_at).bind(&inv_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
 
     if amount_received_bank > 0.0 {
-        let target_bank_account = bank_account_id.unwrap_or(accounts.bank);
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS')")
-            .bind(target_bank_account).bind(amount_received_bank).bind(invoice_id)
+        let target_bank_account = match bank_account_id {
+            Some(b_id) if b_id > 0 => b_id,
+            _ => return Err("Bank account must be selected when receiving payment into a bank. Please select an active bank account (بینک میں رقم وصول کرنے کے لیے بینک اکاؤنٹ منتخب کرنا لازمی ہے).".into()),
+        };
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS', ?, ?, ?)")
+            .bind(target_bank_account).bind(amount_received_bank).bind(invoice_id).bind(&invoice_date).bind(&created_at).bind(&inv_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
         
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS')")
-            .bind(account_id).bind(amount_received_bank).bind(invoice_id)
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'BANK_RECEIPT', ?, 'Bank Transfer Received at POS', ?, ?, ?)")
+            .bind(clean_account_id).bind(amount_received_bank).bind(invoice_id).bind(&invoice_date).bind(&created_at).bind(&inv_no)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
 
@@ -280,6 +340,7 @@ pub async fn process_sale_return(
     let invoice_id = res.last_insert_rowid();
 
     // Insert lines and stock movements
+    let mut total_cogs = 0.0;
     for line in &lines {
         if line.quantity <= 0 {
             return Err("Quantity must be strictly positive".into());
@@ -291,7 +352,15 @@ pub async fn process_sale_return(
         let disc_per_unit = line.discount_percent.unwrap_or(0.0);
         let total_price = (line.unit_price - disc_per_unit) * (line.quantity as f64);
 
-        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(purchase_price, 0.0) FROM products WHERE id = ?))")
+        let cost_price: f64 = sqlx::query_scalar("SELECT COALESCE(purchase_price, 0.0) FROM products WHERE id = ?")
+            .bind(line.product_id)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap_or(0.0);
+
+        total_cogs += cost_price * (line.quantity as f64);
+
+        sqlx::query("INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             .bind(invoice_id)
             .bind(line.product_id)
             .bind(line.quantity)
@@ -299,7 +368,7 @@ pub async fn process_sale_return(
             .bind(disc_per_unit)
             .bind(total_price)
             .bind(&line.flavor)
-            .bind(line.product_id)
+            .bind(cost_price)
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
@@ -314,22 +383,35 @@ pub async fn process_sale_return(
             .map_err(|e| e.to_string())?;
     }
 
-    // Accounting: Debit Sales Returns (use account ID 3) and Credit the customer/account
-    sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'SALE_RETURN', ?, 'Sale Return')")
-        .bind(accounts.sales_revenue)
-        .bind(net_amount)
-        .bind(invoice_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
+    let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-    sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'SALE_RETURN', ?, 'Sale Return')")
-        .bind(account_id)
-        .bind(net_amount)
-        .bind(invoice_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
+    // 1. Debit Sales Revenue for gross_amount
+    sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'SALE_RETURN', ?, 'Sale Return Revenue Reversal', ?, ?, ?)")
+        .bind(accounts.sales_revenue).bind(gross_amount).bind(invoice_id).bind(&invoice_date).bind(&created_at).bind(&inv_no)
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+    // 2. Credit Sales Discount Allowed (if discount > 0)
+    if discount_amount > 0.001 {
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'SALE_RETURN', ?, 'Sales Discount Reversal', ?, ?, ?)")
+            .bind(accounts.sales_discount).bind(discount_amount).bind(invoice_id).bind(&invoice_date).bind(&created_at).bind(&inv_no)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    }
+
+    // 3. Credit Customer AR for net_amount
+    sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'SALE_RETURN', ?, 'Sale Return AR Credit', ?, ?, ?)")
+        .bind(account_id).bind(net_amount).bind(invoice_id).bind(&invoice_date).bind(&created_at).bind(&inv_no)
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+    // 4. GAAP/IFRS Perpetual Inventory: Debit Inventory on Hand, Credit COGS
+    if total_cogs > 0.001 {
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'COGS', ?, 'Inventory Restocked on Return', ?, ?, ?)")
+            .bind(accounts.inventory).bind(total_cogs).bind(invoice_id).bind(&invoice_date).bind(&created_at).bind(&inv_no)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'COGS', ?, 'COGS Relief on Return', ?, ?, ?)")
+            .bind(accounts.purchases).bind(total_cogs).bind(invoice_id).bind(&invoice_date).bind(&created_at).bind(&inv_no)
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    }
 
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(inv_no.clone())
@@ -545,42 +627,75 @@ pub async fn settle_dispatch(
         .execute(&mut *tx)
         .await.map_err(|e| e.to_string())?.last_insert_rowid();
 
+        let mut total_cogs = 0.0;
         for (pid, qty, price, disc, flavor) in sale_lines {
             let total_price = (qty as f64) * price * (1.0 - (disc / 100.0));
+            let cost_price: f64 = sqlx::query_scalar("SELECT COALESCE(purchase_price, 0.0) FROM products WHERE id = ?")
+                .bind(pid)
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap_or(0.0);
+            total_cogs += cost_price * (qty as f64);
+
             sqlx::query(
-                "INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(purchase_price, 0.0) FROM products WHERE id = ?))"
+                "INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, discount_percent, total_price, flavor, cost_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             )
-            .bind(invoice_id).bind(pid).bind(qty).bind(price).bind(disc).bind(total_price).bind(flavor).bind(pid)
+            .bind(invoice_id).bind(pid).bind(qty).bind(price).bind(disc).bind(total_price).bind(flavor).bind(cost_price)
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+            // Record inventory movement for sold stock
+            sqlx::query("INSERT INTO inventory_movements (product_id, quantity, movement_type, reference_id) VALUES (?, ?, 'SALE', ?)")
+                .bind(pid).bind(-qty).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
         }
         
-        // Ledger Entries (Cash Received automatically since it's a salesman)
+        // Ledger Entries
         let accounts = crate::system_accounts::get_system_accounts(&db).await?;
+        let entry_date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         
-        // Debit AR (target_account) and Credit Sales Revenue
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'INVOICE', ?, 'Sale Invoice')")
-            .bind(target_account).bind(net).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        // 1. Debit AR (target_account) for net
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'INVOICE', ?, 'Sale Invoice', ?, ?, ?)")
+            .bind(target_account).bind(net).bind(invoice_id).bind(&entry_date).bind(&created_at).bind(&ref_no).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+        // 2. Debit Sales Discount if > 0
+        if total_discount > 0.001 {
+            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'INVOICE', ?, 'Sales Discounts Allowed', ?, ?, ?)")
+                .bind(accounts.sales_discount).bind(total_discount).bind(invoice_id).bind(&entry_date).bind(&created_at).bind(&ref_no).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        }
             
-        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'INVOICE', ?, 'Sale Revenue')")
-            .bind(accounts.sales_revenue).bind(net).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        // 3. Credit Sales Revenue for gross
+        sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'INVOICE', ?, 'Sale Revenue', ?, ?, ?)")
+            .bind(accounts.sales_revenue).bind(total_gross).bind(invoice_id).bind(&entry_date).bind(&created_at).bind(&ref_no).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+        // 4. Perpetual Inventory: Debit COGS and Credit Inventory on Hand
+        if total_cogs > 0.001 {
+            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'COGS', ?, 'Cost of Goods Sold', ?, ?, ?)")
+                .bind(accounts.purchases).bind(total_cogs).bind(invoice_id).bind(&entry_date).bind(&created_at).bind(&ref_no).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'COGS', ?, 'Inventory Relief', ?, ?, ?)")
+                .bind(accounts.inventory).bind(total_cogs).bind(invoice_id).bind(&entry_date).bind(&created_at).bind(&ref_no).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+        }
 
         // Handle Cash Received
         if cash_val > 0.0 {
-            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, 'Cash Received at Settlement')")
-                .bind(accounts.cash).bind(cash_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'CASH_RECEIPT', ?, 'Cash Received at Settlement', ?, ?, ?)")
+                .bind(accounts.cash).bind(cash_val).bind(invoice_id).bind(&entry_date).bind(&created_at).bind(&ref_no).execute(&mut *tx).await.map_err(|e| e.to_string())?;
             
-            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, 'Cash Received at Settlement')")
-                .bind(target_account).bind(cash_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'CASH_RECEIPT', ?, 'Cash Received at Settlement', ?, ?, ?)")
+                .bind(target_account).bind(cash_val).bind(invoice_id).bind(&entry_date).bind(&created_at).bind(&ref_no).execute(&mut *tx).await.map_err(|e| e.to_string())?;
         }
 
         // Handle Bank Received
         if bank_val > 0.0 {
-            let target_bank_acc = bank_account_id.unwrap_or(accounts.bank);
-            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Received at Settlement')")
-                .bind(target_bank_acc).bind(bank_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+            let target_bank_acc = match bank_account_id {
+                Some(b_id) if b_id > 0 => b_id,
+                _ => return Err("Bank account must be selected when settling with bank funds. Please select an active bank account (بینک سے وصولی کے لیے بینک اکاؤنٹ منتخب کرنا لازمی ہے).".into()),
+            };
+            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, ?, 0.0, 'BANK_RECEIPT', ?, 'Bank Received at Settlement', ?, ?, ?)")
+                .bind(target_bank_acc).bind(bank_val).bind(invoice_id).bind(&entry_date).bind(&created_at).bind(&ref_no).execute(&mut *tx).await.map_err(|e| e.to_string())?;
             
-            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) VALUES (?, 0.0, ?, 'BANK_RECEIPT', ?, 'Bank Received at Settlement')")
-                .bind(target_account).bind(bank_val).bind(invoice_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+            sqlx::query("INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, entry_date, created_at, ref_no) VALUES (?, 0.0, ?, 'BANK_RECEIPT', ?, 'Bank Received at Settlement', ?, ?, ?)")
+                .bind(target_account).bind(bank_val).bind(invoice_id).bind(&entry_date).bind(&created_at).bind(&ref_no).execute(&mut *tx).await.map_err(|e| e.to_string())?;
         }
     }
 

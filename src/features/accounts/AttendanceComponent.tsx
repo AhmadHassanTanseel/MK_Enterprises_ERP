@@ -283,21 +283,21 @@ export const AttendanceComponent: React.FC = () => {
     setIsPayingSalary(true);
     try {
       const refNo = `SAL-${Date.now().toString().slice(-6)}`;
-      const earnedAmount = Number(payingSalaryWorker.total_earned) || Number(salaryPayAmount);
+      const payAmount = Number(salaryPayAmount);
 
       await postPayment(
         salaryPayDate,
         payingSalaryWorker.account_id,
         'PAY',
-        Number(salaryPayAmount),
+        payAmount,
         salaryPayNotes || `Salary/Wages (${startDate} to ${endDate})`,
         refNo,
         salaryPaymentMethod,
         salaryPaymentMethod === 'BANK' ? (salarySelectedBankId || undefined) : undefined
       );
 
-      // Standard Accounting Double-Entry: Accrue FULL Earned Salary into Operating Expense (Account 7)
-      // and credit Worker Account for full earnings, thereby clearing both the advance and final payment to Rs. 0.00
+      // Standard Accounting Double-Entry: Accrue the paid salary into Operating Expense (Account 7)
+      // and credit Worker Account for the exact amount paid, balancing the worker's ledger to Rs. 0.00
       try {
         await invoke('process_journal_voucher', {
           transDate: salaryPayDate,
@@ -306,21 +306,21 @@ export const AttendanceComponent: React.FC = () => {
             {
               account_id: 7, // Operating Expense / Salaries
               entry_type: 'DR',
-              amount: earnedAmount,
+              amount: payAmount,
               description: `Salary/Wages Expense: ${payingSalaryWorker.name} (${startDate} to ${endDate})`
             },
             {
-              account_id: payingSalaryWorker.account_id, // Worker account credited for full earnings
+              account_id: payingSalaryWorker.account_id, // Worker account credited
               entry_type: 'CR',
-              amount: earnedAmount,
-              description: `Salary/Wages Earned: ${payingSalaryWorker.name} (${startDate} to ${endDate})`
+              amount: payAmount,
+              description: `Salary/Wages Cleared: ${payingSalaryWorker.name} (${startDate} to ${endDate})`
             }
           ]
         });
       } catch (e) {
         console.warn('Journal entry for salary expense auto-posted:', e);
       }
-      toast.success(`تنخواہ کی ادائیگی برائے ${payingSalaryWorker.name} (Rs. ${Number(salaryPayAmount).toLocaleString()}) محفوظ ہو گئی!`);
+      toast.success(`تنخواہ کی ادائیگی برائے ${payingSalaryWorker.name} (Rs. ${payAmount.toLocaleString()}) محفوظ ہو گئی!`);
       setPaySalaryModalOpen(false);
       setPayingSalaryWorker(null);
       await loadSalaryData();
@@ -1094,12 +1094,6 @@ export const AttendanceComponent: React.FC = () => {
                 <span>غیر حاضر کٹوتیاں (Deductions):</span>
                 <span>-Rs. {payingSalaryWorker.deductions.toLocaleString()}</span>
               </div>
-              {payingSalaryWorker.advance_paid > 0 && (
-                <div className="flex justify-between text-amber-700 font-bold">
-                  <span>منہا شدہ ایڈوانس (Advance Deducted):</span>
-                  <span>-Rs. {payingSalaryWorker.advance_paid.toLocaleString()}</span>
-                </div>
-              )}
               {payingSalaryWorker.salary_already_paid > 0 && (
                 <div className="flex justify-between text-blue-700 font-bold">
                   <span>پہلے ادا شدہ (Already Paid):</span>

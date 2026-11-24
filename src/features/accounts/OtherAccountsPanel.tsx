@@ -686,12 +686,19 @@ export const OtherAccountsPanel: React.FC = () => {
     setIsSubmittingDrawing(true);
     try {
       const targetAccId = drawingOwnerAccId || 24;
+      const chosenBank = accounts.find(a => a.id === drawingBankId);
+      const bankLabel = chosenBank ? (chosenBank.bank_name || chosenBank.name) : 'Bank';
+      const notesDesc = drawingNotes.trim() ? drawingNotes.trim() : 'Owner Drawing';
+      const finalDesc = drawingMethod === 'BANK' 
+        ? `${notesDesc} [Bank: ${bankLabel}]` 
+        : `${notesDesc} [Cash in Drawer]`;
+
       await invoke('process_cash_transaction', {
         transType: 'PAYMENT',
         accountId: targetAccId,
         amount: Number(drawingAmount),
         transDate: drawingDate,
-        description: drawingNotes.trim() ? `Owner Drawing: ${drawingNotes.trim()}` : 'مالک کا ذاتی خرچ (Owner Drawing)',
+        description: finalDesc,
         paymentMethod: drawingMethod,
         refNo: `DRW-${Date.now().toString().slice(-6)}`,
         attachmentPath: null,
@@ -1161,7 +1168,8 @@ export const OtherAccountsPanel: React.FC = () => {
         return a.account_type_id === 17 || a.account_type_id === 18 || a.name.toLowerCase().includes('loan') || a.name.toLowerCase().includes('amanat') || a.name.includes('قرض') || a.name.includes('امانت');
       case 'ALL':
       default:
-        return true;
+        // Workers are employees with their own payroll panel; exclude them from commercial trade receivables
+        return a.account_type_id !== 15;
     }
   };
 
@@ -1238,16 +1246,17 @@ export const OtherAccountsPanel: React.FC = () => {
         const defaultOwner = accounts.find(a => a.account_type_id === 16 && a.id !== 18 && a.name.toLowerCase().includes('arslan')) || ownerAccounts[0] || { id: 24 };
         
         const drawingEntries = ledgerEntries.filter(e => 
-          e.account_id === 24 || 
-          (e.ref_no && e.ref_no.startsWith('DRW-')) ||
-          ((e.narration || e.description || '').toLowerCase().includes('owner drawing') || 
-           (e.narration || e.description || '').includes('ذاتی خرچ') || 
-           (e.narration || e.description || '').toLowerCase().includes('drawing'))
-        ).sort((a, b) => new Date(b.entry_date || b.created_at || '').getTime() - new Date(a.entry_date || a.created_at || '').getTime());
+          (e.account_id === 24 || e.account_id === 18) ||
+          ((e.ref_type || '').includes('DRW')) ||
+          ((e.description || '').toLowerCase().includes('owner drawing') || 
+           (e.description || '').includes('ذاتی خرچ') || 
+           (e.description || '').toLowerCase().includes('drawing'))
+        ).filter(e => (e.dr_amount ?? 0) > 0 || (e.account_id === 24 && (e.cr_amount ?? 0) > 0))
+        .sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime());
 
-        const totalDrawingsAmount = drawingEntries.reduce((sum, e) => sum + (e.dr_amount ?? e.debit ?? 0), 0);
+        const totalDrawingsAmount = drawingEntries.reduce((sum, e) => sum + (e.dr_amount ?? (e.account_id === 24 ? e.cr_amount : 0) ?? 0), 0);
         const currentMonthPrefix = new Date().toISOString().slice(0, 7);
-        const thisMonthDrawingsAmount = drawingEntries.filter(e => (e.entry_date || '').startsWith(currentMonthPrefix)).reduce((sum, e) => sum + (e.dr_amount ?? e.debit ?? 0), 0);
+        const thisMonthDrawingsAmount = drawingEntries.filter(e => (e.date || '').startsWith(currentMonthPrefix)).reduce((sum, e) => sum + (e.dr_amount ?? (e.account_id === 24 ? e.cr_amount : 0) ?? 0), 0);
         const totalOwnerCapital = ownerAccounts.reduce((sum, a) => sum + (a.current_balance ?? 0), 0);
 
         return (
@@ -1350,21 +1359,22 @@ export const OtherAccountsPanel: React.FC = () => {
                     ) : (
                       drawingEntries.map((e, idx) => {
                         const targetAcc = accounts.find(a => a.id === e.account_id);
-                        const isBank = (e.ref_type || e.voucher_type || '').includes('BANK') || 
-                                       (e.description || e.narration || '').toLowerCase().includes('bank');
-                        const amountVal = Number(e.dr_amount ?? e.debit ?? 0);
+                        const isBank = (e.ref_type || '').includes('BANK') || 
+                                       (e.description || '').toLowerCase().includes('bank') ||
+                                       (e.description || '').toLowerCase().includes('meezan');
+                        const amountVal = Number((e.dr_amount > 0 ? e.dr_amount : e.cr_amount) || 0);
                         return (
                           <tr key={e.id || idx} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
-                            <td className="px-4 py-3 font-medium text-slate-700 whitespace-nowrap">{e.entry_date || '-'}</td>
-                            <td className="px-4 py-3 font-mono text-xs text-indigo-600 font-semibold">{e.ref_no || '-'}</td>
+                            <td className="px-4 py-3 font-medium text-slate-700 whitespace-nowrap">{e.date || '-'}</td>
+                            <td className="px-4 py-3 font-mono text-xs text-indigo-600 font-semibold">{e.ref_type ? `${e.ref_type}-${e.ref_id || e.id}` : `DRW-${e.id}`}</td>
                             <td className="px-4 py-3 font-semibold text-slate-800">{targetAcc?.name || 'Owner Drawings'}</td>
                             <td className="px-4 py-3 text-xs">
-                              <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                              <span className={`px-2 py-0.5 rounded border ${isBank ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                 {isBank ? '🏦 Bank Transfer' : '💵 Cash in Drawer'}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-slate-600">{e.description || e.narration || '-'}</td>
+                            <td className="px-4 py-3 text-slate-600">{e.description || '-'}</td>
                             <td className="px-4 py-3 text-right font-black text-rose-600">Rs. {amountVal.toLocaleString()}</td>
                           </tr>
                         );
@@ -2328,7 +2338,7 @@ export const OtherAccountsPanel: React.FC = () => {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. MK Enterprises"
+                        placeholder="e.g. Zawar Traders"
                         value={editAccountTitle}
                         onChange={e => setEditAccountTitle(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
@@ -2764,13 +2774,6 @@ export const OtherAccountsPanel: React.FC = () => {
                         <div className="text-right">
                           <div className="font-bold text-emerald-600">Rs. {a.current_balance.toLocaleString()}</div>
                           <div className="flex gap-2 justify-end mt-1">
-                            <button 
-                              onClick={() => handleOpenOB(a)}
-                              className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded hover:bg-amber-200 transition-colors font-medium"
-                              title="Set or Edit Opening Balance"
-                            >
-                              Opening Bal
-                            </button>
                             <button 
                               onClick={() => handleOpenOB(a)}
                               className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded hover:bg-amber-200 transition-colors font-medium"

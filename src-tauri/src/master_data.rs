@@ -79,6 +79,8 @@ pub struct Account {
     pub wage_type: Option<String>,
     pub salary_rate: Option<f64>,
     pub created_at: String,
+    pub code: Option<String>,
+    pub current_balance: Option<f64>,
 }
 
 // --- TAURI COMMANDS (CRUD ENGINES) ---
@@ -302,12 +304,125 @@ pub async fn delete_product(
 #[tauri::command]
 pub async fn get_accounts(db: State<'_, SqlitePool>) -> Result<Vec<Account>, String> {
     sqlx::query_as::<_, Account>(
-          "SELECT id, account_type_id, name, contact, address, area_id, salesman_id, opening_balance, opening_balance_type, status, is_customer, is_supplier, bank_name, account_title, account_number, wage_type, salary_rate, datetime(created_at, 'localtime') as created_at 
-           FROM accounts WHERE status = 'ACTIVE' ORDER BY name ASC"
+          r#"
+          SELECT 
+              a.id, 
+              a.account_type_id, 
+              a.name, 
+              a.contact, 
+              a.address, 
+              a.area_id, 
+              a.salesman_id, 
+              a.opening_balance, 
+              a.opening_balance_type, 
+              a.status, 
+              a.is_customer, 
+              a.is_supplier, 
+              a.bank_name, 
+              a.account_title, 
+              a.account_number, 
+              a.wage_type, 
+              a.salary_rate, 
+              datetime(a.created_at, 'localtime') as created_at,
+              a.code,
+              COALESCE(SUM(je.debit - je.credit), 0.0) as current_balance
+          FROM accounts a
+          LEFT JOIN journal_entries je ON je.account_id = a.id
+          WHERE a.status = 'ACTIVE' 
+          GROUP BY a.id
+          ORDER BY a.name ASC
+          "#
     )
     .fetch_all(&*db)
     .await
     .map_err(|e| e.to_string())
+}
+
+async fn post_opening_balance_entry(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    account_id: i64,
+    account_name: &str,
+    opening_balance: f64,
+    opening_balance_type: &str,
+) -> Result<(), String> {
+    if opening_balance <= 0.0 {
+        return Ok(());
+    }
+
+    // Lookup opening balance equity account
+    let obe_id = crate::system_accounts::config_account_id_conn(&mut *tx, "opening_balance_equity_account_id", 8)
+        .await
+        .unwrap_or(8);
+
+    let ref_no = format!("OP-BAL-{}", account_id);
+    let narration = format!("Opening Balance: {}", account_name);
+    let entry_date = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    if opening_balance_type == "DEBIT" {
+        // Debit New Account, Credit Opening Balance Equity
+        sqlx::query(
+            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, ref_no, entry_date, created_at) 
+             VALUES (?, ?, 0.0, 'JOURNAL_VOUCHER', ?, ?, ?, ?, ?)"
+        )
+        .bind(account_id)
+        .bind(opening_balance)
+        .bind(account_id)
+        .bind(&narration)
+        .bind(&ref_no)
+        .bind(&entry_date)
+        .bind(&entry_date)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query(
+            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, ref_no, entry_date, created_at) 
+             VALUES (?, 0.0, ?, 'JOURNAL_VOUCHER', ?, ?, ?, ?, ?)"
+        )
+        .bind(obe_id)
+        .bind(opening_balance)
+        .bind(account_id)
+        .bind(&narration)
+        .bind(&ref_no)
+        .bind(&entry_date)
+        .bind(&entry_date)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    } else {
+        // Debit Opening Balance Equity, Credit New Account
+        sqlx::query(
+            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, ref_no, entry_date, created_at) 
+             VALUES (?, ?, 0.0, 'JOURNAL_VOUCHER', ?, ?, ?, ?, ?)"
+        )
+        .bind(obe_id)
+        .bind(opening_balance)
+        .bind(account_id)
+        .bind(&narration)
+        .bind(&ref_no)
+        .bind(&entry_date)
+        .bind(&entry_date)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query(
+            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, ref_no, entry_date, created_at) 
+             VALUES (?, 0.0, ?, 'JOURNAL_VOUCHER', ?, ?, ?, ?, ?)"
+        )
+        .bind(account_id)
+        .bind(opening_balance)
+        .bind(account_id)
+        .bind(&narration)
+        .bind(&ref_no)
+        .bind(&entry_date)
+        .bind(&entry_date)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -358,26 +473,8 @@ pub async fn create_account(
     .map_err(|e| e.to_string())?
     .last_insert_rowid();
 
-    // If there is an opening balance, record it in the financial journal
-    if opening_balance > 0.0 {
-        let (debit, credit) = if opening_balance_type == "DEBIT" {
-            (opening_balance, 0.0)
-        } else {
-            (0.0, opening_balance)
-        };
-
-        sqlx::query(
-            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) 
-             VALUES (?, ?, ?, 'JOURNAL_VOUCHER', ?, 'Opening Balance')"
-        )
-        .bind(account_id)
-        .bind(debit)
-        .bind(credit)
-        .bind(account_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
-    }
+    // GAAP/IFRS Double-Entry Opening Balance: Offset strictly against Opening Balance Equity
+    post_opening_balance_entry(&mut tx, account_id, &name, opening_balance, &opening_balance_type).await?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(account_id)
@@ -460,33 +557,18 @@ pub async fn update_account(
     .await
     .map_err(|e| e.to_string())?;
 
+    let ref_no = format!("OP-BAL-{}", id);
     sqlx::query(
-        "DELETE FROM journal_entries WHERE narration = 'Opening Balance' AND reference_id = ? AND voucher_type = 'JOURNAL_VOUCHER'"
+        "DELETE FROM journal_entries WHERE ref_no = ? OR ((narration = 'Opening Balance' OR narration LIKE 'Opening Balance:%') AND reference_id = ?)"
     )
+    .bind(&ref_no)
     .bind(id)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
-    if opening_balance > 0.0 {
-        let (debit, credit) = if opening_balance_type == "DEBIT" {
-            (opening_balance, 0.0)
-        } else {
-            (0.0, opening_balance)
-        };
-
-        sqlx::query(
-            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) 
-             VALUES (?, ?, ?, 'JOURNAL_VOUCHER', ?, 'Opening Balance')"
-        )
-        .bind(id)
-        .bind(debit)
-        .bind(credit)
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
-    }
+    // GAAP/IFRS Double-Entry Opening Balance: Offset strictly against Opening Balance Equity
+    post_opening_balance_entry(&mut tx, id, &name, opening_balance, &opening_balance_type).await?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
 
@@ -800,19 +882,38 @@ pub async fn get_fixed_liabilities(db: State<'_, SqlitePool>) -> Result<Vec<Fixe
 
     let mut result = Vec::new();
     for (id, name, amount, frequency) in rows {
-        let (paid, last_date): (f64, Option<String>) = sqlx::query_as(
-            r#"
-            SELECT COALESCE(SUM(je.debit), 0.0), MAX(date(je.entry_date))
-            FROM journal_entries je
-            WHERE je.account_id = 7
-              AND (je.narration LIKE '%' || ? || '%' OR je.ref_no LIKE 'FL-%')
-              AND strftime('%Y-%m', je.entry_date) = strftime('%Y-%m', 'now', 'localtime')
-            "#
-        )
-        .bind(&name)
-        .fetch_one(&*db)
-        .await
-        .unwrap_or((0.0, None));
+        let is_daily = frequency.to_uppercase() == "DAILY";
+        let (paid, last_date): (f64, Option<String>) = if is_daily {
+            sqlx::query_as(
+                r#"
+                SELECT COALESCE(SUM(je.debit), 0.0), MAX(date(je.entry_date))
+                FROM journal_entries je
+                JOIN accounts a ON a.id = je.account_id
+                WHERE (je.account_id = 7 OR a.account_type_id = 7)
+                  AND je.narration LIKE '%' || ? || '%'
+                  AND date(je.entry_date) = date('now', 'localtime')
+                "#
+            )
+            .bind(&name)
+            .fetch_one(&*db)
+            .await
+            .unwrap_or((0.0, None))
+        } else {
+            sqlx::query_as(
+                r#"
+                SELECT COALESCE(SUM(je.debit), 0.0), MAX(date(je.entry_date))
+                FROM journal_entries je
+                JOIN accounts a ON a.id = je.account_id
+                WHERE (je.account_id = 7 OR a.account_type_id = 7)
+                  AND je.narration LIKE '%' || ? || '%'
+                  AND strftime('%Y-%m', je.entry_date) = strftime('%Y-%m', 'now', 'localtime')
+                "#
+            )
+            .bind(&name)
+            .fetch_one(&*db)
+            .await
+            .unwrap_or((0.0, None))
+        };
 
         let remaining = (amount - paid).max(0.0);
         let is_paid = remaining <= 0.001 && paid > 0.0;
@@ -1024,33 +1125,25 @@ pub async fn set_account_opening_balance(
     .await
     .map_err(|e| e.to_string())?;
 
+    let ref_no = format!("OP-BAL-{}", account_id);
     sqlx::query(
-        "DELETE FROM journal_entries WHERE narration = 'Opening Balance' AND reference_id = ? AND voucher_type = 'JOURNAL_VOUCHER'"
+        "DELETE FROM journal_entries WHERE ref_no = ? OR ((narration = 'Opening Balance' OR narration LIKE 'Opening Balance:%') AND reference_id = ?)"
     )
+    .bind(&ref_no)
     .bind(account_id)
     .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
-    if opening_balance > 0.0 {
-        let (debit, credit) = if opening_balance_type == "DEBIT" {
-            (opening_balance, 0.0)
-        } else {
-            (0.0, opening_balance)
-        };
-
-        sqlx::query(
-            "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration) 
-             VALUES (?, ?, ?, 'JOURNAL_VOUCHER', ?, 'Opening Balance')"
-        )
+    let acc_name: String = sqlx::query_scalar("SELECT name FROM accounts WHERE id = ?")
         .bind(account_id)
-        .bind(debit)
-        .bind(credit)
-        .bind(account_id)
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await
-        .map_err(|e| e.to_string())?;
-    }
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| format!("Account #{}", account_id));
+
+    // GAAP/IFRS Double-Entry Opening Balance: Offset strictly against Opening Balance Equity
+    post_opening_balance_entry(&mut tx, account_id, &acc_name, opening_balance, &opening_balance_type).await?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok("Opening balance updated successfully".into())

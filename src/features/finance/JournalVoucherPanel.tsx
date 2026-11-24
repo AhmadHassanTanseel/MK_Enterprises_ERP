@@ -16,7 +16,7 @@ export const JournalVoucherPanel: React.FC = () => {
     { id: '2', accountId: null, dr: 0, cr: 0 }
   ]);
 
-  const addLine = () => setLines([...lines, { id: Math.random().toString(), accountId: null, dr: 0, cr: 0 }]);
+  const addLine = () => setLines([...lines, { id: `${Date.now()}-${lines.length}`, accountId: null, dr: 0, cr: 0 }]);
   const removeLine = (id: string) => {
     if (lines.length > 2) {
       setLines(lines.filter(l => l.id !== id));
@@ -37,7 +37,7 @@ export const JournalVoucherPanel: React.FC = () => {
 
   const totalDr = lines.reduce((sum, l) => sum + l.dr, 0);
   const totalCr = lines.reduce((sum, l) => sum + l.cr, 0);
-  const isBalanced = totalDr > 0 && totalDr === totalCr;
+  const isBalanced = totalDr > 0 && Math.abs(totalDr - totalCr) < 0.01;
 
   
   

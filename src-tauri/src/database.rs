@@ -5,7 +5,23 @@ use tauri::Manager;
 pub async fn initialize_database(app_handle: &tauri::AppHandle) -> Result<SqlitePool, String> {
     let app_dir = app_handle.path().app_data_dir().unwrap();
     std::fs::create_dir_all(&app_dir).unwrap();
-    let db_path = app_dir.join("mk_enterprises_v2.db");
+    let db_path = app_dir.join("zawar_traders_v2.db");
+    let legacy_db_path = app_dir.join("mk_enterprises_v2.db");
+
+    // Seamless migration from legacy database name if present
+    if !db_path.exists() && legacy_db_path.exists() {
+        let _ = std::fs::copy(&legacy_db_path, &db_path);
+        let legacy_wal = app_dir.join("mk_enterprises_v2.db-wal");
+        let new_wal = app_dir.join("zawar_traders_v2.db-wal");
+        if legacy_wal.exists() {
+            let _ = std::fs::copy(&legacy_wal, &new_wal);
+        }
+        let legacy_shm = app_dir.join("mk_enterprises_v2.db-shm");
+        let new_shm = app_dir.join("zawar_traders_v2.db-shm");
+        if legacy_shm.exists() {
+            let _ = std::fs::copy(&legacy_shm, &new_shm);
+        }
+    }
     
     let db_url = format!("sqlite://{}?mode=rwc", db_path.to_str().unwrap());
 
@@ -31,18 +47,24 @@ pub async fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Sqlite
         (1, 1, 'Cash in Drawer', 0, 0),
         (2, 2, 'Walk-in Customer', 1, 0),
         (3, 5, 'General Sales Revenue', 0, 0),
-        (4, 6, 'General Purchases', 0, 1),
+        (4, 6, 'General Purchases / COGS', 0, 0),
         (5, 8, 'Damage Loss Account', 0, 0),
-        (7, 7, 'Operating Expense', 0, 0);"
+        (6, 3, 'Inventory on Hand (اسٹاک)', 0, 0),
+        (7, 7, 'Operating Expense', 0, 0),
+        (8, 16, 'Opening Balance Equity', 0, 0),
+        (9, 7, 'Sales Discounts Allowed', 0, 0);"
     ).execute(&pool).await;
 
     let _ = sqlx::query(
         "INSERT OR IGNORE INTO system_config (key, value) VALUES 
         ('cash_account_id', '1'),
-        ('bank_account_id', '6'),
         ('sales_revenue_account_id', '3'),
         ('purchases_account_id', '4'),
-        ('damage_loss_account_id', '5');"
+        ('damage_loss_account_id', '5'),
+        ('inventory_account_id', '6'),
+        ('operating_expense_account_id', '7'),
+        ('opening_balance_equity_account_id', '8'),
+        ('sales_discount_account_id', '9');"
     ).execute(&pool).await;
 
     // FAIL-SAFE ENSURE ESSENTIAL TABLES ALWAYS EXIST
@@ -136,6 +158,7 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
             bank_name TEXT,
             account_title TEXT,
             account_number TEXT,
+            code TEXT,
             wage_type TEXT DEFAULT 'MONTHLY',
             salary_rate REAL DEFAULT 0.0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -350,22 +373,18 @@ async fn create_full_schema(pool: &SqlitePool) -> Result<(), String> {
         (1, 1, 'Cash in Drawer', 0, 0),
         (2, 2, 'Walk-in Customer', 1, 0),
         (3, 5, 'General Sales Revenue', 0, 0),
-        (4, 6, 'General Purchases', 0, 1),
+        (4, 6, 'General Purchases / COGS', 0, 0),
         (5, 8, 'Damage Loss Account', 0, 0),
+        (6, 3, 'Inventory on Hand (اسٹاک)', 0, 0),
         (7, 7, 'Operating Expense', 0, 0),
-        (8, 16, 'Investor Profit Distribution', 0, 0);
+        (8, 16, 'Opening Balance Equity', 0, 0),
+        (9, 7, 'Sales Discounts Allowed', 0, 0);
     "#;
 
     sqlx::query(schema)
         .execute(pool)
         .await
         .map_err(|e| format!("Failed to create production schema: {}", e))?;
-
-    
-    // Handle migrations
-    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
-        .execute(pool)
-        .await;
 
     Ok(())
 }
@@ -482,6 +501,16 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
         record_migration(pool, 19).await?;
     }
 
+    if current < 20 {
+        migration_020_performance_indexing_and_coa(pool).await?;
+        record_migration(pool, 20).await?;
+    }
+
+    if current < 21 {
+        migration_021_standard_coa_and_indexes(pool).await?;
+        record_migration(pool, 21).await?;
+    }
+
     Ok(())
 }
 
@@ -491,11 +520,6 @@ async fn record_migration(pool: &SqlitePool, version: i64) -> Result<(), String>
         .execute(pool)
         .await
         .map_err(|e| format!("Failed to record migration {}: {}", version, e))?;
-    
-    // Handle migrations
-    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
-        .execute(pool)
-        .await;
 
     Ok(())
 }
@@ -526,12 +550,6 @@ async fn migration_001_areas_columns(pool: &SqlitePool) -> Result<(), String> {
             .map_err(|e| format!("Failed to add areas.remarks: {}", e))?;
     }
 
-    
-    // Handle migrations
-    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
-        .execute(pool)
-        .await;
-
     Ok(())
 }
 
@@ -551,12 +569,6 @@ async fn migration_002_backfill_opening_stock(pool: &SqlitePool) -> Result<(), S
     .execute(pool)
     .await
     .map_err(|e| format!("Failed to backfill OPENING inventory movements: {}", e))?;
-
-    
-    // Handle migrations
-    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
-        .execute(pool)
-        .await;
 
     Ok(())
 }
@@ -580,12 +592,6 @@ async fn migration_003_seed_system_account_config(pool: &SqlitePool) -> Result<(
         .map_err(|e| format!("Failed to seed system_config key '{}': {}", key, e))?;
     }
 
-    
-    // Handle migrations
-    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
-        .execute(pool)
-        .await;
-
     Ok(())
 }
 
@@ -603,12 +609,6 @@ async fn migration_004_audit_logs(pool: &SqlitePool) -> Result<(), String> {
     .execute(pool)
     .await
     .map_err(|e| format!("Failed to create audit_logs table: {}", e))?;
-
-    
-    // Handle migrations
-    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
-        .execute(pool)
-        .await;
 
     Ok(())
 }
@@ -661,12 +661,6 @@ async fn migration_005_legacy_lazy_columns(pool: &SqlitePool) -> Result<(), Stri
         sqlx::query("ALTER TABLE journal_entries ADD COLUMN attachment_path TEXT").execute(pool).await.map_err(|e| e.to_string())?;
     }
 
-    
-    // Handle migrations
-    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
-        .execute(pool)
-        .await;
-
     Ok(())
 }
 
@@ -695,12 +689,6 @@ async fn migration_006_accounts_and_salesmen(pool: &SqlitePool) -> Result<(), St
         sqlx::query("ALTER TABLE salesmen ADD COLUMN details TEXT")
             .execute(pool).await.map_err(|e| e.to_string())?;
     }
-    
-    
-    // Handle migrations
-    let _ = sqlx::query("ALTER TABLE inventory_movements ADD COLUMN notes TEXT")
-        .execute(pool)
-        .await;
 
     Ok(())
 }
@@ -1047,7 +1035,7 @@ async fn migration_018_eliminate_general_bank_and_sync_fixed_liabilities(pool: &
     if let Some((real_bank_id, _name, bank_name_opt)) = real_bank {
         let bname = bank_name_opt.unwrap_or_else(|| "Bank".to_string());
         let clean_title = format!("{} Bank", bname.trim());
-        let _ = sqlx::query("UPDATE accounts SET name = ? WHERE id = ? AND (name = 'kbsxiuws' OR name = 'General Bank' OR name = ?)")
+        let _ = sqlx::query("UPDATE accounts SET name = ? WHERE id = ? AND (name = 'General Bank' OR name = ?)")
             .bind(&clean_title)
             .bind(real_bank_id)
             .bind(&bname)
@@ -1067,17 +1055,10 @@ async fn migration_018_eliminate_general_bank_and_sync_fixed_liabilities(pool: &
             .await;
     }
 
-    // 2. Completely eliminate dummy Account 6 ("General Bank") so there is no General Bank anywhere
-    let _ = sqlx::query("DELETE FROM accounts WHERE id = 6 OR (name = 'General Bank' AND (bank_name IS NULL OR bank_name = ''))")
+    // 2. Eliminate any orphaned General Bank account
+    let _ = sqlx::query("DELETE FROM accounts WHERE name = 'General Bank' AND (bank_name IS NULL OR bank_name = '')")
         .execute(pool)
         .await;
-
-    // 3. Deduplicate accidental repeat payments on Rent (keeping the single valid 10,000 payment)
-    let _ = sqlx::query(
-        "DELETE FROM journal_entries WHERE id IN (69, 70, 71, 72, 73, 74, 97, 98, 99, 100)"
-    )
-    .execute(pool)
-    .await;
 
     Ok(())
 }
@@ -1109,13 +1090,292 @@ async fn migration_019_owner_drawings_loans_and_amanat(pool: &SqlitePool) -> Res
     .await
     .map_err(|e| format!("Failed to create owner drawings account: {}", e))?;
 
-    // 3. Ensure Shop rent (id 13) is Operating Expense (7) and Investor Profit Distribution (id 18) is Equity (16)
-    let _ = sqlx::query("UPDATE accounts SET account_type_id = 7 WHERE id = 13 AND account_type_id != 7")
+    // 3. Ensure Rent accounts are Operating Expense (7) and Investor Profit Distribution is Equity (16)
+    let _ = sqlx::query("UPDATE accounts SET account_type_id = 7 WHERE (name LIKE '%Rent%' OR name LIKE '%کرایہ%') AND account_type_id != 7")
         .execute(pool)
         .await;
-    let _ = sqlx::query("UPDATE accounts SET account_type_id = 16 WHERE id = 18 AND account_type_id != 16")
+    let _ = sqlx::query("UPDATE accounts SET account_type_id = 16 WHERE (name LIKE '%Investor Profit Distribution%' OR name LIKE '%منافع تقسیم%') AND account_type_id != 16")
         .execute(pool)
         .await;
+
+    Ok(())
+}
+
+async fn migration_020_performance_indexing_and_coa(pool: &SqlitePool) -> Result<(), String> {
+    // 1. General Ledger Indexes (Crucial for Account Ledgers & Trial Balance)
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_je_account_date ON journal_entries(account_id, entry_date)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_je_voucher_ref ON journal_entries(voucher_type, ref_no)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_je_entry_date ON journal_entries(entry_date)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+
+    // 2. Invoices & Items Indexes (Crucial for History & Customer Statements)
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_invoices_account_date ON invoices(account_id, invoice_date)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_invoices_type_date ON invoices(invoice_type, invoice_date)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_invoice_items_product ON invoice_items(product_id)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+
+    // 3. Inventory Ledger Indexes (Crucial for Live Stock & COGS)
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_im_product_created ON inventory_movements(product_id, created_at)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_im_movement_ref ON inventory_movements(movement_type, reference_id)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+
+    // 4. Accounts & Master Data
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_accounts_type_status ON accounts(account_type_id, status)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_attendance_account_date ON attendance(account_id, date)")
+        .execute(pool).await.map_err(|e| e.to_string())?;
+
+    // 5. Chart of Accounts Alignment & System Accounts Configuration
+    // Reassign any legacy journal entries on dummy Account 6 to the active bank account
+    let active_bank_id: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM accounts WHERE bank_name IS NOT NULL AND bank_name != '' AND status = 'ACTIVE' ORDER BY id ASC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some(real_bank) = active_bank_id {
+        let _ = sqlx::query("UPDATE journal_entries SET account_id = ? WHERE account_id = 6 AND voucher_type LIKE '%BANK%'")
+            .bind(real_bank)
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("INSERT OR REPLACE INTO system_config (key, value) VALUES ('bank_account_id', ?)")
+            .bind(real_bank.to_string())
+            .execute(pool)
+            .await;
+    }
+
+    // Ensure Account 6 is Inventory on Hand (Asset - Current Assets, type 3)
+    let inv_acc: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM accounts WHERE name LIKE '%Inventory on Hand%' OR name LIKE '%اسٹاک%' ORDER BY id ASC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    let inv_id = if let Some(id) = inv_acc {
+        id
+    } else {
+        let acc6_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM accounts WHERE id = 6").fetch_optional(pool).await.unwrap_or(None);
+        if acc6_exists.is_some() {
+            let _ = sqlx::query("UPDATE accounts SET account_type_id = 3, name = 'Inventory on Hand (اسٹاک)', is_customer = 0, is_supplier = 0 WHERE id = 6")
+                .execute(pool).await;
+            6
+        } else {
+            let row_id = sqlx::query("INSERT INTO accounts (id, account_type_id, name, is_customer, is_supplier) VALUES (6, 3, 'Inventory on Hand (اسٹاک)', 0, 0)")
+                .execute(pool).await.map(|r| r.last_insert_rowid()).unwrap_or(6);
+            row_id
+        }
+    };
+    let _ = sqlx::query("INSERT OR REPLACE INTO system_config (key, value) VALUES ('inventory_account_id', ?)")
+        .bind(inv_id.to_string()).execute(pool).await;
+
+    // Ensure Opening Balance Equity Account exists
+    let obe_acc: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM accounts WHERE name LIKE '%Opening Balance Equity%' ORDER BY id ASC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    let obe_id = if let Some(id) = obe_acc {
+        id
+    } else {
+        let acc8_name: Option<String> = sqlx::query_scalar("SELECT name FROM accounts WHERE id = 8").fetch_optional(pool).await.unwrap_or(None);
+        if acc8_name.is_none() {
+            let _ = sqlx::query("INSERT INTO accounts (id, account_type_id, name, is_customer, is_supplier) VALUES (8, 16, 'Opening Balance Equity (ابتدائی بیلنس)', 0, 0)")
+                .execute(pool).await;
+            8
+        } else {
+            let row_id = sqlx::query("INSERT INTO accounts (account_type_id, name, is_customer, is_supplier) VALUES (16, 'Opening Balance Equity (ابتدائی بیلنس)', 0, 0)")
+                .execute(pool).await.map(|r| r.last_insert_rowid()).unwrap_or(8);
+            row_id
+        }
+    };
+    let _ = sqlx::query("INSERT OR REPLACE INTO system_config (key, value) VALUES ('opening_balance_equity_account_id', ?)")
+        .bind(obe_id.to_string()).execute(pool).await;
+
+    // Ensure Sales Discounts Allowed Account exists
+    let disc_acc: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM accounts WHERE name LIKE '%Sales Discounts Allowed%' OR name LIKE '%سیلز ڈسکاؤنٹ%' ORDER BY id ASC LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    let disc_id = if let Some(id) = disc_acc {
+        id
+    } else {
+        let acc9_name: Option<String> = sqlx::query_scalar("SELECT name FROM accounts WHERE id = 9").fetch_optional(pool).await.unwrap_or(None);
+        if acc9_name.is_none() {
+            let _ = sqlx::query("INSERT INTO accounts (id, account_type_id, name, is_customer, is_supplier) VALUES (9, 7, 'Sales Discounts Allowed (سیلز رعایت)', 0, 0)")
+                .execute(pool).await;
+            9
+        } else {
+            let row_id = sqlx::query("INSERT INTO accounts (account_type_id, name, is_customer, is_supplier) VALUES (7, 'Sales Discounts Allowed (سیلز رعایت)', 0, 0)")
+                .execute(pool).await.map(|r| r.last_insert_rowid()).unwrap_or(9);
+            row_id
+        }
+    };
+    let _ = sqlx::query("INSERT OR REPLACE INTO system_config (key, value) VALUES ('sales_discount_account_id', ?)")
+        .bind(disc_id.to_string()).execute(pool).await;
+
+    // Ensure core account config defaults
+    let _ = sqlx::query("INSERT OR IGNORE INTO system_config (key, value) VALUES ('cash_account_id', '1')").execute(pool).await;
+    let _ = sqlx::query("INSERT OR IGNORE INTO system_config (key, value) VALUES ('sales_revenue_account_id', '3')").execute(pool).await;
+    let _ = sqlx::query("INSERT OR IGNORE INTO system_config (key, value) VALUES ('purchases_account_id', '4')").execute(pool).await;
+    let _ = sqlx::query("INSERT OR IGNORE INTO system_config (key, value) VALUES ('damage_loss_account_id', '5')").execute(pool).await;
+    let _ = sqlx::query("INSERT OR IGNORE INTO system_config (key, value) VALUES ('operating_expense_account_id', '7')").execute(pool).await;
+
+    // 6. Double-Entry General Ledger Balance Repair (Balance legacy single-legged opening balances)
+    let unbal_vouchers: Vec<(String, Option<i64>, Option<String>, f64)> = sqlx::query_as(
+        r#"
+        SELECT voucher_type, reference_id, ref_no,
+               COALESCE(SUM(debit), 0.0) - COALESCE(SUM(credit), 0.0) as diff
+        FROM journal_entries
+        GROUP BY voucher_type, reference_id, ref_no
+        HAVING ABS(diff) > 0.001
+        "#
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for (v_type, ref_id, ref_no, diff) in unbal_vouchers {
+        if diff > 0.001 {
+            // Debit exceeds Credit -> inject balancing credit to Opening Balance Equity
+            let _ = sqlx::query(
+                "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, ref_no, entry_date)
+                 VALUES (?, 0.0, ?, ?, ?, 'Opening Balance Equity Offset', ?, date('now'))"
+            )
+            .bind(obe_id)
+            .bind(diff)
+            .bind(&v_type)
+            .bind(ref_id)
+            .bind(ref_no.unwrap_or_else(|| format!("OP-BAL-BALANCING-{}", obe_id)))
+            .execute(pool)
+            .await;
+        } else if diff < -0.001 {
+            // Credit exceeds Debit -> inject balancing debit to Opening Balance Equity
+            let _ = sqlx::query(
+                "INSERT INTO journal_entries (account_id, debit, credit, voucher_type, reference_id, narration, ref_no, entry_date)
+                 VALUES (?, ?, 0.0, ?, ?, 'Opening Balance Equity Offset', ?, date('now'))"
+            )
+            .bind(obe_id)
+            .bind(diff.abs())
+            .bind(&v_type)
+            .bind(ref_id)
+            .bind(ref_no.unwrap_or_else(|| format!("OP-BAL-BALANCING-{}", obe_id)))
+            .execute(pool)
+            .await;
+        }
+    }
+
+    Ok(())
+}
+
+async fn migration_021_standard_coa_and_indexes(pool: &SqlitePool) -> Result<(), String> {
+    // 1. Ensure column code exists on accounts
+    if !column_exists(pool, "accounts", "code").await? {
+        sqlx::query("ALTER TABLE accounts ADD COLUMN code TEXT")
+            .execute(pool)
+            .await
+            .map_err(|e| format!("Failed to add accounts.code: {}", e))?;
+    }
+
+    // 2. High-throughput performance indexes
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_accounts_code ON accounts(code)").execute(pool).await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_je_ref_no ON journal_entries(ref_no)").execute(pool).await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_orders_status ON dispatches(status)").execute(pool).await;
+
+    // 3. Assign 4-digit codes to existing primary system accounts
+    // 1010: Cash in Drawer
+    let _ = sqlx::query("UPDATE accounts SET code = '1010' WHERE id = 1 OR (account_type_id = 1 AND name LIKE '%Cash in Drawer%')").execute(pool).await;
+    
+    // 1030: Bank Account (active bank)
+    let _ = sqlx::query("UPDATE accounts SET code = '1030' WHERE (bank_name IS NOT NULL AND bank_name != '') OR id = 16").execute(pool).await;
+
+    // 1050: Inventory on Hand
+    let _ = sqlx::query("UPDATE accounts SET code = '1050' WHERE name LIKE '%Inventory on Hand%' OR name LIKE '%اسٹاک%' OR id = 6 OR id = 26").execute(pool).await;
+
+    // 3010: Owner Capital Account
+    let _ = sqlx::query("UPDATE accounts SET code = '3010' WHERE (account_type_id = 16 AND name LIKE '%Arslan%') OR (account_type_id = 16 AND id = 17)").execute(pool).await;
+
+    // 3040: Owner Drawings
+    let _ = sqlx::query("UPDATE accounts SET code = '3040' WHERE id = 24 OR name LIKE '%Owner Drawings%' OR name LIKE '%ذاتی خرچ%'").execute(pool).await;
+
+    // 3050: Opening Balance Equity
+    let _ = sqlx::query("UPDATE accounts SET code = '3050' WHERE id = 25 OR id = 8 OR name LIKE '%Opening Balance Equity%'").execute(pool).await;
+
+    // 4010: Sales Revenue
+    let _ = sqlx::query("UPDATE accounts SET code = '4010' WHERE id = 3 OR (account_type_id = 5 AND name LIKE '%Sales Revenue%')").execute(pool).await;
+
+    // 5010: COGS / General Purchases
+    let _ = sqlx::query("UPDATE accounts SET code = '5010' WHERE id = 4 OR (account_type_id = 6 AND name LIKE '%Purchases%')").execute(pool).await;
+
+    // 5020: Damage Loss Account
+    let _ = sqlx::query("UPDATE accounts SET code = '5020' WHERE id = 5 OR (account_type_id = 8 AND name LIKE '%Damage%')").execute(pool).await;
+
+    // 6010: Sales Discounts Allowed
+    let _ = sqlx::query("UPDATE accounts SET code = '6010' WHERE id = 27 OR id = 9 OR name LIKE '%Sales Discounts Allowed%' OR name LIKE '%سیلز رعایت%'").execute(pool).await;
+
+    // 6030: Shop Rent
+    let _ = sqlx::query("UPDATE accounts SET code = '6030' WHERE id = 13 OR name LIKE '%rent%'").execute(pool).await;
+
+    // 4. Seed standard accounts if missing
+    let standard_accounts = vec![
+        ("1020", 1, "Driver / Cash in Transit Float", 0, 0),
+        ("1040", 2, "Accounts Receivable Control", 1, 0),
+        ("1060", 15, "Advances to Employees (ملازمین ایڈوانس)", 0, 0),
+        ("2010", 4, "Accounts Payable Control", 0, 1),
+        ("2020", 15, "Accrued Salaries Payable (واجب الاداء تنخواہیں)", 0, 0),
+        ("2030", 4, "Sales Tax / WHT Payable", 0, 0),
+        ("3020", 16, "Partner Capital Accounts", 0, 0),
+        ("3030", 16, "Retained Earnings (محفوظ منافع)", 0, 0),
+        ("4020", 5, "Sales Returns & Allowances", 0, 0),
+        ("4030", 5, "Freight Charges Revenue", 0, 0),
+        ("6020", 7, "Salaries & Wages Expense (تنخواہ کا خرچہ)", 0, 0),
+        ("6040", 7, "Utilities Expense (بجلی و یوٹیلیٹی بلز)", 0, 0),
+        ("6050", 7, "Vehicle Fuel & Logistics (گاڑی خرچہ و ایندھن)", 0, 0),
+        ("6060", 7, "Bad Debts Expense (ڈوبے ہوئے قرضہ جات)", 0, 0),
+        ("7010", 5, "Purchase Discounts Received (خریداری رعایت)", 0, 0),
+        ("7020", 5, "Miscellaneous Income (متفرق آمدن)", 0, 0),
+    ];
+
+    for (code, type_id, name, is_cust, is_supp) in standard_accounts {
+        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM accounts WHERE code = ? OR name = ?")
+            .bind(code)
+            .bind(name)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
+
+        if exists.is_none() {
+            let _ = sqlx::query(
+                "INSERT INTO accounts (account_type_id, name, code, is_customer, is_supplier) VALUES (?, ?, ?, ?, ?)"
+            )
+            .bind(type_id)
+            .bind(name)
+            .bind(code)
+            .bind(is_cust)
+            .bind(is_supp)
+            .execute(pool)
+            .await;
+        } else if let Some(acc_id) = exists {
+            let _ = sqlx::query("UPDATE accounts SET code = ? WHERE id = ? AND (code IS NULL OR code = '')")
+                .bind(code)
+                .bind(acc_id)
+                .execute(pool)
+                .await;
+        }
+    }
 
     Ok(())
 }

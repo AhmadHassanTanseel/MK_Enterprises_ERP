@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 import { EntitySelect } from '../../shared/components/EntitySelect';
 
 export const PurchaseReturnPanel: React.FC = () => {
-  const { settings, products, accounts, postInvoice, invoices } = useAppContext();
+  const { settings, products, accounts, postInvoice } = useAppContext();
   
   const [originalBillNo, setOriginalBillNo] = useState("");
   const [accountId, setAccountId] = useState<number | null>(null);
@@ -23,11 +23,12 @@ export const PurchaseReturnPanel: React.FC = () => {
   
   const handleLoadBill = async () => {
     if (!originalBillNo) return;
-    const bill = invoices.find(i => i.type === 'PURCHASE' && i.ref_no.toLowerCase() === originalBillNo.toLowerCase());
-    if (bill) {
-      setAccountId(bill.account_id);
-      try {
-        const rawLines = await invoke('get_invoice_lines', { invoiceId: bill.id });
+    try {
+      const data: any = await invoke('get_invoice_by_ref', { refNo: originalBillNo.trim(), invoiceType: 'PURCHASE' });
+      if (data && data.invoice) {
+        const bill = data.invoice;
+        setAccountId(bill.account_id);
+        const rawLines = data.lines;
         if (Array.isArray(rawLines) && rawLines.length > 0) {
           setLines(rawLines.map((l: any) => ({
             id: Math.random().toString(),
@@ -40,19 +41,19 @@ export const PurchaseReturnPanel: React.FC = () => {
         } else {
           toast.error("This invoice has no items recorded");
         }
-      } catch (e) {
-        toast.error("Failed to load invoice items");
+        setInvoiceDate(bill.date.split(' ')[0]);
+        toast.success(`Loaded bill ${bill.ref_no}`);
+      } else {
+        toast.error('No invoice found with that number');
       }
-      setInvoiceDate(bill.date.split(' ')[0]);
-      toast.success(`Loaded bill ${bill.ref_no}`);
-    } else {
-      toast.error('No invoice found with that number');
+    } catch (e: any) {
+      toast.error('Failed to load invoice: ' + e.toString());
     }
   };
   const containerRef = useRef<HTMLDivElement>(null);
   useGridNavigation(containerRef, () => addLine(), () => handleSave(false, false));
 
-  const addLine = () => setLines([...lines, { id: Math.random().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
+  const addLine = () => setLines([...lines, { id: Date.now().toString(), product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
   const removeLine = (id: string) => lines.length > 1 && setLines(lines.filter(l => l.id !== id));
 
   const updateLine = (id: string, field: keyof InvoiceLine, value: any) => {
@@ -97,6 +98,7 @@ export const PurchaseReturnPanel: React.FC = () => {
 
   
   
+  const [returnType, setReturnType] = useState<'R' | 'D'>('R');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSave = async (printAfter: boolean = false, isPDF: boolean = false) => {
@@ -113,15 +115,16 @@ export const PurchaseReturnPanel: React.FC = () => {
     try {
       await postInvoice({
         type: 'PURCHASE_RETURN',
-        ref_no: `PR-${Math.floor(Math.random() * 10000)}`,
+        ref_no: '',
         account_id: accountId,
         date: invoiceDate,
         lines: lines as any,
         gross_amount: totalGross,
         discount_amount: totalDiscount,
         net_amount: totalNet,
-        amount_paid_cash: 0, amount_paid_bank: 0 
-      });
+        amount_paid_cash: 0, amount_paid_bank: 0,
+        return_type: returnType
+      } as any);
       toast.success(`Purchase Return saved successfully`);
       setLines([{ id: '1', product_id: 0, qty: 1, rate: 0, discount_pct: 0, amount: 0 }]);
       setAccountId(null);
@@ -181,7 +184,18 @@ export const PurchaseReturnPanel: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Return Type (قسم)</label>
+              <select 
+                value={returnType} 
+                onChange={e => setReturnType(e.target.value as 'R' | 'D')}
+                className="w-full border border-slate-300 rounded-md p-2 font-semibold bg-white text-xs outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="R">Return to Supplier (سپلائر کو واپسی)</option>
+                <option value="D">Damaged Write-Off (خراب مال کا اخراج)</option>
+              </select>
+            </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Original Invoice # (Optional)</label>
               <div className="flex">
